@@ -1,0 +1,38 @@
+version: "3.9"
+
+# Development override – mounts source code, enables hot-reload,
+# exposes extra ports for debugging, and skips the Nginx reverse proxy.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: medfinance_postgres_dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: medfinance_dev
+      POSTGRES_USER: medfinance_user
+      POSTGRES_PASSWORD: devpassword
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+      - ./infrastructure/postgres/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U medfinance_user -d medfinance_dev"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: medfinance_redis_dev
+    restart: unless-stopped
+    command: redis-server --loglevel verbose
+    volumes:
+      - redis_dev_data:/data
+    ports:
+      - "6379:6379"
+
+volumes:
+  postgres_dev_data:
+  redis_dev_data:
