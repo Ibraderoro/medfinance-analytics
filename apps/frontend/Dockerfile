@@ -1,0 +1,27 @@
+# ── Stage 1: Build ────────────────────────────────────────────────────────
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+COPY package.json .
+COPY apps/frontend/package.json apps/frontend/package.json
+COPY packages/shared/package.json packages/shared/package.json
+
+RUN npm install --workspaces
+
+COPY packages/shared/ packages/shared/
+COPY apps/frontend/ apps/frontend/
+
+RUN npm run build --workspace=packages/shared
+RUN npm run build --workspace=apps/frontend
+
+# ── Stage 2: Serve with Nginx ─────────────────────────────────────────────
+FROM nginx:1.25-alpine AS runtime
+
+COPY --from=builder /app/apps/frontend/dist /usr/share/nginx/html
+COPY infrastructure/nginx/nginx.conf /etc/nginx/nginx.conf
+
+EXPOSE 80
+
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+  CMD wget -qO- http://localhost/health || exit 1
