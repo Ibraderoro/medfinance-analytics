@@ -20,6 +20,13 @@ export async function getForecast(
         }) ?? 12,
       metric: metric as string,
     });
+
+    const metric = parseEnumQuery(req.query.metric, 'metric', {
+      allowedValues: ['revenue', 'expense'] as const,
+      defaultValue: 'revenue',
+    });
+
+    const data = await service.getForecast({ months, metric });
     res.json({ data });
   } catch (err) {
     next(err);
@@ -41,6 +48,8 @@ export async function getBudgetVariance(
           max: 2100,
         }) ?? new Date().getFullYear(),
     });
+
+    const data = await service.getBudgetVariance({ year });
     res.json({ data });
   } catch (err) {
     next(err);
