@@ -1,102 +1,63 @@
--- Migration 001: initial schema
--- Applied by: apps/backend/src/db/migrate.ts
--- Description: Create all core tables for MedFinance Analytics
+-- MedFinance Analytics core financial schema
+-- Contains normalized tables used by backend analytics endpoints.
 
--- Extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 
--- Organisations
-CREATE TABLE IF NOT EXISTS organisations (
-  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  name        TEXT NOT NULL,
-  slug        TEXT NOT NULL UNIQUE,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+CREATE TABLE IF NOT EXISTS departments (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  department_code VARCHAR(24) NOT NULL UNIQUE,
+  name VARCHAR(120) NOT NULL,
+  cost_center VARCHAR(32) NOT NULL UNIQUE,
+  parent_department_id UUID REFERENCES departments(id) ON DELETE SET NULL,
+  status VARCHAR(16) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Users
-CREATE TABLE IF NOT EXISTS users (
-  id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  organisation_id   UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
-  email             TEXT NOT NULL UNIQUE,
-  password_hash     TEXT NOT NULL,
-  role              TEXT NOT NULL CHECK (role IN ('cfo', 'finance_manager', 'auditor', 'viewer')),
-  first_name        TEXT,
-  last_name         TEXT,
-  is_active         BOOLEAN NOT NULL DEFAULT TRUE,
-  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+CREATE TABLE IF NOT EXISTS forecasts (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  department_id UUID NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+  fiscal_year INTEGER NOT NULL CHECK (fiscal_year BETWEEN 2000 AND 2100),
+  fiscal_month INTEGER NOT NULL CHECK (fiscal_month BETWEEN 1 AND 12),
+  metric_type VARCHAR(16) NOT NULL CHECK (metric_type IN ('revenue', 'expense')),
+  projected_amount NUMERIC(16, 2) NOT NULL CHECK (projected_amount >= 0),
+  scenario VARCHAR(24) NOT NULL DEFAULT 'baseline' CHECK (scenario IN ('baseline', 'best_case', 'worst_case')),
+  confidence_score NUMERIC(5, 2) CHECK (confidence_score BETWEEN 0 AND 100),
+  assumptions JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (department_id, fiscal_year, fiscal_month, metric_type, scenario)
 );
 
--- Financial Transactions
-CREATE TABLE IF NOT EXISTS financial_transactions (
-  id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  organisation_id   UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
-  type              TEXT NOT NULL CHECK (type IN ('revenue', 'expense')),
-  amount            NUMERIC(18, 2) NOT NULL,
-  category          TEXT NOT NULL,
-  description       TEXT,
-  transaction_date  DATE NOT NULL,
-  reference_number  TEXT,
-  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+CREATE TABLE IF NOT EXISTS transactions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  department_id UUID NOT NULL REFERENCES departments(id) ON DELETE RESTRICT,
+  forecast_id UUID REFERENCES forecasts(id) ON DELETE SET NULL,
+  transaction_type VARCHAR(16) NOT NULL CHECK (transaction_type IN ('revenue', 'expense')),
+  category VARCHAR(64) NOT NULL,
+  vendor_name VARCHAR(160),
+  invoice_number VARCHAR(64),
+  description TEXT,
+  amount NUMERIC(16, 2) NOT NULL CHECK (amount >= 0),
+  tax_amount NUMERIC(16, 2) NOT NULL DEFAULT 0 CHECK (tax_amount >= 0),
+  currency CHAR(3) NOT NULL DEFAULT 'USD',
+  occurred_on DATE NOT NULL,
+  posted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_transactions_org ON financial_transactions(organisation_id);
-CREATE INDEX IF NOT EXISTS idx_transactions_date ON financial_transactions(transaction_date);
-CREATE INDEX IF NOT EXISTS idx_transactions_type ON financial_transactions(type);
+-- Performance indexes
+CREATE INDEX IF NOT EXISTS idx_transactions_occurred_on ON transactions(occurred_on DESC);
+CREATE INDEX IF NOT EXISTS idx_transactions_type_date ON transactions(transaction_type, occurred_on DESC);
+CREATE INDEX IF NOT EXISTS idx_transactions_department_date ON transactions(department_id, occurred_on DESC);
+CREATE INDEX IF NOT EXISTS idx_transactions_forecast_id ON transactions(forecast_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category);
 
--- Budgets
-CREATE TABLE IF NOT EXISTS budgets (
-  id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  organisation_id   UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
-  category          TEXT NOT NULL,
-  budgeted_amount   NUMERIC(18, 2) NOT NULL,
-  fiscal_year       INTEGER NOT NULL,
-  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (organisation_id, category, fiscal_year)
-);
+CREATE INDEX IF NOT EXISTS idx_forecasts_department_period
+  ON forecasts(department_id, fiscal_year, fiscal_month);
+CREATE INDEX IF NOT EXISTS idx_forecasts_metric_period
+  ON forecasts(metric_type, fiscal_year, fiscal_month);
 
--- Compliance Items
-CREATE TABLE IF NOT EXISTS compliance_items (
-  id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  organisation_id     UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
-  regulation_code     TEXT NOT NULL,
-  status              TEXT NOT NULL CHECK (status IN ('compliant', 'non_compliant', 'under_review')),
-  last_reviewed_at    TIMESTAMPTZ,
-  next_review_due_at  TIMESTAMPTZ NOT NULL,
-  assigned_to         UUID REFERENCES users(id),
-  notes               TEXT,
-  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- Regulatory Alerts
-CREATE TABLE IF NOT EXISTS regulatory_alerts (
-  id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  organisation_id   UUID NOT NULL REFERENCES organisations(id) ON DELETE CASCADE,
-  title             TEXT NOT NULL,
-  description       TEXT,
-  severity          TEXT NOT NULL CHECK (severity IN ('critical', 'high', 'medium', 'low')),
-  regulation_code   TEXT,
-  due_date          DATE NOT NULL,
-  status            TEXT NOT NULL CHECK (status IN ('open', 'acknowledged', 'resolved')) DEFAULT 'open',
-  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- Audit Log
-CREATE TABLE IF NOT EXISTS audit_log (
-  id              BIGSERIAL PRIMARY KEY,
-  organisation_id UUID REFERENCES organisations(id) ON DELETE SET NULL,
-  action          TEXT NOT NULL,
-  entity_type     TEXT NOT NULL,
-  entity_id       TEXT,
-  performed_by    UUID REFERENCES users(id) ON DELETE SET NULL,
-  performed_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  metadata        JSONB DEFAULT '{}'::jsonb
-);
-
-CREATE INDEX IF NOT EXISTS idx_audit_org ON audit_log(organisation_id);
-CREATE INDEX IF NOT EXISTS idx_audit_performed_at ON audit_log(performed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_departments_parent ON departments(parent_department_id);
+CREATE INDEX IF NOT EXISTS idx_departments_status ON departments(status);

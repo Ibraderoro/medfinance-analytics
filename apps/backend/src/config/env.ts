@@ -12,19 +12,19 @@ function optionalEnv(key: string, defaultValue = ''): string {
   return process.env[key] ?? defaultValue;
 }
 
-function parseNumberEnv(key: string, defaultValue: number): number {
-  const rawValue = optionalEnv(key, String(defaultValue));
-  const parsedValue = Number.parseInt(rawValue, 10);
+function parseIntEnv(key: string, defaultValue: number): number {
+  const raw = optionalEnv(key, String(defaultValue));
+  const parsed = Number.parseInt(raw, 10);
 
-  if (Number.isNaN(parsedValue)) {
+  if (!Number.isFinite(parsed)) {
     throw new Error(`Environment variable ${key} must be a valid integer`);
   }
 
-  return parsedValue;
+  return parsed;
 }
 
-function parseOrigins(value: string): string[] {
-  return value
+function parseCorsOrigins(raw: string): string[] {
+  return raw
     .split(',')
     .map((origin) => origin.trim())
     .filter((origin) => origin.length > 0);
@@ -32,12 +32,13 @@ function parseOrigins(value: string): string[] {
 
 export const env = {
   NODE_ENV: optionalEnv('NODE_ENV', 'development'),
-  PORT: parseNumberEnv('PORT', 3001),
+  PORT: parseIntEnv('PORT', 3001),
 
   DATABASE_URL: requireEnv('DATABASE_URL'),
+  PG_SSL: optionalBooleanEnv('PG_SSL', optionalEnv('NODE_ENV', 'development') === 'production'),
 
   REDIS_HOST: optionalEnv('REDIS_HOST', 'localhost'),
-  REDIS_PORT: parseNumberEnv('REDIS_PORT', 6379),
+  REDIS_PORT: parseIntEnv('REDIS_PORT', 6379),
   REDIS_PASSWORD: optionalEnv('REDIS_PASSWORD'),
 
   JWT_SECRET: requireEnv('JWT_SECRET'),
@@ -45,12 +46,12 @@ export const env = {
   REFRESH_TOKEN_SECRET: requireEnv('REFRESH_TOKEN_SECRET'),
   REFRESH_TOKEN_EXPIRES_IN: optionalEnv('REFRESH_TOKEN_EXPIRES_IN', '7d'),
 
-  CORS_ALLOWED_ORIGINS: parseOrigins(
+  CORS_ALLOWED_ORIGINS: parseCorsOrigins(
     optionalEnv('CORS_ALLOWED_ORIGINS', 'http://localhost:3000'),
   ),
 
   LOG_LEVEL: optionalEnv('LOG_LEVEL', 'info'),
 
-  isProduction: () => process.env.NODE_ENV === 'production',
-  isDevelopment: () => process.env.NODE_ENV === 'development',
+  isProduction: () => optionalEnv('NODE_ENV', 'development') === 'production',
+  isDevelopment: () => optionalEnv('NODE_ENV', 'development') === 'development',
 };
