@@ -7,26 +7,12 @@ import {
   getAuditLog,
   getRegulatoryAlerts,
 } from '../controllers/compliance.controller';
+import { alertsValidator, auditLogValidator } from '../validators/queryValidators';
 
 export const complianceRouter = Router();
 
 complianceRouter.use(authenticate);
 
 complianceRouter.get('/status', getComplianceStatus);
-complianceRouter.get(
-  '/audit-log',
-  [
-    query('page').optional().isInt({ min: 1, max: 100000 }),
-    query('limit').optional().isInt({ min: 1, max: 200 }),
-  ],
-  validateRequest,
-  getAuditLog,
-);
-complianceRouter.get(
-  '/alerts',
-  [
-    query('severity').optional().isIn(['low', 'medium', 'high', 'critical']),
-  ],
-  validateRequest,
-  getRegulatoryAlerts,
-);
+complianceRouter.get('/audit-log', auditLogValidator, validateRequest, getAuditLog);
+complianceRouter.get('/alerts', alertsValidator, validateRequest, getRegulatoryAlerts);
