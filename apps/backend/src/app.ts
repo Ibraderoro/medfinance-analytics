@@ -10,11 +10,20 @@ import { rateLimiter } from './middleware/rateLimiter';
 import { requestLogger } from './middleware/logger';
 
 export const app: Application = express();
+app.set('trust proxy', 1);
 
 // ── Security ──────────────────────────────────────────────────────────────
 app.use(helmet());
 app.use(cors({
-  origin: env.CORS_ALLOWED_ORIGINS.split(','),
+  origin(origin, callback) {
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+
+    const isAllowedOrigin = env.CORS_ALLOWED_ORIGINS.includes(origin);
+    callback(isAllowedOrigin ? null : new Error('Origin not allowed by CORS'), isAllowedOrigin);
+  },
   credentials: true,
 }));
 app.use(rateLimiter);
