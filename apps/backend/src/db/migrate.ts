@@ -47,6 +47,47 @@ async function applyMigration(filename: string): Promise<void> {
   }
 }
 
+async function rollbackLatestMigration(): Promise<void> {
+  await ensureMigrationsTable();
+
+  const latest = await getPool().query<{ filename: string }>(
+    'SELECT filename FROM schema_migrations ORDER BY id DESC LIMIT 1',
+  );
+
+  if (latest.rowCount === 0) {
+    console.log('Nothing to rollback — no migrations have been applied.');
+    return;
+  }
+
+  const filename = latest.rows[0].filename;
+  const downFilename = filename.replace(/\.sql$/, '.down.sql');
+  const downPath = path.join(MIGRATIONS_DIR, downFilename);
+
+  if (!fs.existsSync(downPath)) {
+    throw new Error(
+      `Rollback not available for ${filename}. Expected down migration file: ${downFilename}`,
+    );
+  }
+
+  const downSql = fs.readFileSync(downPath, 'utf8');
+  const client = await getPool().connect();
+
+  try {
+    await client.query('BEGIN');
+    await client.query(downSql);
+    await client.query('DELETE FROM schema_migrations WHERE filename = $1', [
+      filename,
+    ]);
+    await client.query('COMMIT');
+    console.log(`↩️ Rolled back: ${filename}`);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
 async function migrate(): Promise<void> {
   await ensureMigrationsTable();
   const applied = await getAppliedMigrations();
@@ -71,7 +112,18 @@ async function migrate(): Promise<void> {
   }
 }
 
-migrate()
+async function run(): Promise<void> {
+  const command = process.argv[2];
+
+  if (command === 'rollback') {
+    await rollbackLatestMigration();
+    return;
+  }
+
+  await migrate();
+}
+
+run()
   .then(() => process.exit(0))
   .catch((err) => {
     console.error('Migration failed:', err);
