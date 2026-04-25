@@ -11,14 +11,17 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
-function isValidUserPayload(payload: unknown): payload is AuthenticatedRequest['user'] {
+function isUserPayload(payload: unknown): payload is AuthenticatedRequest['user'] {
   if (!payload || typeof payload !== 'object') {
     return false;
   }
 
   const candidate = payload as Record<string, unknown>;
-  return ['id', 'email', 'role', 'organisationId'].every(
-    (field) => typeof candidate[field] === 'string' && candidate[field] !== '',
+  return (
+    typeof candidate.id === 'string'
+    && typeof candidate.email === 'string'
+    && typeof candidate.role === 'string'
+    && typeof candidate.organisationId === 'string'
   );
 }
 
@@ -39,9 +42,9 @@ export function authenticate(
   try {
     const payload = jwt.verify(token, env.JWT_SECRET, {
       algorithms: ['HS256'],
-    }) as JwtPayload | string;
+    });
 
-    if (!isValidUserPayload(payload)) {
+    if (!isUserPayload(payload)) {
       res.status(401).json({ error: 'Invalid token payload' });
       return;
     }

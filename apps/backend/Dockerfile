@@ -1,15 +1,17 @@
+# syntax=docker/dockerfile:1.7
+
 # ── Stage 1: Build ────────────────────────────────────────────────────────
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
 # Copy workspace manifests
-COPY package.json .
+COPY package*.json ./
 COPY apps/backend/package.json apps/backend/package.json
 COPY packages/shared/package.json packages/shared/package.json
 
 # Install all dependencies (including devDependencies for build)
-RUN npm install --workspaces
+RUN npm ci --workspaces
 
 # Copy source
 COPY packages/shared/ packages/shared/
@@ -27,12 +29,12 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 # Only copy production manifests
-COPY package.json .
+COPY package*.json ./
 COPY apps/backend/package.json apps/backend/package.json
 COPY packages/shared/package.json packages/shared/package.json
 
 # Install production dependencies only
-RUN npm install --workspaces --omit=dev
+RUN npm ci --workspaces --omit=dev
 
 # Copy build artifacts
 COPY --from=builder /app/apps/backend/dist apps/backend/dist
@@ -45,6 +47,6 @@ USER appuser
 EXPOSE 3001
 
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-  CMD wget -qO- http://localhost:3001/api/v1/health || exit 1
+  CMD wget -qO- http://localhost:${PORT:-3001}/api/v1/health || exit 1
 
 CMD ["node", "apps/backend/dist/index.js"]

@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { FinancialsService } from '../services/financials.service';
-import { parseDateString, parseEnumValue, parseIntegerInRange } from '../utils/validation';
+import { parseIntegerQuery, parseIsoDateQuery } from '../utils/validation';
 
 const service = new FinancialsService();
 
@@ -12,9 +12,22 @@ export async function getSummary(
   try {
     const { period, year } = req.query;
     const data = await service.getSummary({
-      period: parseEnumValue(period, ['monthly', 'quarterly', 'yearly'] as const, 'monthly'),
-      year: parseIntegerInRange(year, new Date().getFullYear(), { min: 2000, max: 2100 }),
+      period: period as string,
+      year:
+        parseIntegerQuery(year as string | undefined, {
+          label: 'year',
+          min: 2000,
+          max: 2100,
+        }) ?? new Date().getFullYear(),
     });
+
+    const year = parseIntegerQuery(req.query.year, 'year', {
+      min: 2000,
+      max: 2100,
+      defaultValue: new Date().getFullYear(),
+    });
+
+    const data = await service.getSummary({ period, year });
     res.json({ data });
   } catch (err) {
     next(err);
@@ -29,8 +42,8 @@ export async function getRevenue(
   try {
     const { startDate, endDate } = req.query;
     const data = await service.getRevenue({
-      startDate: parseDateString(startDate),
-      endDate: parseDateString(endDate),
+      startDate: parseIsoDateQuery(startDate as string | undefined, 'startDate'),
+      endDate: parseIsoDateQuery(endDate as string | undefined, 'endDate'),
     });
     res.json({ data });
   } catch (err) {
@@ -46,8 +59,8 @@ export async function getExpenses(
   try {
     const { startDate, endDate } = req.query;
     const data = await service.getExpenses({
-      startDate: parseDateString(startDate),
-      endDate: parseDateString(endDate),
+      startDate: parseIsoDateQuery(startDate as string | undefined, 'startDate'),
+      endDate: parseIsoDateQuery(endDate as string | undefined, 'endDate'),
     });
     res.json({ data });
   } catch (err) {
@@ -63,8 +76,8 @@ export async function getCashFlow(
   try {
     const { startDate, endDate } = req.query;
     const data = await service.getCashFlow({
-      startDate: parseDateString(startDate),
-      endDate: parseDateString(endDate),
+      startDate: parseIsoDateQuery(startDate as string | undefined, 'startDate'),
+      endDate: parseIsoDateQuery(endDate as string | undefined, 'endDate'),
     });
     res.json({ data });
   } catch (err) {

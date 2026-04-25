@@ -74,12 +74,23 @@ npm run dev --workspace=apps/frontend
 ### Production
 
 ```bash
-# Build all apps
-npm run build
+# 1. Copy and edit production env vars
+cp .env.example .env
 
-# Start production stack
-docker-compose up -d
+# 2. Build production images
+docker compose build
+
+# 3. Start full production stack
+docker compose --profile full up -d
 ```
+
+### Run Services Independently
+
+# Start full production-like stack (frontend + backend + PostgreSQL + Redis)
+docker compose up --build -d
+```
+
+One command brings up the full system: `docker compose up --build -d`.
 
 ---
 
@@ -143,13 +154,38 @@ Shared between backend & frontend:
 | postgres   | 5432  | PostgreSQL database       |
 | redis      | 6379  | Redis cache               |
 | backend    | 3001  | Express API               |
-| frontend   | 3000  | React dev server / Nginx  |
+| frontend   | 3000  | React app served by Nginx (with `/api` proxy to backend)  |
 
 ---
 
 ## 🔒 Environment Variables
 
 Copy `.env.example` to `.env` and fill in the values. See [`apps/backend/.env.example`](apps/backend/.env.example) for the full backend variable reference.
+
+For the frontend, Vite only exposes variables prefixed with `VITE_`. This app reads the API base URL from `VITE_API_URL` in `apps/frontend/src/services/api.ts`.
+
+Example:
+
+```bash
+VITE_API_URL=https://api.your-domain.com/api/v1
+```
+
+For local development, keep this in `.env`/`.env.local`. For Vercel deployments, set `VITE_API_URL` in the Vercel project settings (Environment Variables) for each environment (Production/Preview/Development).
+
+---
+
+## ▲ Deploying frontend to Vercel
+
+This repository includes `vercel.json` configured for the React/Vite frontend:
+
+- Build command: `npm run build --workspace=apps/frontend`
+- Output directory: `apps/frontend/dist`
+- SPA rewrites: all routes are rewritten to `index.html`
+
+After importing this repo in Vercel:
+
+1. Set `VITE_API_URL` in Environment Variables.
+2. Trigger a deployment.
 
 ---
 

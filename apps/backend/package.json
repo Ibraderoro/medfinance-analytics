@@ -7,9 +7,9 @@
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc --project tsconfig.json",
-    "start": "node dist/index.js",
-    "lint": "eslint 'src/**/*.ts'",
-    "lint:fix": "eslint 'src/**/*.ts' --fix",
+    "serve": "node dist/index.js",
+    "start": "npm run build && npm run serve",
+    "lint": "eslint 'src/**/*.ts' --fix",
     "test": "jest --coverage",
     "migrate": "node -r ts-node/register src/db/migrate.ts",
     "migrate:rollback": "node -r ts-node/register src/db/migrate.ts rollback",

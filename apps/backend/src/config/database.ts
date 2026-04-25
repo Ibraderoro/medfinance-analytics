@@ -8,6 +8,7 @@ export function getPool(): Pool {
   if (!pool) {
     pool = new Pool({
       connectionString: env.DATABASE_URL,
+      ssl: env.PG_SSL ? { rejectUnauthorized: false } : undefined,
       max: 20,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 5_000,
@@ -34,6 +35,10 @@ export async function query<T extends QueryResultRow>(
   const start = Date.now();
   const res = await getPool().query<T>(text, params);
   const duration = Date.now() - start;
-  logger.debug('Query executed', { text, duration, rows: res.rowCount });
+  logger.debug('Query executed', {
+    duration,
+    rows: res.rowCount,
+    hasParams: Boolean(params?.length),
+  });
   return res.rows;
 }
