@@ -10,7 +10,7 @@ export async function getForecast(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const { months = '12', metric = 'revenue' } = req.query;
+    const { months, metric } = req.query;
     const data = await service.getForecast({
       months:
         parseIntegerQuery(months as string | undefined, {

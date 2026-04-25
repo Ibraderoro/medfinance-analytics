@@ -23,7 +23,7 @@ export async function getAuditLog(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const { page = '1', limit = '50' } = req.query;
+    const { page, limit } = req.query;
     const data = await service.getAuditLog({
       page: parseIntegerQuery(page as string | undefined, {
         label: 'page',

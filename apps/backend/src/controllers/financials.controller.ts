@@ -10,7 +10,7 @@ export async function getSummary(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const { period = 'monthly', year } = req.query;
+    const { period, year } = req.query;
     const data = await service.getSummary({
       period: period as string,
       year:
