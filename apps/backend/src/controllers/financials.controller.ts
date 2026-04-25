@@ -20,14 +20,6 @@ export async function getSummary(
           max: 2100,
         }) ?? new Date().getFullYear(),
     });
-
-    const year = parseIntegerQuery(req.query.year, 'year', {
-      min: 2000,
-      max: 2100,
-      defaultValue: new Date().getFullYear(),
-    });
-
-    const data = await service.getSummary({ period, year });
     res.json({ data });
   } catch (err) {
     next(err);

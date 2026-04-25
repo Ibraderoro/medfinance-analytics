@@ -36,14 +36,6 @@ export async function getAuditLog(
           max: 200,
         }) ?? 50,
     });
-
-    const limit = parseIntegerQuery(req.query.limit, 'limit', {
-      min: 1,
-      max: 100,
-      defaultValue: 50,
-    });
-
-    const data = await service.getAuditLog({ page, limit });
     res.json({ data });
   } catch (err) {
     next(err);
@@ -61,7 +53,7 @@ export async function getRegulatoryAlerts(
       throw createBadRequestError('severity must be one of: low, medium, high');
     }
     const data = await service.getRegulatoryAlerts({
-      severity: req.query.severity ? severity : undefined,
+      severity: severity as 'low' | 'medium' | 'high' | undefined,
     });
 
     res.json({ data });

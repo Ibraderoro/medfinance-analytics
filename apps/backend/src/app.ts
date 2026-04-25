@@ -10,12 +10,13 @@ import { rateLimiter } from './middleware/rateLimiter';
 import { requestLogger } from './middleware/logger';
 
 export const app: Application = express();
-app.set('trust proxy', 1);
 
-const allowedOrigins = env.CORS_ALLOWED_ORIGINS
-  .split(',')
-  .map((origin) => origin.trim())
-  .filter(Boolean);
+// ── Runtime/infra settings ───────────────────────────────────────────────
+if (env.isProduction()) {
+  app.set('trust proxy', 1);
+}
+
+const allowedOrigins: string[] = env.CORS_ALLOWED_ORIGINS;
 
 const corsOptions: CorsOptions = {
   origin: (origin, callback) => {
@@ -34,16 +35,6 @@ const corsOptions: CorsOptions = {
   },
   credentials: true,
 };
-
-const allowedOrigins = env.CORS_ALLOWED_ORIGINS
-  .split(',')
-  .map((origin) => origin.trim())
-  .filter(Boolean);
-
-// ── Runtime/infra settings ───────────────────────────────────────────────
-if (env.isProduction()) {
-  app.set('trust proxy', 1);
-}
 
 // ── Security ──────────────────────────────────────────────────────────────
 app.disable('x-powered-by');

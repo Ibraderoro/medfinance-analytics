@@ -23,6 +23,14 @@ function parseIntEnv(key: string, defaultValue: number): number {
   return parsed;
 }
 
+function optionalBooleanEnv(key: string, defaultValue: boolean): boolean {
+  const raw = process.env[key];
+  if (raw === undefined || raw === '') {
+    return defaultValue;
+  }
+  return raw.toLowerCase() !== 'false' && raw !== '0';
+}
+
 function parseCorsOrigins(raw: string): string[] {
   return raw
     .split(',')
