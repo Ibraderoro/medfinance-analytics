@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { ForecastingService } from '../services/forecasting.service';
+import { parseIntegerQuery } from '../utils/validation';
 
 const service = new ForecastingService();
 
@@ -11,7 +12,12 @@ export async function getForecast(
   try {
     const { months = '12', metric = 'revenue' } = req.query;
     const data = await service.getForecast({
-      months: parseInt(months as string, 10),
+      months:
+        parseIntegerQuery(months as string | undefined, {
+          label: 'months',
+          min: 1,
+          max: 36,
+        }) ?? 12,
       metric: metric as string,
     });
     res.json({ data });
@@ -28,7 +34,12 @@ export async function getBudgetVariance(
   try {
     const { year } = req.query;
     const data = await service.getBudgetVariance({
-      year: year ? parseInt(year as string, 10) : new Date().getFullYear(),
+      year:
+        parseIntegerQuery(year as string | undefined, {
+          label: 'year',
+          min: 2000,
+          max: 2100,
+        }) ?? new Date().getFullYear(),
     });
     res.json({ data });
   } catch (err) {

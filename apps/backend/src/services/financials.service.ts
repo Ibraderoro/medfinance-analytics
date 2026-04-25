@@ -21,11 +21,11 @@ export class FinancialsService {
 
     const rows = await query<Record<string, unknown>>(
       `SELECT
-         SUM(CASE WHEN type = 'revenue' THEN amount ELSE 0 END) AS total_revenue,
-         SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) AS total_expenses,
-         SUM(CASE WHEN type = 'revenue' THEN amount ELSE -amount END) AS net_income
-       FROM financial_transactions
-       WHERE EXTRACT(YEAR FROM transaction_date) = $1`,
+         SUM(CASE WHEN transaction_type = 'revenue' THEN amount ELSE 0 END) AS total_revenue,
+         SUM(CASE WHEN transaction_type = 'expense' THEN amount ELSE 0 END) AS total_expenses,
+         SUM(CASE WHEN transaction_type = 'revenue' THEN amount ELSE -amount END) AS net_income
+       FROM transactions
+       WHERE EXTRACT(YEAR FROM occurred_on) = $1`,
       [opts.year],
     );
 
@@ -37,13 +37,13 @@ export class FinancialsService {
   async getRevenue(opts: DateRangeOptions) {
     const rows = await query<Record<string, unknown>>(
       `SELECT
-         DATE_TRUNC('month', transaction_date) AS month,
+         DATE_TRUNC('month', occurred_on) AS month,
          SUM(amount) AS total
-       FROM financial_transactions
-       WHERE type = 'revenue'
-         AND ($1::date IS NULL OR transaction_date >= $1::date)
-         AND ($2::date IS NULL OR transaction_date <= $2::date)
-       GROUP BY DATE_TRUNC('month', transaction_date)
+       FROM transactions
+       WHERE transaction_type = 'revenue'
+         AND ($1::date IS NULL OR occurred_on >= $1::date)
+         AND ($2::date IS NULL OR occurred_on <= $2::date)
+       GROUP BY DATE_TRUNC('month', occurred_on)
        ORDER BY month ASC`,
       [opts.startDate ?? null, opts.endDate ?? null],
     );
@@ -55,12 +55,12 @@ export class FinancialsService {
       `SELECT
          category,
          SUM(amount) AS total,
-         DATE_TRUNC('month', transaction_date) AS month
-       FROM financial_transactions
-       WHERE type = 'expense'
-         AND ($1::date IS NULL OR transaction_date >= $1::date)
-         AND ($2::date IS NULL OR transaction_date <= $2::date)
-       GROUP BY category, DATE_TRUNC('month', transaction_date)
+         DATE_TRUNC('month', occurred_on) AS month
+       FROM transactions
+       WHERE transaction_type = 'expense'
+         AND ($1::date IS NULL OR occurred_on >= $1::date)
+         AND ($2::date IS NULL OR occurred_on <= $2::date)
+       GROUP BY category, DATE_TRUNC('month', occurred_on)
        ORDER BY month ASC, total DESC`,
       [opts.startDate ?? null, opts.endDate ?? null],
     );
@@ -70,12 +70,12 @@ export class FinancialsService {
   async getCashFlow(opts: DateRangeOptions) {
     const rows = await query<Record<string, unknown>>(
       `SELECT
-         DATE_TRUNC('month', transaction_date) AS month,
-         SUM(CASE WHEN type = 'revenue' THEN amount ELSE -amount END) AS net_cash_flow
-       FROM financial_transactions
-       WHERE ($1::date IS NULL OR transaction_date >= $1::date)
-         AND ($2::date IS NULL OR transaction_date <= $2::date)
-       GROUP BY DATE_TRUNC('month', transaction_date)
+         DATE_TRUNC('month', occurred_on) AS month,
+         SUM(CASE WHEN transaction_type = 'revenue' THEN amount ELSE -amount END) AS net_cash_flow
+       FROM transactions
+       WHERE ($1::date IS NULL OR occurred_on >= $1::date)
+         AND ($2::date IS NULL OR occurred_on <= $2::date)
+       GROUP BY DATE_TRUNC('month', occurred_on)
        ORDER BY month ASC`,
       [opts.startDate ?? null, opts.endDate ?? null],
     );
