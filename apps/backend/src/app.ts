@@ -35,6 +35,16 @@ const corsOptions: CorsOptions = {
   credentials: true,
 };
 
+const allowedOrigins = env.CORS_ALLOWED_ORIGINS
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+// ── Runtime/infra settings ───────────────────────────────────────────────
+if (env.isProduction()) {
+  app.set('trust proxy', 1);
+}
+
 // ── Security ──────────────────────────────────────────────────────────────
 app.disable('x-powered-by');
 app.use(helmet());
