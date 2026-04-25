@@ -1,26 +1,17 @@
-# Git metadata
 .git
 .gitignore
-
-# Dependencies and build output
 node_modules
 **/node_modules
-**/dist
-coverage
-
-# Local env/config
-.env
-.env.*
-!.env.example
-
-# Logs and editor files
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
+coverage
+**/coverage
+.env
+.env.*
+!.env.example
 .DS_Store
 .vscode
 .idea
-
-# CI and docs not needed for image builds
-.github
-README.md
+**/*.tsbuildinfo

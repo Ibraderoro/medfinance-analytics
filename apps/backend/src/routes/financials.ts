@@ -1,17 +1,23 @@
 import { Router } from 'express';
+import { query } from 'express-validator';
 import { authenticate } from '../middleware/auth';
+import { validateRequest } from '../middleware/validateRequest';
 import {
   getSummary,
   getRevenue,
   getExpenses,
   getCashFlow,
 } from '../controllers/financials.controller';
+import {
+  financialsSummaryValidator,
+  dateRangeValidator,
+} from '../validators/queryValidators';
 
 export const financialsRouter = Router();
 
 financialsRouter.use(authenticate);
 
-financialsRouter.get('/summary', getSummary);
-financialsRouter.get('/revenue', getRevenue);
-financialsRouter.get('/expenses', getExpenses);
-financialsRouter.get('/cash-flow', getCashFlow);
+financialsRouter.get('/summary', financialsSummaryValidator, validateRequest, getSummary);
+financialsRouter.get('/revenue', dateRangeValidator, validateRequest, getRevenue);
+financialsRouter.get('/expenses', dateRangeValidator, validateRequest, getExpenses);
+financialsRouter.get('/cash-flow', dateRangeValidator, validateRequest, getCashFlow);

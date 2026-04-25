@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
+import jwt, { JwtPayload } from 'jsonwebtoken';
 import { env } from '../config/env';
 
 export interface AuthenticatedRequest extends Request {
@@ -9,6 +9,20 @@ export interface AuthenticatedRequest extends Request {
     role: string;
     organisationId: string;
   };
+}
+
+function isUserPayload(payload: unknown): payload is AuthenticatedRequest['user'] {
+  if (!payload || typeof payload !== 'object') {
+    return false;
+  }
+
+  const candidate = payload as Record<string, unknown>;
+  return (
+    typeof candidate.id === 'string'
+    && typeof candidate.email === 'string'
+    && typeof candidate.role === 'string'
+    && typeof candidate.organisationId === 'string'
+  );
 }
 
 export function authenticate(
@@ -26,7 +40,15 @@ export function authenticate(
   const token = authHeader.slice(7);
 
   try {
-    const payload = jwt.verify(token, env.JWT_SECRET) as AuthenticatedRequest['user'];
+    const payload = jwt.verify(token, env.JWT_SECRET, {
+      algorithms: ['HS256'],
+    });
+
+    if (!isUserPayload(payload)) {
+      res.status(401).json({ error: 'Invalid token payload' });
+      return;
+    }
+
     req.user = payload;
     next();
   } catch {

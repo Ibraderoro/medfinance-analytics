@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { FinancialsService } from '../services/financials.service';
+import { parseIntegerQuery, parseIsoDateQuery } from '../utils/validation';
 
 const service = new FinancialsService();
 
@@ -12,8 +13,21 @@ export async function getSummary(
     const { period = 'monthly', year } = req.query;
     const data = await service.getSummary({
       period: period as string,
-      year: year ? parseInt(year as string, 10) : new Date().getFullYear(),
+      year:
+        parseIntegerQuery(year as string | undefined, {
+          label: 'year',
+          min: 2000,
+          max: 2100,
+        }) ?? new Date().getFullYear(),
     });
+
+    const year = parseIntegerQuery(req.query.year, 'year', {
+      min: 2000,
+      max: 2100,
+      defaultValue: new Date().getFullYear(),
+    });
+
+    const data = await service.getSummary({ period, year });
     res.json({ data });
   } catch (err) {
     next(err);
@@ -28,8 +42,8 @@ export async function getRevenue(
   try {
     const { startDate, endDate } = req.query;
     const data = await service.getRevenue({
-      startDate: startDate as string,
-      endDate: endDate as string,
+      startDate: parseIsoDateQuery(startDate as string | undefined, 'startDate'),
+      endDate: parseIsoDateQuery(endDate as string | undefined, 'endDate'),
     });
     res.json({ data });
   } catch (err) {
@@ -45,8 +59,8 @@ export async function getExpenses(
   try {
     const { startDate, endDate } = req.query;
     const data = await service.getExpenses({
-      startDate: startDate as string,
-      endDate: endDate as string,
+      startDate: parseIsoDateQuery(startDate as string | undefined, 'startDate'),
+      endDate: parseIsoDateQuery(endDate as string | undefined, 'endDate'),
     });
     res.json({ data });
   } catch (err) {
@@ -62,8 +76,8 @@ export async function getCashFlow(
   try {
     const { startDate, endDate } = req.query;
     const data = await service.getCashFlow({
-      startDate: startDate as string,
-      endDate: endDate as string,
+      startDate: parseIsoDateQuery(startDate as string | undefined, 'startDate'),
+      endDate: parseIsoDateQuery(endDate as string | undefined, 'endDate'),
     });
     res.json({ data });
   } catch (err) {
