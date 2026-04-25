@@ -44,6 +44,10 @@ export const env = {
 
   DATABASE_URL: requireEnv('DATABASE_URL'),
   PG_SSL: optionalBooleanEnv('PG_SSL', optionalEnv('NODE_ENV', 'development') === 'production'),
+  PG_SSL_REJECT_UNAUTHORIZED: optionalBooleanEnv(
+    'PG_SSL_REJECT_UNAUTHORIZED',
+    optionalEnv('NODE_ENV', 'development') === 'production',
+  ),
 
   REDIS_HOST: optionalEnv('REDIS_HOST', 'localhost'),
   REDIS_PORT: parseIntEnv('REDIS_PORT', 6379),
