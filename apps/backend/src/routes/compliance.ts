@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { query } from 'express-validator';
 import { authenticate } from '../middleware/auth';
 import { validateRequest } from '../middleware/validateRequest';
 import {
@@ -6,10 +7,7 @@ import {
   getAuditLog,
   getRegulatoryAlerts,
 } from '../controllers/compliance.controller';
-import {
-  auditLogValidator,
-  regulatoryAlertValidator,
-} from '../validators/queryValidators';
+import { alertsValidator, auditLogValidator } from '../validators/queryValidators';
 
 export const complianceRouter = Router();
 
@@ -17,4 +15,4 @@ complianceRouter.use(authenticate);
 
 complianceRouter.get('/status', getComplianceStatus);
 complianceRouter.get('/audit-log', auditLogValidator, validateRequest, getAuditLog);
-complianceRouter.get('/alerts', regulatoryAlertValidator, validateRequest, getRegulatoryAlerts);
+complianceRouter.get('/alerts', alertsValidator, validateRequest, getRegulatoryAlerts);

@@ -77,9 +77,11 @@ npm run dev --workspace=apps/frontend
 # Build all apps
 npm run build
 
-# Start production stack
-docker-compose up -d
+# Start full production-like stack (frontend + backend + PostgreSQL + Redis)
+docker compose up --build -d
 ```
+
+One command brings up the full system: `docker compose up --build -d`.
 
 ---
 
@@ -143,7 +145,7 @@ Shared between backend & frontend:
 | postgres   | 5432  | PostgreSQL database       |
 | redis      | 6379  | Redis cache               |
 | backend    | 3001  | Express API               |
-| frontend   | 3000  | React dev server / Nginx  |
+| frontend   | 3000  | React app served by Nginx (with `/api` proxy to backend)  |
 
 ---
 

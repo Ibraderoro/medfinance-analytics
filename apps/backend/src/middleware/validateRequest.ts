@@ -1,4 +1,4 @@
-import { NextFunction, Request, Response } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { validationResult } from 'express-validator';
 
 export function validateRequest(
@@ -6,19 +6,17 @@ export function validateRequest(
   res: Response,
   next: NextFunction,
 ): void {
-  const errors = validationResult(req);
-  if (errors.isEmpty()) {
+  const result = validationResult(req);
+  if (result.isEmpty()) {
     next();
     return;
   }
 
   res.status(400).json({
-    error: {
-      message: 'Invalid request parameters',
-      details: errors.array().map((e) => ({
-        field: e.type === 'field' ? e.path : 'request',
-        message: e.msg,
-      })),
-    },
+    error: 'Invalid request parameters',
+    details: result.array().map((item) => ({
+      field: item.type === 'field' ? item.path : 'request',
+      message: item.msg,
+    })),
   });
 }

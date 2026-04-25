@@ -11,24 +11,17 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
-type TokenPayload = {
-  id: string;
-  email: string;
-  role: string;
-  organisationId: string;
-};
-
-function isTokenPayload(value: unknown): value is TokenPayload {
-  if (!value || typeof value !== 'object') {
+function isUserPayload(payload: unknown): payload is AuthenticatedRequest['user'] {
+  if (!payload || typeof payload !== 'object') {
     return false;
   }
 
-  const payload = value as Record<string, unknown>;
+  const candidate = payload as Record<string, unknown>;
   return (
-    typeof payload.id === 'string'
-    && typeof payload.email === 'string'
-    && typeof payload.role === 'string'
-    && typeof payload.organisationId === 'string'
+    typeof candidate.id === 'string'
+    && typeof candidate.email === 'string'
+    && typeof candidate.role === 'string'
+    && typeof candidate.organisationId === 'string'
   );
 }
 
@@ -51,7 +44,7 @@ export function authenticate(
       algorithms: ['HS256'],
     });
 
-    if (!isTokenPayload(payload)) {
+    if (!isUserPayload(payload)) {
       res.status(401).json({ error: 'Invalid token payload' });
       return;
     }

@@ -1,28 +1,39 @@
 import { query } from 'express-validator';
 
-const validTransactionMetrics = ['revenue', 'expense'] as const;
-const validSeverities = ['critical', 'high', 'medium', 'low'] as const;
+const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
 
-export const financialSummaryValidator = [
+export const financialsSummaryValidator = [
   query('period')
     .optional()
-    .isIn(['monthly', 'quarterly', 'yearly'])
-    .withMessage('period must be monthly, quarterly, or yearly'),
+    .isIn(['monthly'])
+    .withMessage('period must be "monthly"'),
   query('year')
     .optional()
     .isInt({ min: 2000, max: 2100 })
-    .withMessage('year must be between 2000 and 2100'),
+    .withMessage('year must be an integer between 2000 and 2100'),
 ];
 
 export const dateRangeValidator = [
   query('startDate')
     .optional()
-    .isISO8601({ strict: true, strictSeparator: true })
-    .withMessage('startDate must be an ISO-8601 date (YYYY-MM-DD)'),
+    .matches(dateRegex)
+    .withMessage('startDate must be in YYYY-MM-DD format'),
   query('endDate')
     .optional()
-    .isISO8601({ strict: true, strictSeparator: true })
-    .withMessage('endDate must be an ISO-8601 date (YYYY-MM-DD)'),
+    .matches(dateRegex)
+    .withMessage('endDate must be in YYYY-MM-DD format'),
+  query('endDate').custom((endDate, { req }) => {
+    const { startDate } = req.query as { startDate?: string };
+    if (!startDate || !endDate) {
+      return true;
+    }
+
+    if (new Date(startDate) > new Date(endDate)) {
+      throw new Error('endDate must be greater than or equal to startDate');
+    }
+
+    return true;
+  }),
 ];
 
 export const forecastValidator = [
@@ -32,31 +43,31 @@ export const forecastValidator = [
     .withMessage('months must be an integer between 1 and 36'),
   query('metric')
     .optional()
-    .isIn(validTransactionMetrics)
-    .withMessage('metric must be revenue or expense'),
+    .isIn(['revenue', 'expense', 'net_income'])
+    .withMessage('metric must be one of: revenue, expense, net_income'),
 ];
 
 export const budgetVarianceValidator = [
   query('year')
     .optional()
     .isInt({ min: 2000, max: 2100 })
-    .withMessage('year must be between 2000 and 2100'),
+    .withMessage('year must be an integer between 2000 and 2100'),
 ];
 
 export const auditLogValidator = [
   query('page')
     .optional()
-    .isInt({ min: 1, max: 100000 })
-    .withMessage('page must be a positive integer'),
+    .isInt({ min: 1, max: 1000 })
+    .withMessage('page must be an integer between 1 and 1000'),
   query('limit')
     .optional()
     .isInt({ min: 1, max: 100 })
     .withMessage('limit must be an integer between 1 and 100'),
 ];
 
-export const regulatoryAlertValidator = [
+export const alertsValidator = [
   query('severity')
     .optional()
-    .isIn(validSeverities)
-    .withMessage('severity must be one of critical, high, medium, or low'),
+    .isIn(['low', 'medium', 'high'])
+    .withMessage('severity must be one of: low, medium, high'),
 ];
