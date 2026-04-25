@@ -12,14 +12,31 @@ function optionalEnv(key: string, defaultValue = ''): string {
   return process.env[key] ?? defaultValue;
 }
 
+function parsePort(key: string, defaultValue: string): number {
+  const raw = optionalEnv(key, defaultValue);
+  const parsed = Number.parseInt(raw, 10);
+  if (Number.isNaN(parsed) || parsed <= 0) {
+    throw new Error(`Environment variable ${key} must be a positive integer`);
+  }
+  return parsed;
+}
+
+function parseOrigins(value: string): string {
+  return value
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean)
+    .join(',');
+}
+
 export const env = {
   NODE_ENV: optionalEnv('NODE_ENV', 'development'),
-  PORT: parseInt(optionalEnv('PORT', '3001'), 10),
+  PORT: parsePort('PORT', '3001'),
 
   DATABASE_URL: requireEnv('DATABASE_URL'),
 
   REDIS_HOST: optionalEnv('REDIS_HOST', 'localhost'),
-  REDIS_PORT: parseInt(optionalEnv('REDIS_PORT', '6379'), 10),
+  REDIS_PORT: parsePort('REDIS_PORT', '6379'),
   REDIS_PASSWORD: optionalEnv('REDIS_PASSWORD'),
 
   JWT_SECRET: requireEnv('JWT_SECRET'),
@@ -27,7 +44,9 @@ export const env = {
   REFRESH_TOKEN_SECRET: requireEnv('REFRESH_TOKEN_SECRET'),
   REFRESH_TOKEN_EXPIRES_IN: optionalEnv('REFRESH_TOKEN_EXPIRES_IN', '7d'),
 
-  CORS_ALLOWED_ORIGINS: optionalEnv('CORS_ALLOWED_ORIGINS', 'http://localhost:3000'),
+  CORS_ALLOWED_ORIGINS: parseOrigins(
+    optionalEnv('CORS_ALLOWED_ORIGINS', 'http://localhost:3000'),
+  ),
 
   LOG_LEVEL: optionalEnv('LOG_LEVEL', 'info'),
 

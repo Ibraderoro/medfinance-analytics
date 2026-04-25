@@ -43,9 +43,15 @@ export class CacheService {
 
   async flush(): Promise<void> {
     try {
-      const keys = await getRedis().keys(`medfinance:${this.namespace}:*`);
-      if (keys.length > 0) {
-        await getRedis().del(...keys);
+      const redis = getRedis();
+      const pattern = `medfinance:${this.namespace}:*`;
+      const stream = redis.scanStream({ match: pattern, count: 100 });
+
+      for await (const keys of stream) {
+        const cacheKeys = keys as string[];
+        if (cacheKeys.length > 0) {
+          await redis.del(...cacheKeys);
+        }
       }
     } catch (err) {
       logger.warn('Cache flush error:', err);
