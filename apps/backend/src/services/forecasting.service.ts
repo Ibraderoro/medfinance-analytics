@@ -11,43 +11,49 @@ interface BudgetVarianceOptions {
 
 export class ForecastingService {
   async getForecast(opts: ForecastOptions) {
-    // Fetch last 24 months of actuals and extrapolate a simple linear trend
     const rows = await query<Record<string, unknown>>(
       `SELECT
-         DATE_TRUNC('month', transaction_date) AS month,
-         SUM(amount) AS total
-       FROM financial_transactions
-       WHERE type = $1
-         AND transaction_date >= NOW() - INTERVAL '24 months'
-       GROUP BY DATE_TRUNC('month', transaction_date)
-       ORDER BY month ASC`,
-      [opts.metric],
+         MAKE_DATE(f.fiscal_year, f.fiscal_month, 1) AS month,
+         f.metric_type AS metric,
+         SUM(f.projected_amount) AS projected_total,
+         COALESCE(SUM(t.amount), 0) AS actual_total
+       FROM forecasts f
+       LEFT JOIN transactions t
+         ON t.forecast_id = f.id
+       WHERE f.metric_type = $1
+         AND MAKE_DATE(f.fiscal_year, f.fiscal_month, 1) >= DATE_TRUNC('month', NOW()) - INTERVAL '24 months'
+       GROUP BY MAKE_DATE(f.fiscal_year, f.fiscal_month, 1), f.metric_type
+       ORDER BY month ASC
+       LIMIT $2`,
+      [opts.metric, opts.months],
     );
 
-    // Attach metadata for the client to render forecast vs actual
     return {
       metric: opts.metric,
       forecastMonths: opts.months,
-      actuals: rows,
+      dataPoints: rows,
     };
   }
 
   async getBudgetVariance(opts: BudgetVarianceOptions) {
     const rows = await query<Record<string, unknown>>(
       `SELECT
-         b.category,
-         b.budgeted_amount,
+         d.name AS department,
+         f.metric_type,
+         SUM(f.projected_amount) AS budgeted_amount,
          COALESCE(SUM(t.amount), 0) AS actual_amount,
-         (b.budgeted_amount - COALESCE(SUM(t.amount), 0)) AS variance
-       FROM budgets b
-       LEFT JOIN financial_transactions t
-         ON t.category = b.category
-        AND EXTRACT(YEAR FROM t.transaction_date) = $1
-       WHERE b.fiscal_year = $1
-       GROUP BY b.category, b.budgeted_amount
+         SUM(f.projected_amount) - COALESCE(SUM(t.amount), 0) AS variance
+       FROM forecasts f
+       INNER JOIN departments d ON d.id = f.department_id
+       LEFT JOIN transactions t
+         ON t.forecast_id = f.id
+        AND EXTRACT(YEAR FROM t.occurred_on) = $1
+       WHERE f.fiscal_year = $1
+       GROUP BY d.name, f.metric_type
        ORDER BY variance DESC`,
       [opts.year],
     );
+
     return rows;
   }
 }
