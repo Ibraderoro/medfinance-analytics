@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { ComplianceService } from '../services/compliance.service';
+import { parseEnumValue, parseIntegerInRange } from '../utils/validation';
 
 const service = new ComplianceService();
 
@@ -22,10 +23,10 @@ export async function getAuditLog(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const { page = '1', limit = '50' } = req.query;
+    const { page, limit } = req.query;
     const data = await service.getAuditLog({
-      page: parseInt(page as string, 10),
-      limit: parseInt(limit as string, 10),
+      page: parseIntegerInRange(page, 1, { min: 1, max: 10_000 }),
+      limit: parseIntegerInRange(limit, 50, { min: 1, max: 500 }),
     });
     res.json({ data });
   } catch (err) {
@@ -40,8 +41,14 @@ export async function getRegulatoryAlerts(
 ): Promise<void> {
   try {
     const { severity } = req.query;
+    const parsedSeverity = parseEnumValue(
+      severity,
+      ['critical', 'high', 'medium', 'low'] as const,
+      'low',
+    );
+
     const data = await service.getRegulatoryAlerts({
-      severity: severity as string | undefined,
+      severity: typeof severity === 'undefined' ? undefined : parsedSeverity,
     });
     res.json({ data });
   } catch (err) {
