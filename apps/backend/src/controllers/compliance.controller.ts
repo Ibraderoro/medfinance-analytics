@@ -1,5 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import { ComplianceService } from '../services/compliance.service';
+import {
+  parseEnumQuery,
+  parseIntegerQuery,
+} from '../utils/requestValidation';
 
 const service = new ComplianceService();
 
@@ -22,11 +26,19 @@ export async function getAuditLog(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const { page = '1', limit = '50' } = req.query;
-    const data = await service.getAuditLog({
-      page: parseInt(page as string, 10),
-      limit: parseInt(limit as string, 10),
+    const page = parseIntegerQuery(req.query.page, 'page', {
+      min: 1,
+      max: 10_000,
+      defaultValue: 1,
     });
+
+    const limit = parseIntegerQuery(req.query.limit, 'limit', {
+      min: 1,
+      max: 100,
+      defaultValue: 50,
+    });
+
+    const data = await service.getAuditLog({ page, limit });
     res.json({ data });
   } catch (err) {
     next(err);
@@ -39,10 +51,15 @@ export async function getRegulatoryAlerts(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const { severity } = req.query;
-    const data = await service.getRegulatoryAlerts({
-      severity: severity as string | undefined,
+    const severity = parseEnumQuery(req.query.severity, 'severity', {
+      allowedValues: ['critical', 'high', 'medium', 'low'] as const,
+      defaultValue: 'low',
     });
+
+    const data = await service.getRegulatoryAlerts({
+      severity: req.query.severity ? severity : undefined,
+    });
+
     res.json({ data });
   } catch (err) {
     next(err);
