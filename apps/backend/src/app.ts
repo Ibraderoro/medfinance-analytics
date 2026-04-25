@@ -14,7 +14,7 @@ export const app: Application = express();
 // ── Security ──────────────────────────────────────────────────────────────
 app.use(helmet());
 app.use(cors({
-  origin: env.CORS_ALLOWED_ORIGINS.split(','),
+  origin: env.CORS_ALLOWED_ORIGINS,
   credentials: true,
 }));
 app.use(rateLimiter);
