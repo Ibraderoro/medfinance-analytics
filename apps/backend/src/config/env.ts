@@ -35,6 +35,7 @@ export const env = {
   PORT: parseIntEnv('PORT', 3001),
 
   DATABASE_URL: requireEnv('DATABASE_URL'),
+  PG_SSL: optionalBooleanEnv('PG_SSL', optionalEnv('NODE_ENV', 'development') === 'production'),
 
   REDIS_HOST: optionalEnv('REDIS_HOST', 'localhost'),
   REDIS_PORT: parseIntEnv('REDIS_PORT', 6379),

@@ -8,6 +8,7 @@ export function getPool(): Pool {
   if (!pool) {
     pool = new Pool({
       connectionString: env.DATABASE_URL,
+      ssl: env.PG_SSL ? { rejectUnauthorized: false } : undefined,
       max: 20,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 5_000,
