@@ -74,8 +74,17 @@ npm run dev --workspace=apps/frontend
 ### Production
 
 ```bash
-# Build all apps
-npm run build
+# 1. Copy and edit production env vars
+cp .env.example .env
+
+# 2. Build production images
+docker compose build
+
+# 3. Start full production stack
+docker compose --profile full up -d
+```
+
+### Run Services Independently
 
 # Start full production-like stack (frontend + backend + PostgreSQL + Redis)
 docker compose up --build -d

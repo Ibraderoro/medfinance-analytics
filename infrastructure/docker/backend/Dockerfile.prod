@@ -1,16 +1,15 @@
-# Production Dockerfile for backend (used by docker-compose.yml)
-# This is the multi-stage build placed under infrastructure/docker/
+# syntax=docker/dockerfile:1.7
 
 # ── Stage 1: Build ────────────────────────────────────────────────────────
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-COPY package.json .
+COPY package.json package-lock.json ./
 COPY apps/backend/package.json apps/backend/package.json
 COPY packages/shared/package.json packages/shared/package.json
 
-RUN npm install --workspaces
+RUN npm ci --workspaces --include-workspace-root
 
 COPY packages/shared/ packages/shared/
 COPY apps/backend/ apps/backend/
@@ -25,11 +24,11 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-COPY package.json .
+COPY package.json package-lock.json ./
 COPY apps/backend/package.json apps/backend/package.json
 COPY packages/shared/package.json packages/shared/package.json
 
-RUN npm install --workspaces --omit=dev
+RUN npm ci --workspaces --omit=dev --include-workspace-root && npm cache clean --force
 
 COPY --from=builder /app/apps/backend/dist apps/backend/dist
 COPY --from=builder /app/packages/shared/dist packages/shared/dist
@@ -40,6 +39,6 @@ USER appuser
 EXPOSE 3001
 
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-  CMD wget -qO- http://localhost:3001/api/v1/health || exit 1
+  CMD wget -qO- http://localhost:${PORT:-3001}/api/v1/health || exit 1
 
 CMD ["node", "apps/backend/dist/index.js"]
