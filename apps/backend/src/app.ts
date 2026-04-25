@@ -10,6 +10,7 @@ import { rateLimiter } from './middleware/rateLimiter';
 import { requestLogger } from './middleware/logger';
 
 export const app: Application = express();
+app.set('trust proxy', 1);
 
 const allowedOrigins = env.CORS_ALLOWED_ORIGINS
   .split(',')
