@@ -11,7 +11,7 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
-function isValidAuthPayload(payload: unknown): payload is NonNullable<AuthenticatedRequest['user']> {
+function isUserPayload(payload: unknown): payload is AuthenticatedRequest['user'] {
   if (!payload || typeof payload !== 'object') {
     return false;
   }
@@ -44,7 +44,7 @@ export function authenticate(
       algorithms: ['HS256'],
     });
 
-    if (!isValidAuthPayload(payload)) {
+    if (!isUserPayload(payload)) {
       res.status(401).json({ error: 'Invalid token payload' });
       return;
     }
