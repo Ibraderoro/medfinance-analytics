@@ -23,11 +23,40 @@ apiClient.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
       window.location.href = '/login';
     }
     return Promise.reject(error);
   },
 );
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+export const authApi = {
+  login: (email: string, password: string) =>
+    apiClient.post<{ data: { accessToken: string; refreshToken: string } }>(
+      '/auth/login',
+      { email, password },
+    ),
+  register: (data: {
+    email: string;
+    password: string;
+    firstName: string;
+    lastName: string;
+    organisationId: string;
+    role?: string;
+  }) =>
+    apiClient.post<{ data: { accessToken: string; refreshToken: string } }>(
+      '/auth/register',
+      data,
+    ),
+  refresh: (refreshToken: string) =>
+    apiClient.post<{ data: { accessToken: string; refreshToken: string } }>(
+      '/auth/refresh',
+      { refreshToken },
+    ),
+  logout: (refreshToken?: string) =>
+    apiClient.post('/auth/logout', { refreshToken }),
+};
 
 // ── Financials ──────────────────────────────────────────────────────────────
 export const financialsApi = {

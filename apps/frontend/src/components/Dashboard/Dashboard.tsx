@@ -7,8 +7,17 @@ import { useForecasting } from '../../hooks/useForecasting';
 import { Loading } from '../common/Loading';
 import styles from './Dashboard.module.css';
 
+/** Compute a year-over-year percentage change label, e.g. "+8.2%" */
+function yoyTrend(current: string | number, previous: string | number): string {
+  const curr = Number(current);
+  const prev = Number(previous);
+  if (!prev) return '—';
+  const pct = ((curr - prev) / prev) * 100;
+  return `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`;
+}
+
 export function Dashboard() {
-  const { summary, revenue, isLoading: finLoading } = useFinancials();
+  const { summary, prevSummary, revenue, isLoading: finLoading } = useFinancials();
   const { forecast, isLoading: forecastLoading } = useForecasting();
 
   const complianceData = [
@@ -16,6 +25,26 @@ export function Dashboard() {
     { label: 'Review', value: 18, color: '#c27803' },
     { label: 'Non-compliant', value: 10, color: '#c81e1e' },
   ];
+
+  const revenueTrend = summary && prevSummary
+    ? yoyTrend(summary.total_revenue, prevSummary.total_revenue)
+    : '—';
+  const expensesTrend = summary && prevSummary
+    ? yoyTrend(summary.total_expenses, prevSummary.total_expenses)
+    : '—';
+  const netIncomeTrend = summary && prevSummary
+    ? yoyTrend(summary.net_income, prevSummary.net_income)
+    : '—';
+
+  const revenuePositive = summary && prevSummary
+    ? Number(summary.total_revenue) >= Number(prevSummary.total_revenue)
+    : true;
+  const expensesPositive = summary && prevSummary
+    ? Number(summary.total_expenses) <= Number(prevSummary.total_expenses)
+    : false;
+  const netIncomePositive = summary && prevSummary
+    ? Number(summary.net_income) >= Number(prevSummary.net_income)
+    : true;
 
   return (
     <div className={styles.dashboard}>
@@ -26,22 +55,21 @@ export function Dashboard() {
         <KpiCard
           label="Total Revenue"
           value={summary ? `$${Number(summary.total_revenue).toLocaleString()}` : '—'}
-          trend="+8.2%"
-          positive
+          trend={revenueTrend}
+          positive={revenuePositive}
         />
         <KpiCard
           label="Total Expenses"
           value={summary ? `$${Number(summary.total_expenses).toLocaleString()}` : '—'}
-          trend="+3.1%"
-          positive={false}
+          trend={expensesTrend}
+          positive={expensesPositive}
         />
         <KpiCard
           label="Net Income"
           value={summary ? `$${Number(summary.net_income).toLocaleString()}` : '—'}
-          trend="+12.5%"
-          positive
+          trend={netIncomeTrend}
+          positive={netIncomePositive}
         />
-        <KpiCard label="EBITDA Margin" value="24.6%" trend="+1.2pp" positive />
       </div>
 
       {/* Charts */}
@@ -81,9 +109,11 @@ function KpiCard({ label, value, trend, positive }: KpiCardProps) {
     <div className={styles.kpiCard}>
       <span className={styles.kpiLabel}>{label}</span>
       <span className={styles.kpiValue}>{value}</span>
-      <span className={`${styles.kpiTrend} ${positive ? styles.positive : styles.negative}`}>
-        {positive ? '↑' : '↓'} {trend}
-      </span>
+      {trend !== '—' && (
+        <span className={`${styles.kpiTrend} ${positive ? styles.positive : styles.negative}`}>
+          {positive ? '↑' : '↓'} {trend}
+        </span>
+      )}
     </div>
   );
 }

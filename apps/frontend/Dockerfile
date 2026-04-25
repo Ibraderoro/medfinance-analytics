@@ -14,8 +14,8 @@ RUN npm ci --workspaces
 COPY packages/shared/ packages/shared/
 COPY apps/frontend/ apps/frontend/
 
-ARG VITE_API_BASE_URL=/api/v1
-ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+ARG VITE_API_URL=/api/v1
+ENV VITE_API_URL=$VITE_API_URL
 
 RUN npm run build --workspace=packages/shared
 RUN npm run build --workspace=apps/frontend

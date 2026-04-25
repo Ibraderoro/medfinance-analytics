@@ -10,6 +10,7 @@ interface FinancialSummary {
 
 interface UseFinancialsReturn {
   summary: FinancialSummary | null;
+  prevSummary: FinancialSummary | null;
   revenue: RevenueDataPoint[];
   isLoading: boolean;
   error: Error | null;
@@ -18,6 +19,7 @@ interface UseFinancialsReturn {
 
 export function useFinancials(year?: number): UseFinancialsReturn {
   const [summary, setSummary] = useState<FinancialSummary | null>(null);
+  const [prevSummary, setPrevSummary] = useState<FinancialSummary | null>(null);
   const [revenue, setRevenue] = useState<RevenueDataPoint[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
@@ -28,13 +30,18 @@ export function useFinancials(year?: number): UseFinancialsReturn {
     setIsLoading(true);
     setError(null);
 
+    const currentYear = year ?? new Date().getFullYear();
+    const previousYear = currentYear - 1;
+
     Promise.all([
-      financialsApi.getSummary(year),
+      financialsApi.getSummary(currentYear),
+      financialsApi.getSummary(previousYear),
       financialsApi.getRevenue(),
     ])
-      .then(([summaryRes, revenueRes]) => {
+      .then(([summaryRes, prevSummaryRes, revenueRes]) => {
         if (cancelled) return;
         setSummary(summaryRes.data.data as FinancialSummary);
+        setPrevSummary(prevSummaryRes.data.data as FinancialSummary);
         const mapped = (revenueRes.data.data as Array<{ month: string; total: string | number }>).map(
           (d) => ({
             month: new Date(d.month).toLocaleString('default', { month: 'short', year: '2-digit' }),
@@ -53,5 +60,5 @@ export function useFinancials(year?: number): UseFinancialsReturn {
     return () => { cancelled = true; };
   }, [year, tick]);
 
-  return { summary, revenue, isLoading, error, refetch: () => setTick((t) => t + 1) };
+  return { summary, prevSummary, revenue, isLoading, error, refetch: () => setTick((t) => t + 1) };
 }
