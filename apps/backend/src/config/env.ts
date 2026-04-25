@@ -31,6 +31,6 @@ export const env = {
 
   LOG_LEVEL: optionalEnv('LOG_LEVEL', 'info'),
 
-  isProduction: () => process.env.NODE_ENV === 'production',
-  isDevelopment: () => process.env.NODE_ENV === 'development',
+  isProduction: () => optionalEnv('NODE_ENV', 'development') === 'production',
+  isDevelopment: () => optionalEnv('NODE_ENV', 'development') === 'development',
 };

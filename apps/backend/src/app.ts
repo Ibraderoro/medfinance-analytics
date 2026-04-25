@@ -11,10 +11,20 @@ import { requestLogger } from './middleware/logger';
 
 export const app: Application = express();
 
+const allowedOrigins = env.CORS_ALLOWED_ORIGINS
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+// ── Runtime/infra settings ───────────────────────────────────────────────
+if (env.isProduction()) {
+  app.set('trust proxy', 1);
+}
+
 // ── Security ──────────────────────────────────────────────────────────────
 app.use(helmet());
 app.use(cors({
-  origin: env.CORS_ALLOWED_ORIGINS.split(','),
+  origin: allowedOrigins,
   credentials: true,
 }));
 app.use(rateLimiter);
