@@ -11,16 +11,17 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
-function isValidUserPayload(payload: string | JwtPayload): payload is JwtPayload {
-  if (typeof payload !== 'object' || payload === null) {
+function isUserPayload(payload: unknown): payload is AuthenticatedRequest['user'] {
+  if (!payload || typeof payload !== 'object') {
     return false;
   }
 
+  const candidate = payload as Record<string, unknown>;
   return (
-    typeof payload.id === 'string'
-    && typeof payload.email === 'string'
-    && typeof payload.role === 'string'
-    && typeof payload.organisationId === 'string'
+    typeof candidate.id === 'string'
+    && typeof candidate.email === 'string'
+    && typeof candidate.role === 'string'
+    && typeof candidate.organisationId === 'string'
   );
 }
 
@@ -43,18 +44,12 @@ export function authenticate(
       algorithms: ['HS256'],
     });
 
-    if (!isValidUserPayload(payload)) {
+    if (!isUserPayload(payload)) {
       res.status(401).json({ error: 'Invalid token payload' });
       return;
     }
 
-    req.user = {
-      id: payload.id,
-      email: payload.email,
-      role: payload.role,
-      organisationId: payload.organisationId,
-    };
-
+    req.user = payload;
     next();
   } catch {
     res.status(401).json({ error: 'Invalid or expired token' });

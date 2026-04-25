@@ -1,9 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { ComplianceService } from '../services/compliance.service';
-import {
-  parseEnumQuery,
-  parseIntegerQuery,
-} from '../utils/requestValidation';
+import { createBadRequestError, parseIntegerQuery } from '../utils/validation';
 
 const service = new ComplianceService();
 
@@ -26,10 +23,18 @@ export async function getAuditLog(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const page = parseIntegerQuery(req.query.page, 'page', {
-      min: 1,
-      max: 10_000,
-      defaultValue: 1,
+    const { page = '1', limit = '50' } = req.query;
+    const data = await service.getAuditLog({
+      page: parseIntegerQuery(page as string | undefined, {
+        label: 'page',
+        min: 1,
+      }) ?? 1,
+      limit:
+        parseIntegerQuery(limit as string | undefined, {
+          label: 'limit',
+          min: 1,
+          max: 200,
+        }) ?? 50,
     });
 
     const limit = parseIntegerQuery(req.query.limit, 'limit', {
@@ -51,11 +56,10 @@ export async function getRegulatoryAlerts(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const severity = parseEnumQuery(req.query.severity, 'severity', {
-      allowedValues: ['critical', 'high', 'medium', 'low'] as const,
-      defaultValue: 'low',
-    });
-
+    const { severity } = req.query;
+    if (severity !== undefined && !['low', 'medium', 'high'].includes(severity as string)) {
+      throw createBadRequestError('severity must be one of: low, medium, high');
+    }
     const data = await service.getRegulatoryAlerts({
       severity: req.query.severity ? severity : undefined,
     });

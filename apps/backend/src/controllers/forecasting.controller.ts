@@ -1,9 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { ForecastingService } from '../services/forecasting.service';
-import {
-  parseEnumQuery,
-  parseIntegerQuery,
-} from '../utils/requestValidation';
+import { parseIntegerQuery } from '../utils/validation';
 
 const service = new ForecastingService();
 
@@ -13,10 +10,15 @@ export async function getForecast(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const months = parseIntegerQuery(req.query.months, 'months', {
-      min: 1,
-      max: 60,
-      defaultValue: 12,
+    const { months = '12', metric = 'revenue' } = req.query;
+    const data = await service.getForecast({
+      months:
+        parseIntegerQuery(months as string | undefined, {
+          label: 'months',
+          min: 1,
+          max: 36,
+        }) ?? 12,
+      metric: metric as string,
     });
 
     const metric = parseEnumQuery(req.query.metric, 'metric', {
@@ -37,10 +39,14 @@ export async function getBudgetVariance(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const year = parseIntegerQuery(req.query.year, 'year', {
-      min: 2000,
-      max: 2100,
-      defaultValue: new Date().getFullYear(),
+    const { year } = req.query;
+    const data = await service.getBudgetVariance({
+      year:
+        parseIntegerQuery(year as string | undefined, {
+          label: 'year',
+          min: 2000,
+          max: 2100,
+        }) ?? new Date().getFullYear(),
     });
 
     const data = await service.getBudgetVariance({ year });
