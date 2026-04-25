@@ -32,11 +32,19 @@ docker compose build --no-cache
 info "Pulling latest images..."
 docker compose pull --ignore-pull-failures
 
+info "Starting stateful dependencies (PostgreSQL + Redis)..."
+docker compose up -d postgres redis
+
+info "Waiting for PostgreSQL to become healthy..."
+until docker compose exec -T postgres pg_isready -U "${POSTGRES_USER:-medfinance_user}" -d "${POSTGRES_DB:-medfinance}" >/dev/null 2>&1; do
+  sleep 2
+done
+
 info "Running database migrations..."
 docker compose run --rm backend node apps/backend/dist/db/migrate.js
 
-info "Starting services..."
-docker compose up -d --remove-orphans
+info "Starting application services..."
+docker compose up -d --remove-orphans backend frontend nginx
 
 info "Waiting for health checks..."
 sleep 10
