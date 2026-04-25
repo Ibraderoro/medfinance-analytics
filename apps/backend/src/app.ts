@@ -1,6 +1,6 @@
 import express, { Application } from 'express';
 import helmet from 'helmet';
-import cors from 'cors';
+import cors, { CorsOptions } from 'cors';
 import compression from 'compression';
 import morgan from 'morgan';
 import { env } from './config/env';
@@ -12,26 +12,43 @@ import { requestLogger } from './middleware/logger';
 export const app: Application = express();
 app.set('trust proxy', 1);
 
-// ── Security ──────────────────────────────────────────────────────────────
-app.use(helmet());
 const allowedOrigins = env.CORS_ALLOWED_ORIGINS
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
 
-app.use(cors({
+const corsOptions: CorsOptions = {
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
+    // Allow server-to-server and same-origin calls without an Origin header.
+    if (!origin) {
       callback(null, true);
       return;
     }
-    callback(new Error(`CORS blocked for origin: ${origin}`));
+
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+
+    callback(new Error('Origin not allowed by CORS'));
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  optionsSuccessStatus: 204,
-}));
+};
+
+const allowedOrigins = env.CORS_ALLOWED_ORIGINS
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+// ── Runtime/infra settings ───────────────────────────────────────────────
+if (env.isProduction()) {
+  app.set('trust proxy', 1);
+}
+
+// ── Security ──────────────────────────────────────────────────────────────
+app.disable('x-powered-by');
+app.use(helmet());
+app.use(cors(corsOptions));
 app.use(rateLimiter);
 
 // ── Body parsing & compression ────────────────────────────────────────────

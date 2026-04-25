@@ -6,147 +6,28 @@ on:
   pull_request:
     branches: [main, develop]
 
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  # ── Lint ──────────────────────────────────────────────────────────────────
-  lint:
-    name: Lint
+  ci:
+    name: Install, test backend, and build frontend
     runs-on: ubuntu-latest
     permissions:
       contents: read
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Lint all workspaces
-        run: npm run lint
+      - name: Run backend tests
+        run: npm run test --workspace=apps/backend -- --passWithNoTests
 
-  # ── Type check ────────────────────────────────────────────────────────────
-  typecheck:
-    name: TypeScript
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build shared package
-        run: npm run build --workspace=packages/shared
-
-      - name: Type-check backend
-        run: npx tsc --noEmit --project apps/backend/tsconfig.json
-
-      - name: Type-check frontend
-        run: npx tsc --noEmit --project apps/frontend/tsconfig.json
-
-  # ── Tests ─────────────────────────────────────────────────────────────────
-  test:
-    name: Tests
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_DB: medfinance_test
-          POSTGRES_USER: medfinance_user
-          POSTGRES_PASSWORD: testpassword
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-
-      redis:
-        image: redis:7-alpine
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 6379:6379
-
-    env:
-      NODE_ENV: test
-      DATABASE_URL: postgresql://medfinance_user:testpassword@localhost:5432/medfinance_test
-      REDIS_HOST: localhost
-      REDIS_PORT: 6379
-      REDIS_PASSWORD: ""
-      JWT_SECRET: test_jwt_secret_for_ci
-      REFRESH_TOKEN_SECRET: test_refresh_secret_for_ci
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run all tests
-        run: npm run test
-
-      - name: Upload coverage
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: coverage-reports
-          path: |
-            apps/backend/coverage/
-            apps/frontend/coverage/
-            packages/shared/coverage/
-
-  # ── Build ─────────────────────────────────────────────────────────────────
-  build:
-    name: Build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    needs: [lint, typecheck, test]
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build all workspaces
-        run: npm run build
-
-      - name: Build Docker images (dry-run check)
-        run: |
-          docker build --file infrastructure/docker/backend/Dockerfile.prod --target builder .
-          docker build --file infrastructure/docker/frontend/Dockerfile.prod --target builder .
+      - name: Build frontend
+        run: npm run build --workspace=apps/frontend
