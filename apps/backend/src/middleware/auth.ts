@@ -11,6 +11,16 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
+function isValidUserPayload(payload: unknown): payload is NonNullable<AuthenticatedRequest['user']> {
+  if (typeof payload !== 'object' || payload === null) {
+    return false;
+  }
+
+  const candidate = payload as Record<string, unknown>;
+  return ['id', 'email', 'role', 'organisationId']
+    .every((field) => typeof candidate[field] === 'string' && candidate[field].length > 0);
+}
+
 export function authenticate(
   req: AuthenticatedRequest,
   res: Response,
@@ -26,7 +36,12 @@ export function authenticate(
   const token = authHeader.slice(7);
 
   try {
-    const payload = jwt.verify(token, env.JWT_SECRET) as AuthenticatedRequest['user'];
+    const payload = jwt.verify(token, env.JWT_SECRET);
+    if (!isValidUserPayload(payload)) {
+      res.status(401).json({ error: 'Invalid token payload' });
+      return;
+    }
+
     req.user = payload;
     next();
   } catch {
