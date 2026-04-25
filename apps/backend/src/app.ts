@@ -35,6 +35,7 @@ const corsOptions: CorsOptions = {
 };
 
 // ── Security ──────────────────────────────────────────────────────────────
+app.disable('x-powered-by');
 app.use(helmet());
 app.use(cors(corsOptions));
 app.use(rateLimiter);
