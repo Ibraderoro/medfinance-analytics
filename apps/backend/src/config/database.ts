@@ -1,4 +1,4 @@
-import { Pool, PoolClient } from 'pg';
+import { Pool, PoolClient, QueryResultRow } from 'pg';
 import { env } from './env';
 import { logger } from '../utils/logger';
 
@@ -27,7 +27,7 @@ export async function connectDatabase(): Promise<void> {
   logger.info('✅ PostgreSQL connected');
 }
 
-export async function query<T>(
+export async function query<T extends QueryResultRow = QueryResultRow>(
   text: string,
   params?: unknown[],
 ): Promise<T[]> {
