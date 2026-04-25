@@ -34,6 +34,10 @@ export async function query<T extends QueryResultRow>(
   const start = Date.now();
   const res = await getPool().query<T>(text, params);
   const duration = Date.now() - start;
-  logger.debug('Query executed', { text, duration, rows: res.rowCount });
+  logger.debug('Query executed', {
+    duration,
+    rows: res.rowCount,
+    hasParams: Boolean(params?.length),
+  });
   return res.rows;
 }

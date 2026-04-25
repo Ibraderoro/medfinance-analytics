@@ -11,17 +11,17 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
-function isValidUserPayload(payload: unknown): payload is NonNullable<AuthenticatedRequest['user']> {
+function isUserPayload(payload: unknown): payload is AuthenticatedRequest['user'] {
   if (!payload || typeof payload !== 'object') {
     return false;
   }
 
-  const user = payload as Record<string, unknown>;
+  const candidate = payload as Record<string, unknown>;
   return (
-    typeof user.id === 'string' &&
-    typeof user.email === 'string' &&
-    typeof user.role === 'string' &&
-    typeof user.organisationId === 'string'
+    typeof candidate.id === 'string'
+    && typeof candidate.email === 'string'
+    && typeof candidate.role === 'string'
+    && typeof candidate.organisationId === 'string'
   );
 }
 
@@ -40,8 +40,11 @@ export function authenticate(
   const token = authHeader.slice(7);
 
   try {
-    const payload = jwt.verify(token, env.JWT_SECRET);
-    if (!isValidUserPayload(payload)) {
+    const payload = jwt.verify(token, env.JWT_SECRET, {
+      algorithms: ['HS256'],
+    });
+
+    if (!isUserPayload(payload)) {
       res.status(401).json({ error: 'Invalid token payload' });
       return;
     }
