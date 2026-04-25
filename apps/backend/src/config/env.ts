@@ -12,11 +12,21 @@ function optionalEnv(key: string, defaultValue = ''): string {
   return process.env[key] ?? defaultValue;
 }
 
+function optionalBooleanEnv(key: string, defaultValue: boolean): boolean {
+  const value = process.env[key];
+  if (value === undefined) {
+    return defaultValue;
+  }
+
+  return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
+}
+
 export const env = {
   NODE_ENV: optionalEnv('NODE_ENV', 'development'),
   PORT: parseInt(optionalEnv('PORT', '3001'), 10),
 
   DATABASE_URL: requireEnv('DATABASE_URL'),
+  PG_SSL: optionalBooleanEnv('PG_SSL', optionalEnv('NODE_ENV', 'development') === 'production'),
 
   REDIS_HOST: optionalEnv('REDIS_HOST', 'localhost'),
   REDIS_PORT: parseInt(optionalEnv('REDIS_PORT', '6379'), 10),

@@ -1,4 +1,4 @@
-import { Pool, PoolClient } from 'pg';
+import { Pool, PoolClient, QueryResultRow } from 'pg';
 import { env } from './env';
 import { logger } from '../utils/logger';
 
@@ -8,6 +8,7 @@ export function getPool(): Pool {
   if (!pool) {
     pool = new Pool({
       connectionString: env.DATABASE_URL,
+      ssl: env.PG_SSL ? { rejectUnauthorized: false } : undefined,
       max: 20,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 5_000,
@@ -27,7 +28,7 @@ export async function connectDatabase(): Promise<void> {
   logger.info('✅ PostgreSQL connected');
 }
 
-export async function query<T>(
+export async function query<T extends QueryResultRow>(
   text: string,
   params?: unknown[],
 ): Promise<T[]> {

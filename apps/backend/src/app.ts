@@ -10,12 +10,27 @@ import { rateLimiter } from './middleware/rateLimiter';
 import { requestLogger } from './middleware/logger';
 
 export const app: Application = express();
+app.set('trust proxy', 1);
 
 // ── Security ──────────────────────────────────────────────────────────────
 app.use(helmet());
+const allowedOrigins = env.CORS_ALLOWED_ORIGINS
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
 app.use(cors({
-  origin: env.CORS_ALLOWED_ORIGINS.split(','),
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error(`CORS blocked for origin: ${origin}`));
+  },
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  optionsSuccessStatus: 204,
 }));
 app.use(rateLimiter);
 
