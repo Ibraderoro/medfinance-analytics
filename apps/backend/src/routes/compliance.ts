@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { query } from 'express-validator';
 import { authenticate } from '../middleware/auth';
 import { validateRequest } from '../middleware/validateRequest';
 import {

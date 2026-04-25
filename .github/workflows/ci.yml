@@ -8,7 +8,7 @@ on:
 
 jobs:
   ci:
-    name: Install, test backend, and build frontend
+    name: Lint, test, and build all workspaces
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -26,8 +26,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run backend tests
-        run: npm run test --workspace=apps/backend -- --passWithNoTests
+      - name: Run lint checks
+        run: npm run lint
 
-      - name: Build frontend
-        run: npm run build --workspace=apps/frontend
+      - name: Run tests
+        run: npm test
+
+      - name: Build all workspaces
+        run: npm run build

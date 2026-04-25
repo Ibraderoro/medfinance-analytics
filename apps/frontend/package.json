@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "lint": "eslint 'src/**/*.{ts,tsx}'",
     "lint:fix": "eslint 'src/**/*.{ts,tsx}' --fix",
-    "test": "jest --coverage",
+    "test": "jest --coverage --passWithNoTests",
     "clean": "rm -rf dist"
   },
   "dependencies": {

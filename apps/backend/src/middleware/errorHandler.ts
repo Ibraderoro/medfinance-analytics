@@ -12,6 +12,7 @@ export function errorHandler(
   res: Response,
   _next: NextFunction,
 ): void {
+  void _next;
   const statusCode = err.statusCode ?? (err.message.includes('CORS blocked') ? 403 : 500);
   const isOperational = err.isOperational ?? false;
 

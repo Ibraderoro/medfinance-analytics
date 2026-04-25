@@ -85,8 +85,9 @@ jobs:
           script: |
             cd /opt/medfinance
             docker compose pull
-            docker compose up -d --remove-orphans
+            docker compose up -d postgres redis
             docker compose run --rm backend node apps/backend/dist/db/migrate.js
+            docker compose up -d --remove-orphans
 
       - name: Verify production health
         run: |
