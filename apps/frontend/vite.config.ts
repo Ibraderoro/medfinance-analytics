@@ -27,9 +27,20 @@ export default defineConfig({
     target: 'es2020',
     rollupOptions: {
       output: {
-        manualChunks: {
-          vendor: ['react', 'react-dom', 'react-router-dom'],
-          d3: ['d3'],
+        manualChunks(id: string): string | undefined {
+          if (id.includes('node_modules/d3')) {
+            return 'd3';
+          }
+
+          if (
+            id.includes('node_modules/react') ||
+            id.includes('node_modules/react-dom') ||
+            id.includes('node_modules/react-router-dom')
+          ) {
+            return 'vendor';
+          }
+
+          return undefined;
         },
       },
     },
