@@ -74,11 +74,30 @@ npm run dev --workspace=apps/frontend
 ### Production
 
 ```bash
-# Build all apps
-npm run build
+# 1. Copy and edit production env vars
+cp .env.example .env
 
-# Start production stack
-docker-compose up -d
+# 2. Build production images
+docker compose build
+
+# 3. Start full production stack
+docker compose --profile full up -d
+```
+
+### Run Services Independently
+
+```bash
+# Database + cache only
+docker compose --profile core up -d postgres redis
+
+# API only (expects DATABASE_URL/REDIS_* already reachable)
+docker compose --profile api up -d backend
+
+# Frontend only
+docker compose --profile web up -d frontend
+
+# Reverse proxy only
+docker compose --profile proxy up -d nginx
 ```
 
 ---
@@ -138,18 +157,24 @@ Shared between backend & frontend:
 
 ### Docker Compose Services
 
-| Service    | Port  | Description              |
-|------------|-------|--------------------------|
-| postgres   | 5432  | PostgreSQL database       |
-| redis      | 6379  | Redis cache               |
-| backend    | 3001  | Express API               |
-| frontend   | 3000  | React dev server / Nginx  |
+| Service    | Default Port | Description              | Profile |
+|------------|--------------|--------------------------|---------|
+| postgres   | 5432         | PostgreSQL database      | `core` / `full` |
+| redis      | 6379         | Redis cache              | `core` / `full` |
+| backend    | 3001         | Express API              | `api` / `full` |
+| frontend   | 3000         | Nginx serving frontend   | `web` / `full` |
+| nginx      | 80, 443      | Reverse proxy            | `proxy` / `full` |
 
 ---
 
 ## 🔒 Environment Variables
 
 Copy `.env.example` to `.env` and fill in the values. See [`apps/backend/.env.example`](apps/backend/.env.example) for the full backend variable reference.
+
+Production Docker uses environment variables for:
+- container ports: `PORT`, `FRONTEND_PORT`, `NGINX_HTTP_PORT`, `NGINX_HTTPS_PORT`
+- backend dependencies: `DATABASE_URL`, `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`
+- frontend build-time API endpoint: `VITE_API_BASE_URL`
 
 ---
 

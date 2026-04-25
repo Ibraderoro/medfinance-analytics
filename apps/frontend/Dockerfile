@@ -1,13 +1,18 @@
+# syntax=docker/dockerfile:1.7
+
 # ── Stage 1: Build ────────────────────────────────────────────────────────
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-COPY package.json .
+ARG VITE_API_BASE_URL=http://localhost:3001/api/v1
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+
+COPY package.json package-lock.json ./
 COPY apps/frontend/package.json apps/frontend/package.json
 COPY packages/shared/package.json packages/shared/package.json
 
-RUN npm install --workspaces
+RUN npm ci --workspaces --include-workspace-root
 
 COPY packages/shared/ packages/shared/
 COPY apps/frontend/ apps/frontend/

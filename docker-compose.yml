@@ -6,6 +6,8 @@ services:
     image: postgres:16-alpine
     container_name: medfinance_postgres
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-medfinance}
       POSTGRES_USER: ${POSTGRES_USER:-medfinance_user}
@@ -20,12 +22,15 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    profiles: ["core", "full"]
 
   # ── Redis ───────────────────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
     container_name: medfinance_redis
     restart: unless-stopped
+    env_file:
+      - .env
     command: redis-server /usr/local/etc/redis/redis.conf --requirepass ${REDIS_PASSWORD:-change_me_in_production}
     volumes:
       - redis_data:/data
@@ -37,6 +42,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    profiles: ["core", "full"]
 
   # ── Backend ─────────────────────────────────────────────────────────────
   backend:
@@ -45,34 +51,33 @@ services:
       dockerfile: infrastructure/docker/backend/Dockerfile.prod
     container_name: medfinance_backend
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
-      NODE_ENV: production
-      PORT: 3001
-      DATABASE_URL: postgresql://${POSTGRES_USER:-medfinance_user}:${POSTGRES_PASSWORD:-change_me_in_production}@postgres:5432/${POSTGRES_DB:-medfinance}
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: ${PORT:-3001}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://medfinance_user:change_me_in_production@postgres:5432/medfinance}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
       REDIS_PASSWORD: ${REDIS_PASSWORD:-change_me_in_production}
-      JWT_SECRET: ${JWT_SECRET}
+      JWT_SECRET: ${JWT_SECRET:-change_me_to_a_strong_secret_256_bits}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
     ports:
-      - "3001:3001"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      - "${PORT:-3001}:3001"
+    profiles: ["api", "full"]
 
   # ── Frontend ────────────────────────────────────────────────────────────
   frontend:
     build:
       context: .
       dockerfile: infrastructure/docker/frontend/Dockerfile.prod
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:3001/api/v1}
     container_name: medfinance_frontend
     restart: unless-stopped
     ports:
-      - "3000:80"
-    depends_on:
-      - backend
+      - "${FRONTEND_PORT:-3000}:80"
+    profiles: ["web", "full"]
 
   # ── Nginx reverse proxy ─────────────────────────────────────────────────
   nginx:
@@ -82,11 +87,9 @@ services:
     volumes:
       - ./infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     ports:
-      - "80:80"
-      - "443:443"
-    depends_on:
-      - backend
-      - frontend
+      - "${NGINX_HTTP_PORT:-80}:80"
+      - "${NGINX_HTTPS_PORT:-443}:443"
+    profiles: ["proxy", "full"]
 
 volumes:
   postgres_data:
