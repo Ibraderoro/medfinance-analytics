@@ -364,5 +364,8 @@ ORDER BY t.fiscal_year, t.fiscal_month;
 CREATE UNIQUE INDEX uidx_mv_monthly_summary_period
   ON mv_monthly_financial_summary (fiscal_year, fiscal_month);
 
--- Populate the materialized view immediately
-REFRESH MATERIALIZED VIEW CONCURRENTLY mv_monthly_financial_summary;
+-- Populate the materialized view immediately.
+-- NOTE: CONCURRENTLY cannot be used here because the view is empty on first
+--       run.  Use REFRESH MATERIALIZED VIEW CONCURRENTLY for subsequent
+--       incremental refreshes once the view already contains data.
+REFRESH MATERIALIZED VIEW mv_monthly_financial_summary;
