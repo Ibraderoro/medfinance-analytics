@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS compliance_items (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  status TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

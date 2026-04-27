@@ -14,7 +14,7 @@ import {
 
 export const financialsRouter = Router();
 
-financialsRouter.use(authenticate);
+// financialsRouter.use(authenticate);
 
 financialsRouter.get('/summary', financialsSummaryValidator, validateRequest, getSummary);
 financialsRouter.get('/revenue', dateRangeValidator, validateRequest, getRevenue);
