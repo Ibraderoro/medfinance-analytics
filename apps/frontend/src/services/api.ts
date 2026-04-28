@@ -60,6 +60,8 @@ export const authApi = {
 
 // ── Financials ──────────────────────────────────────────────────────────────
 export const financialsApi = {
+  getKpis: (year?: number) =>
+    apiClient.get('/financials/kpis', { params: { year } }),
   getSummary: (year?: number) =>
     apiClient.get('/financials/summary', { params: { year } }),
   getRevenue: (startDate?: string, endDate?: string) =>

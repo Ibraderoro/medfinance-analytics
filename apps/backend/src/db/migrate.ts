@@ -94,7 +94,7 @@ async function migrate(): Promise<void> {
 
   const files = fs
     .readdirSync(MIGRATIONS_DIR)
-    .filter((f) => f.endsWith('.sql'))
+    .filter((f) => f.endsWith('.sql') && !f.endsWith('.down.sql'))
     .sort();
 
   let count = 0;

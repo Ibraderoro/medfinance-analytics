@@ -3,21 +3,22 @@ import { RevenueChart } from '../Charts/RevenueChart';
 import { ForecastChart } from '../Charts/ForecastChart';
 import { ComplianceChart } from '../Charts/ComplianceChart';
 import { useFinancials } from '../../hooks/useFinancials';
+import { useFinancialKpis } from '../../hooks/useFinancialKpis';
 import { useForecasting } from '../../hooks/useForecasting';
 import { Loading } from '../common/Loading';
 import styles from './Dashboard.module.css';
 
-/** Compute a year-over-year percentage change label, e.g. "+8.2%" */
-function yoyTrend(current: string | number, previous: string | number): string {
-  const curr = Number(current);
-  const prev = Number(previous);
-  if (!prev) return '—';
-  const pct = ((curr - prev) / prev) * 100;
-  return `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`;
+/** Format a pre-computed growth percentage from the DB, e.g. "+8.20%" */
+function formatGrowth(value: string | number | null | undefined): string {
+  if (value === null || value === undefined) return '—';
+  const num = Number(value);
+  if (isNaN(num)) return '—';
+  return `${num >= 0 ? '+' : ''}${num.toFixed(1)}%`;
 }
 
 export function Dashboard() {
-  const { summary, prevSummary, revenue, isLoading: finLoading } = useFinancials();
+  const { revenue, isLoading: finLoading } = useFinancials();
+  const { latest: kpiRow } = useFinancialKpis();
   const { forecast, isLoading: forecastLoading } = useForecasting();
 
   const complianceData = [
@@ -26,25 +27,8 @@ export function Dashboard() {
     { label: 'Non-compliant', value: 10, color: '#c81e1e' },
   ];
 
-  const revenueTrend = summary && prevSummary
-    ? yoyTrend(summary.total_revenue, prevSummary.total_revenue)
-    : '—';
-  const expensesTrend = summary && prevSummary
-    ? yoyTrend(summary.total_expenses, prevSummary.total_expenses)
-    : '—';
-  const netIncomeTrend = summary && prevSummary
-    ? yoyTrend(summary.net_income, prevSummary.net_income)
-    : '—';
-
-  const revenuePositive = summary && prevSummary
-    ? Number(summary.total_revenue) >= Number(prevSummary.total_revenue)
-    : true;
-  const expensesPositive = summary && prevSummary
-    ? Number(summary.total_expenses) <= Number(prevSummary.total_expenses)
-    : false;
-  const netIncomePositive = summary && prevSummary
-    ? Number(summary.net_income) >= Number(prevSummary.net_income)
-    : true;
+  const fmt = (v: string | number | null | undefined) =>
+    v !== null && v !== undefined ? `$${Number(v).toLocaleString()}` : '—';
 
   return (
     <div className={styles.dashboard}>
@@ -54,21 +38,27 @@ export function Dashboard() {
       <div className={styles.kpiRow}>
         <KpiCard
           label="Total Revenue"
-          value={summary ? `$${Number(summary.total_revenue).toLocaleString()}` : '—'}
-          trend={revenueTrend}
-          positive={revenuePositive}
+          value={fmt(kpiRow?.total_revenue)}
+          trend={formatGrowth(kpiRow?.revenue_yoy_growth)}
+          positive={Number(kpiRow?.revenue_yoy_growth ?? 0) >= 0}
         />
         <KpiCard
           label="Total Expenses"
-          value={summary ? `$${Number(summary.total_expenses).toLocaleString()}` : '—'}
-          trend={expensesTrend}
-          positive={expensesPositive}
+          value={fmt(kpiRow?.total_expenses)}
+          trend="—"
+          positive={false}
         />
         <KpiCard
           label="Net Income"
-          value={summary ? `$${Number(summary.net_income).toLocaleString()}` : '—'}
-          trend={netIncomeTrend}
-          positive={netIncomePositive}
+          value={fmt(kpiRow?.net_income)}
+          trend={formatGrowth(kpiRow?.net_income_yoy_growth)}
+          positive={Number(kpiRow?.net_income_yoy_growth ?? 0) >= 0}
+        />
+        <KpiCard
+          label="Operating Margin"
+          value={kpiRow ? `${Number(kpiRow.operating_margin).toFixed(1)}%` : '—'}
+          trend="—"
+          positive={Number(kpiRow?.operating_margin ?? 0) >= 0}
         />
       </div>
 
