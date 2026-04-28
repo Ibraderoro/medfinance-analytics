@@ -1,40 +1,127 @@
 import { query } from '../config/database';
+import {
+  buildForecastSeries,
+  ForecastMetric,
+  getMonthStart,
+  addMonths,
+  formatMonth,
+} from './forecasting/forecastingMath';
 
 interface ForecastOptions {
   months: number;
-  metric: string;
+  metric: ForecastMetric;
 }
 
 interface BudgetVarianceOptions {
   year: number;
 }
 
+interface MonthlyFinancialRow {
+  month: string;
+  revenue: string;
+  expense: string;
+}
+
+interface MonthlyPoint {
+  month: string;
+  revenue: number;
+  expense: number;
+  net_income: number;
+}
+
+const HISTORY_MONTHS = 24;
+
+function toNumber(value: string | number | null | undefined): number {
+  if (value === null || value === undefined) return 0;
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 export class ForecastingService {
-  async getForecast(opts: ForecastOptions) {
-    const rows = await query<Record<string, unknown>>(
-      `SELECT
-         MAKE_DATE(f.fiscal_year, f.fiscal_month, 1) AS month,
-         f.metric_type AS metric,
-         SUM(f.projected_amount) AS projected_total,
-         COALESCE(SUM(t.amount), 0) AS actual_total
-       FROM forecasts f
-       LEFT JOIN transactions t
-         ON t.department_id = f.department_id
-        AND EXTRACT(YEAR  FROM t.occurred_on) = f.fiscal_year
-        AND EXTRACT(MONTH FROM t.occurred_on) = f.fiscal_month
-        AND t.transaction_type = f.metric_type
-       WHERE f.metric_type = $1
-         AND MAKE_DATE(f.fiscal_year, f.fiscal_month, 1) >= DATE_TRUNC('month', NOW()) - INTERVAL '24 months'
-       GROUP BY MAKE_DATE(f.fiscal_year, f.fiscal_month, 1), f.metric_type
-       ORDER BY month ASC
-       LIMIT $2`,
-      [opts.metric, opts.months],
+  private async getMonthlyFinancialSeries(): Promise<MonthlyPoint[]> {
+    const currentMonth = getMonthStart(new Date());
+    const startMonth = addMonths(currentMonth, -(HISTORY_MONTHS - 1));
+
+    const rows = await query<MonthlyFinancialRow>(
+      `WITH month_series AS (
+         SELECT generate_series($1::date, $2::date, interval '1 month')::date AS month
+       ),
+       monthly_totals AS (
+         SELECT
+           DATE_TRUNC('month', t.occurred_on)::date AS month,
+           SUM(CASE WHEN t.transaction_type = 'revenue' THEN t.amount ELSE 0 END) AS revenue,
+           SUM(CASE WHEN t.transaction_type = 'expense' THEN t.amount ELSE 0 END) AS expense
+         FROM transactions t
+         WHERE t.occurred_on >= $1::date
+           AND t.occurred_on < ($2::date + interval '1 month')
+         GROUP BY DATE_TRUNC('month', t.occurred_on)::date
+       )
+       SELECT
+         ms.month,
+         COALESCE(mt.revenue, 0)::numeric(16,2) AS revenue,
+         COALESCE(mt.expense, 0)::numeric(16,2) AS expense
+       FROM month_series ms
+       LEFT JOIN monthly_totals mt ON mt.month = ms.month
+       ORDER BY ms.month ASC`,
+      [formatMonth(startMonth), formatMonth(currentMonth)],
     );
+
+    return rows.map((row) => {
+      const revenue = toNumber(row.revenue);
+      const expense = toNumber(row.expense);
+      return {
+        month: row.month,
+        revenue,
+        expense,
+        net_income: revenue - expense,
+      };
+    });
+  }
+
+  async getForecast(opts: ForecastOptions) {
+    const monthlySeries = await this.getMonthlyFinancialSeries();
+
+    const months = monthlySeries.map((point) => point.month);
+    const revenueSeries = monthlySeries.map((point) => point.revenue);
+    const expenseSeries = monthlySeries.map((point) => point.expense);
+    const netIncomeSeries = monthlySeries.map((point) => point.net_income);
+
+    const metricForecasts = {
+      revenue: buildForecastSeries({
+        metric: 'revenue',
+        historicalValues: revenueSeries,
+        historicalMonths: months,
+        forecastMonths: opts.months,
+      }),
+      expense: buildForecastSeries({
+        metric: 'expense',
+        historicalValues: expenseSeries,
+        historicalMonths: months,
+        forecastMonths: opts.months,
+      }),
+      net_income: buildForecastSeries({
+        metric: 'net_income',
+        historicalValues: netIncomeSeries,
+        historicalMonths: months,
+        forecastMonths: opts.months,
+      }),
+    };
+
+    const selectedMetric = metricForecasts[opts.metric];
 
     return {
       metric: opts.metric,
       forecastMonths: opts.months,
-      dataPoints: rows,
+      trend: selectedMetric.trend,
+      confidenceLevel: selectedMetric.confidenceLevel,
+      dataPoints: selectedMetric.series.map((point) => ({
+        month: point.month,
+        metric: opts.metric,
+        projected_total: point.forecast,
+        actual_total: point.actual,
+        confidence_interval: point.confidence_interval,
+      })),
+      metrics: metricForecasts,
     };
   }
 

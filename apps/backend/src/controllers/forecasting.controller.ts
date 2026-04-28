@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { ForecastingService } from '../services/forecasting.service';
+import { ForecastMetric } from '../services/forecasting/forecastingMath';
 import { parseIntegerQuery } from '../utils/validation';
 
 const service = new ForecastingService();
@@ -18,7 +19,7 @@ export async function getForecast(
           min: 1,
           max: 36,
         }) ?? 12,
-      metric: (metric as string | undefined) ?? 'revenue',
+      metric: ((metric as string | undefined) ?? 'revenue') as ForecastMetric,
     });
     res.json({ data });
   } catch (err) {
