@@ -37,9 +37,14 @@ WHERE organization_id IS NULL;
 ALTER TABLE users
   ALTER COLUMN organization_id SET NOT NULL;
 
-ALTER TABLE users
-  ADD CONSTRAINT fk_users_organization
-  FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_users_organization') THEN
+    ALTER TABLE users
+      ADD CONSTRAINT fk_users_organization
+      FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT;
+  END IF;
+END$$;
 
 DROP INDEX IF EXISTS idx_users_organisation;
 CREATE INDEX IF NOT EXISTS idx_users_organization ON users(organization_id);
@@ -58,8 +63,29 @@ UPDATE forecasts SET organization_id = md5('default_organization')::uuid WHERE o
 UPDATE transactions SET organization_id = md5('default_organization')::uuid WHERE organization_id IS NULL;
 UPDATE financial_cash_reserves SET organization_id = md5('default_organization')::uuid WHERE organization_id IS NULL;
 
-UPDATE compliance_items SET organization_id = COALESCE(organization_id, organisation_id, md5('default_organization')::uuid);
-UPDATE regulatory_alerts SET organization_id = COALESCE(organization_id, organisation_id, md5('default_organization')::uuid);
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'compliance_items' AND column_name = 'organisation_id'
+  ) THEN
+    EXECUTE 'UPDATE compliance_items SET organization_id = COALESCE(organization_id, organisation_id, md5(''default_organization'')::uuid)';
+  ELSE
+    UPDATE compliance_items SET organization_id = COALESCE(organization_id, md5('default_organization')::uuid);
+  END IF;
+END$$;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'regulatory_alerts' AND column_name = 'organisation_id'
+  ) THEN
+    EXECUTE 'UPDATE regulatory_alerts SET organization_id = COALESCE(organization_id, organisation_id, md5(''default_organization'')::uuid)';
+  ELSE
+    UPDATE regulatory_alerts SET organization_id = COALESCE(organization_id, md5('default_organization')::uuid);
+  END IF;
+END$$;
 UPDATE audit_log SET organization_id = md5('default_organization')::uuid WHERE organization_id IS NULL;
 
 ALTER TABLE departments ALTER COLUMN organization_id SET NOT NULL;
@@ -70,27 +96,44 @@ ALTER TABLE compliance_items ALTER COLUMN organization_id SET NOT NULL;
 ALTER TABLE regulatory_alerts ALTER COLUMN organization_id SET NOT NULL;
 ALTER TABLE audit_log ALTER COLUMN organization_id SET NOT NULL;
 
-ALTER TABLE departments
-  ADD CONSTRAINT fk_departments_organization
-  FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT;
-ALTER TABLE forecasts
-  ADD CONSTRAINT fk_forecasts_organization
-  FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT;
-ALTER TABLE transactions
-  ADD CONSTRAINT fk_transactions_organization
-  FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT;
-ALTER TABLE financial_cash_reserves
-  ADD CONSTRAINT fk_financial_cash_reserves_organization
-  FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT;
-ALTER TABLE compliance_items
-  ADD CONSTRAINT fk_compliance_items_organization
-  FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT;
-ALTER TABLE regulatory_alerts
-  ADD CONSTRAINT fk_regulatory_alerts_organization
-  FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT;
-ALTER TABLE audit_log
-  ADD CONSTRAINT fk_audit_log_organization
-  FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_departments_organization') THEN
+    ALTER TABLE departments
+      ADD CONSTRAINT fk_departments_organization
+      FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_forecasts_organization') THEN
+    ALTER TABLE forecasts
+      ADD CONSTRAINT fk_forecasts_organization
+      FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_transactions_organization') THEN
+    ALTER TABLE transactions
+      ADD CONSTRAINT fk_transactions_organization
+      FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_financial_cash_reserves_organization') THEN
+    ALTER TABLE financial_cash_reserves
+      ADD CONSTRAINT fk_financial_cash_reserves_organization
+      FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_compliance_items_organization') THEN
+    ALTER TABLE compliance_items
+      ADD CONSTRAINT fk_compliance_items_organization
+      FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_regulatory_alerts_organization') THEN
+    ALTER TABLE regulatory_alerts
+      ADD CONSTRAINT fk_regulatory_alerts_organization
+      FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_audit_log_organization') THEN
+    ALTER TABLE audit_log
+      ADD CONSTRAINT fk_audit_log_organization
+      FOREIGN KEY (organization_id) REFERENCES organizations(id) ON DELETE RESTRICT;
+  END IF;
+END$$;
 
 DROP INDEX IF EXISTS idx_compliance_items_org;
 DROP INDEX IF EXISTS idx_regulatory_alerts_org;

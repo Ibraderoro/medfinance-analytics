@@ -22,30 +22,38 @@ BEGIN;
 -- ---------------------------------------------------------------------------
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+INSERT INTO organizations (id, name)
+VALUES
+  (md5('default_organization')::uuid, 'Default Organization'),
+  (md5('org_medfinance_demo')::uuid, 'MedFinance Demo Org')
+ON CONFLICT (id) DO NOTHING;
+
 -- Ensure KPI dependency exists even when migrations/init scripts were not applied
 CREATE TABLE IF NOT EXISTS financial_cash_reserves (
-  month_start DATE PRIMARY KEY,
+  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+  month_start DATE NOT NULL,
   cash_reserve_amount NUMERIC(16, 2) NOT NULL DEFAULT 0 CHECK (cash_reserve_amount >= 0),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (organization_id, month_start)
 );
 
 -- ---------------------------------------------------------------------------
 -- 1. Departments
 -- ---------------------------------------------------------------------------
-INSERT INTO departments (id, department_code, name, cost_center, status)
+INSERT INTO departments (id, organization_id, department_code, name, cost_center, status)
 VALUES
   -- Revenue-generating departments
-  (md5('dept_outpatient_services')::uuid,   'OPC-001', 'Outpatient Services',    'CC-OPC-001', 'active'),
-  (md5('dept_insurance_billing')::uuid,     'INS-002', 'Insurance & Billing',    'CC-INS-002', 'active'),
-  (md5('dept_laboratory_services')::uuid,   'LAB-003', 'Laboratory Services',    'CC-LAB-003', 'active'),
-  (md5('dept_pharmacy')::uuid,              'PHM-004', 'Pharmacy',               'CC-PHM-004', 'active'),
+  (md5('dept_outpatient_services')::uuid,   md5('org_medfinance_demo')::uuid, 'OPC-001', 'Outpatient Services',    'CC-OPC-001', 'active'),
+  (md5('dept_insurance_billing')::uuid,     md5('org_medfinance_demo')::uuid, 'INS-002', 'Insurance & Billing',    'CC-INS-002', 'active'),
+  (md5('dept_laboratory_services')::uuid,   md5('org_medfinance_demo')::uuid, 'LAB-003', 'Laboratory Services',    'CC-LAB-003', 'active'),
+  (md5('dept_pharmacy')::uuid,              md5('org_medfinance_demo')::uuid, 'PHM-004', 'Pharmacy',               'CC-PHM-004', 'active'),
   -- Expense / cost departments
-  (md5('dept_human_resources')::uuid,       'HRS-005', 'Human Resources',        'CC-HRS-005', 'active'),
-  (md5('dept_facilities_management')::uuid, 'FAC-006', 'Facilities Management',  'CC-FAC-006', 'active'),
-  (md5('dept_technology_equipment')::uuid,  'TEC-007', 'Technology & Equipment', 'CC-TEC-007', 'active'),
-  (md5('dept_compliance_risk')::uuid,       'CPL-008', 'Compliance & Risk',      'CC-CPL-008', 'active')
-ON CONFLICT (department_code) DO NOTHING;
+  (md5('dept_human_resources')::uuid,       md5('org_medfinance_demo')::uuid, 'HRS-005', 'Human Resources',        'CC-HRS-005', 'active'),
+  (md5('dept_facilities_management')::uuid, md5('org_medfinance_demo')::uuid, 'FAC-006', 'Facilities Management',  'CC-FAC-006', 'active'),
+  (md5('dept_technology_equipment')::uuid,  md5('org_medfinance_demo')::uuid, 'TEC-007', 'Technology & Equipment', 'CC-TEC-007', 'active'),
+  (md5('dept_compliance_risk')::uuid,       md5('org_medfinance_demo')::uuid, 'CPL-008', 'Compliance & Risk',      'CC-CPL-008', 'active')
+ON CONFLICT (organization_id, department_code) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
 -- 2. Revenue transactions
@@ -58,13 +66,14 @@ ON CONFLICT (department_code) DO NOTHING;
 --      pharmacy_sales   : 210,000
 -- ---------------------------------------------------------------------------
 INSERT INTO transactions (
-  id, department_id, transaction_type, category,
+  id, organization_id, department_id, transaction_type, category,
   invoice_number, description,
   amount, tax_amount, currency, occurred_on
 )
 SELECT
   md5('txn_rev_' || rev.category || '_' || yr::text || '_' || lpad(mo::text, 2, '0'))::uuid,
-  (SELECT d.id FROM departments d WHERE d.department_code = rev.dept_code),
+  md5('org_medfinance_demo')::uuid,
+  (SELECT d.id FROM departments d WHERE d.organization_id = md5('org_medfinance_demo')::uuid AND d.department_code = rev.dept_code),
   'revenue',
   rev.category,
   'INV-REV-' || rev.cat_code || '-' || yr::text || '-' || lpad(mo::text, 2, '0'),
@@ -108,13 +117,14 @@ ON CONFLICT (id) DO NOTHING;
 --      compliance_costs :  42,000
 -- ---------------------------------------------------------------------------
 INSERT INTO transactions (
-  id, department_id, transaction_type, category,
+  id, organization_id, department_id, transaction_type, category,
   invoice_number, description,
   amount, tax_amount, currency, occurred_on
 )
 SELECT
   md5('txn_exp_' || exp.category || '_' || yr::text || '_' || lpad(mo::text, 2, '0'))::uuid,
-  (SELECT d.id FROM departments d WHERE d.department_code = exp.dept_code),
+  md5('org_medfinance_demo')::uuid,
+  (SELECT d.id FROM departments d WHERE d.organization_id = md5('org_medfinance_demo')::uuid AND d.department_code = exp.dept_code),
   'expense',
   exp.category,
   'INV-EXP-' || exp.cat_code || '-' || yr::text || '-' || lpad(mo::text, 2, '0'),
@@ -164,14 +174,15 @@ ON CONFLICT (id) DO NOTHING;
 --    One row per department × year × month
 -- ---------------------------------------------------------------------------
 INSERT INTO forecasts (
-  id, department_id,
+  id, organization_id, department_id,
   fiscal_year, fiscal_month,
   metric_type, projected_amount,
   scenario, confidence_score, assumptions
 )
 SELECT
   md5('fcast_rev_' || dept_code || '_' || yr::text || '_' || lpad(mo::text, 2, '0'))::uuid,
-  (SELECT d.id FROM departments d WHERE d.department_code = dept_code),
+  md5('org_medfinance_demo')::uuid,
+  (SELECT d.id FROM departments d WHERE d.organization_id = md5('org_medfinance_demo')::uuid AND d.department_code = dept_code),
   yr, mo,
   'revenue',
   ROUND(
@@ -207,20 +218,21 @@ FROM
     ('LAB-003', 145000.00),
     ('PHM-004', 210000.00)
   ) AS rev_depts(dept_code, base_amount)
-ON CONFLICT (department_id, fiscal_year, fiscal_month, metric_type, scenario) DO NOTHING;
+ON CONFLICT (organization_id, department_id, fiscal_year, fiscal_month, metric_type, scenario) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
 -- 5. Baseline forecasts — expenses
 -- ---------------------------------------------------------------------------
 INSERT INTO forecasts (
-  id, department_id,
+  id, organization_id, department_id,
   fiscal_year, fiscal_month,
   metric_type, projected_amount,
   scenario, confidence_score, assumptions
 )
 SELECT
   md5('fcast_exp_' || dept_code || '_' || yr::text || '_' || lpad(mo::text, 2, '0'))::uuid,
-  (SELECT d.id FROM departments d WHERE d.department_code = dept_code),
+  md5('org_medfinance_demo')::uuid,
+  (SELECT d.id FROM departments d WHERE d.organization_id = md5('org_medfinance_demo')::uuid AND d.department_code = dept_code),
   yr, mo,
   'expense',
   ROUND(
@@ -256,34 +268,39 @@ FROM
     ('FAC-006',  93000.00),  -- combined rent + utilities for this department
     ('CPL-008',  42000.00)
   ) AS exp_depts(dept_code, base_amount)
-ON CONFLICT (department_id, fiscal_year, fiscal_month, metric_type, scenario) DO NOTHING;
+ON CONFLICT (organization_id, department_id, fiscal_year, fiscal_month, metric_type, scenario) DO NOTHING;
 
 
 
 -- ---------------------------------------------------------------------------
 -- 6. Cash reserves for runway analytics
 -- ---------------------------------------------------------------------------
-INSERT INTO financial_cash_reserves (month_start, cash_reserve_amount)
+INSERT INTO financial_cash_reserves (organization_id, month_start, cash_reserve_amount)
 WITH monthly_net AS (
   SELECT
+    organization_id,
     DATE_TRUNC('month', occurred_on::timestamp)::date AS month_start,
     COALESCE(SUM(CASE WHEN transaction_type = 'revenue' THEN amount ELSE -amount END), 0) AS net_cash_flow
   FROM transactions
-  GROUP BY 1
+  GROUP BY 1, 2
 ),
 running_cash AS (
   SELECT
+    organization_id,
     month_start,
-    12000000::numeric
-      + SUM(net_cash_flow) OVER (ORDER BY month_start ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+    12000000::numeric + SUM(net_cash_flow) OVER (
+      PARTITION BY organization_id
+      ORDER BY month_start ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    )
       AS cash_reserve_amount
   FROM monthly_net
 )
 SELECT
+  organization_id,
   month_start,
   ROUND(GREATEST(cash_reserve_amount, 0), 2)
 FROM running_cash
-ON CONFLICT (month_start)
+ON CONFLICT (organization_id, month_start)
 DO UPDATE SET
   cash_reserve_amount = EXCLUDED.cash_reserve_amount,
   updated_at = NOW();
@@ -293,7 +310,7 @@ DO UPDATE SET
 -- 7. Application users (demo credentials)
 -- ---------------------------------------------------------------------------
 INSERT INTO users (
-  id, email, password_hash, first_name, last_name, role, organisation_id, is_active
+  id, email, password_hash, first_name, last_name, role, organization_id, is_active
 )
 VALUES
   (
@@ -312,7 +329,7 @@ ON CONFLICT (email) DO NOTHING;
 -- 7. Compliance sample data
 -- ---------------------------------------------------------------------------
 INSERT INTO compliance_items (
-  id, regulation_code, status, last_reviewed_at, next_review_due_at, assigned_to, organisation_id
+  id, regulation_code, status, last_reviewed_at, next_review_due_at, assigned_to, organization_id
 )
 VALUES
   (md5('cmp_item_hipaa_164_312_a_1')::uuid, 'HIPAA-164.312(a)(1)', 'compliant', NOW() - INTERVAL '21 days', NOW() + INTERVAL '69 days', 'security.lead@medfinance.test', md5('org_medfinance_demo')::uuid),
@@ -321,7 +338,7 @@ VALUES
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO regulatory_alerts (
-  id, title, description, severity, regulation_code, due_date, status, organisation_id
+  id, title, description, severity, regulation_code, due_date, status, organization_id
 )
 VALUES
   (md5('alert_hipaa_access_review')::uuid, 'Quarterly access review due', 'Access certification package for privileged users is due this quarter.', 'high', 'HIPAA-164.308(a)(4)', CURRENT_DATE + INTERVAL '30 days', 'open', md5('org_medfinance_demo')::uuid),
