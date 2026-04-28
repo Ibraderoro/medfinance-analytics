@@ -25,7 +25,10 @@
 | Compliance | GET | `/compliance/status` | Yes | Compliance item statuses |
 | Compliance | GET | `/compliance/audit-log` | Yes | Paginated audit events |
 | Compliance | GET | `/compliance/alerts` | Yes | Regulatory alerts with optional severity filter |
-| Insights | GET | `/insights` | Yes | Financial health score, risk level, and explainable insights |
+| Insights | GET | `/insights` | Yes (Pro+) | Financial health score, risk level, and explainable insights |
+| Billing | GET | `/billing/subscription` | Yes | Current organization plan/status |
+| Billing | POST | `/billing/subscription` | Yes | Create paid Stripe subscription (Pro or Enterprise) |
+| Billing | POST | `/billing/webhook` | No (Stripe signature) | Stripe webhook receiver for payment + subscription updates |
 
 ---
 
@@ -289,3 +292,29 @@ JSON Response
 - Include `Authorization: Bearer <token>` for all non-health endpoints.
 - Token expiry or invalid signature results in `401` and should trigger client-side re-authentication.
 - Respect API timeout expectations (frontend client defaults to 15 seconds).
+
+
+### 3.6 Billing
+
+#### `GET /api/v1/billing/subscription`
+Returns the current subscription snapshot for the authenticated organization.
+
+#### `POST /api/v1/billing/subscription`
+Creates a Stripe subscription for `pro` or `enterprise`.
+
+**Body**
+```json
+{ "plan": "pro" }
+```
+
+#### `POST /api/v1/billing/webhook`
+Stripe webhook endpoint for:
+- `invoice.payment_succeeded`
+- `customer.subscription.updated`
+
+> This endpoint requires a valid `stripe-signature` header.
+
+### 3.7 Plan Access Rules
+
+- **Free**: financial history endpoints require a `startDate` within the last 3 months.
+- **Pro / Enterprise**: full financial history and `/insights` access.

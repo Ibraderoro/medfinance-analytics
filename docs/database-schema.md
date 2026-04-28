@@ -111,3 +111,25 @@ users (1) ────────< audit_log.performed_by (optional)
 - Tenant separation is encoded via `organisation_id` across core domain tables.
 - Auditability is provided through dedicated `audit_log` with JSONB metadata for extensibility.
 - Enumerated checks protect status/severity/role data integrity at the schema level.
+
+
+### `customers`
+- **Purpose**: Maps each organization to its Stripe customer profile.
+- **Primary key**: `id UUID`.
+- **Foreign keys**:
+  - `organization_id -> organizations(id)` (`ON DELETE CASCADE`)
+- **Constraints**:
+  - `organization_id` unique (one Stripe customer per tenant)
+  - `stripe_customer_id` unique
+
+### `subscriptions`
+- **Purpose**: Stores Stripe subscription lifecycle and active plan.
+- **Primary key**: `id UUID`.
+- **Foreign keys**:
+  - `organization_id -> organizations(id)` (`ON DELETE CASCADE`)
+  - `customer_id -> customers(id)` (`ON DELETE CASCADE`)
+- **Constraints**:
+  - `plan` check: `free | pro | enterprise`
+  - `stripe_subscription_id` unique
+- **Tracked fields**:
+  - `status`, `current_period_start`, `current_period_end`, timestamps

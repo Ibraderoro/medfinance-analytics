@@ -5,6 +5,7 @@ import compression from 'compression';
 import morgan from 'morgan';
 import { env } from './config/env';
 import { router } from './routes';
+import { handleStripeWebhook } from './controllers/billing.controller';
 import { errorHandler } from './middleware/errorHandler';
 import { rateLimiter } from './middleware/rateLimiter';
 import { requestLogger } from './middleware/logger';
@@ -41,6 +42,9 @@ app.disable('x-powered-by');
 app.use(helmet());
 app.use(cors(corsOptions));
 app.use(rateLimiter);
+
+// Stripe webhook must receive the raw payload for signature verification.
+app.post('/api/v1/billing/webhook', express.raw({ type: 'application/json' }), handleStripeWebhook);
 
 // ── Body parsing & compression ────────────────────────────────────────────
 app.use(express.json({ limit: '10mb' }));
