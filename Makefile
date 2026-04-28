@@ -1,4 +1,4 @@
-.PHONY: setup dev build test lint migrate deploy clean help
+.PHONY: setup dev build test lint migrate seed deploy clean help
 
 ## ─── Help ─────────────────────────────────────────────────────────────────
 help: ## Show this help message
@@ -25,6 +25,9 @@ lint: ## Lint all workspaces
 ## ─── Database ──────────────────────────────────────────────────────────────
 migrate: ## Run database migrations
 	npm run migrate
+
+seed: ## Seed demo data
+	npm run seed
 
 migrate-rollback: ## Rollback last migration
 	npm run migrate:rollback --workspace=apps/backend
