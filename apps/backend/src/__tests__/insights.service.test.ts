@@ -22,10 +22,10 @@ describe('InsightsService.getInsights', () => {
 
     expect(result.health_score).toBe(0);
     expect(result.risk_level).toBe('high');
-    expect(result.insights[0]).toContain('No KPI history');
+    expect(result.insights[0]).toContain('No financial history');
   });
 
-  it('generates deterministic trend insights based on latest and prior month data', async () => {
+  it('generates deterministic revenue trend and positive cash flow insights', async () => {
     mockQuery.mockResolvedValueOnce([
       {
         month_start: '2026-04-01',
@@ -35,7 +35,6 @@ describe('InsightsService.getInsights', () => {
         burn_rate: '0',
         cash_reserve_amount: '250000',
         runway_months: '0',
-        revenue_mom_growth: '7.69',
       },
       {
         month_start: '2026-03-01',
@@ -45,56 +44,80 @@ describe('InsightsService.getInsights', () => {
         burn_rate: '0',
         cash_reserve_amount: '240000',
         runway_months: '0',
-        revenue_mom_growth: '0',
       },
     ]);
 
     const result = await service.getInsights('org-uuid');
 
     expect(result.insights.join(' ')).toContain('Revenue increased');
-    expect(result.insights.join(' ')).toContain('Revenue growth is outpacing expense growth');
-    expect(result.insights.join(' ')).toContain('Net income is positive');
+    expect(result.insights.join(' ')).toContain('Net cash flow is positive');
     expect(['low', 'medium']).toContain(result.risk_level);
   });
 
-  it('sets high risk when runway is below six months and losses repeat', async () => {
+  it('detects expense anomaly and high risk for sustained negative cash flow', async () => {
     mockQuery.mockResolvedValueOnce([
       {
         month_start: '2026-04-01',
         total_revenue: '90000',
-        total_expenses: '108000',
-        net_income: '-18000',
-        burn_rate: '18000',
-        cash_reserve_amount: '85000',
-        runway_months: '4.72',
-        revenue_mom_growth: '-6.25',
+        total_expenses: '130000',
+        net_income: '-40000',
+        burn_rate: '40000',
+        cash_reserve_amount: '75000',
+        runway_months: '1.88',
       },
       {
         month_start: '2026-03-01',
-        total_revenue: '96000',
-        total_expenses: '111000',
-        net_income: '-15000',
-        burn_rate: '15000',
-        cash_reserve_amount: '98000',
-        runway_months: '6.53',
-        revenue_mom_growth: '-4.00',
+        total_revenue: '95000',
+        total_expenses: '78000',
+        net_income: '-17000',
+        burn_rate: '0',
+        cash_reserve_amount: '90000',
+        runway_months: '0',
       },
       {
         month_start: '2026-02-01',
-        total_revenue: '100000',
-        total_expenses: '105000',
-        net_income: '-5000',
-        burn_rate: '5000',
-        cash_reserve_amount: '110000',
-        runway_months: '22.00',
-        revenue_mom_growth: '0',
+        total_revenue: '92000',
+        total_expenses: '73000',
+        net_income: '19000',
+        burn_rate: '0',
+        cash_reserve_amount: '93000',
+        runway_months: '0',
+      },
+      {
+        month_start: '2026-01-01',
+        total_revenue: '91000',
+        total_expenses: '72000',
+        net_income: '19000',
+        burn_rate: '0',
+        cash_reserve_amount: '95000',
+        runway_months: '0',
+      },
+      {
+        month_start: '2025-12-01',
+        total_revenue: '90500',
+        total_expenses: '71000',
+        net_income: '19500',
+        burn_rate: '0',
+        cash_reserve_amount: '98000',
+        runway_months: '0',
+      },
+      {
+        month_start: '2025-11-01',
+        total_revenue: '89000',
+        total_expenses: '123000',
+        net_income: '-34000',
+        burn_rate: '34000',
+        cash_reserve_amount: '120000',
+        runway_months: '3.52',
       },
     ]);
 
     const result = await service.getInsights('org-uuid');
 
     expect(result.risk_level).toBe('high');
-    expect(result.insights.join(' ')).toContain('Cash runway is 4.7 months (high risk');
-    expect(result.insights.join(' ')).toContain('losses in at least 2 of the last 3 months');
+    expect(result.insights.join(' ')).toContain('Expense anomaly detected');
+    expect(result.insights.join(' ')).toContain('Negative cash flow warning');
+    expect(result.insights.join(' ')).toContain('Negative cash flow occurred in at least 2 of the last 3 months');
+    expect(result.insights.join(' ')).toContain('Critical liquidity warning');
   });
 });
