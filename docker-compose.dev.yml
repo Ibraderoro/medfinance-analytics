@@ -1,5 +1,3 @@
-version: "3.9"
-
 # Development override – mounts source code, enables hot-reload,
 # exposes extra ports for debugging, and skips the Nginx reverse proxy.
 
