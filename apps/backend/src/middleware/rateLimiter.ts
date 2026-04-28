@@ -1,8 +1,5 @@
-import { NextFunction, Request, Response } from 'express';
-import { getRedis } from '../config/redis';
-import { logger } from '../utils/logger';
-
-type KeyExtractor = (req: Request) => string;
+import { Request } from 'express';
+import rateLimit from 'express-rate-limit';
 
 function keyByIp(ip: string | undefined): string {
   if (!ip) {
@@ -27,17 +24,16 @@ export const rateLimiter = rateLimit({
   max: 200,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => keyByIp(req.ip),
+  keyGenerator: (req: Request) => keyByIp(req.ip),
   message: createRateLimitMessage('Too many requests from this IP, please try again later.', 'RATE_LIMITED'),
 });
 
-export const authRateLimiter = createDistributedRateLimiter({
-  namespace: 'ratelimit:auth',
+export const authRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => keyByIp(req.ip),
+  keyGenerator: (req: Request) => keyByIp(req.ip),
   message: createRateLimitMessage(
     'Too many authentication attempts from this IP, please try again later.',
     'AUTH_RATE_LIMITED',
