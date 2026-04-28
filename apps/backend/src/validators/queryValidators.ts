@@ -68,6 +68,6 @@ export const auditLogValidator = [
 export const alertsValidator = [
   query('severity')
     .optional()
-    .isIn(['low', 'medium', 'high'])
-    .withMessage('severity must be one of: low, medium, high'),
+    .isIn(['low', 'medium', 'high', 'critical'])
+    .withMessage('severity must be one of: low, medium, high, critical'),
 ];

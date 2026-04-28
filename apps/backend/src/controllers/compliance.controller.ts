@@ -33,7 +33,7 @@ export async function getAuditLog(
         parseIntegerQuery(limit as string | undefined, {
           label: 'limit',
           min: 1,
-          max: 200,
+          max: 100,
         }) ?? 50,
     });
     res.json({ data });
@@ -49,11 +49,11 @@ export async function getRegulatoryAlerts(
 ): Promise<void> {
   try {
     const { severity } = req.query;
-    if (severity !== undefined && !['low', 'medium', 'high'].includes(severity as string)) {
-      throw createBadRequestError('severity must be one of: low, medium, high');
+    if (severity !== undefined && !['low', 'medium', 'high', 'critical'].includes(severity as string)) {
+      throw createBadRequestError('severity must be one of: low, medium, high, critical');
     }
     const data = await service.getRegulatoryAlerts({
-      severity: severity as 'low' | 'medium' | 'high' | undefined,
+      severity: severity as 'low' | 'medium' | 'high' | 'critical' | undefined,
     });
 
     res.json({ data });
