@@ -61,6 +61,7 @@ app.use(compression());
 // ── Logging ───────────────────────────────────────────────────────────────
 app.use(morgan('combined'));
 app.use(requestLogger);
+app.use(trackApiAnalytics);
 
 // ── Routes ────────────────────────────────────────────────────────────────
 app.use('/api/v1', router);
