@@ -64,10 +64,13 @@ docker-compose -f docker-compose.dev.yml up -d
 # 5. Run database migrations
 npm run migrate
 
-# 6. Start backend in watch mode
+# 6. Seed demo data
+npm run seed
+
+# 7. Start backend in watch mode
 npm run dev --workspace=apps/backend
 
-# 7. Start frontend dev server
+# 8. Start frontend dev server
 npm run dev --workspace=apps/frontend
 ```
 
@@ -103,6 +106,7 @@ One command brings up the full system: `docker compose up --build -d`.
 | `npm run test`                 | Run tests across all workspaces      |
 | `npm run lint`                 | Lint all workspaces                  |
 | `npm run migrate`              | Run database migrations              |
+| `npm run seed`                 | Seed demo data into PostgreSQL       |
 | `make setup`                   | One-shot local environment setup     |
 | `make deploy`                  | Deploy to production                 |
 
