@@ -10,6 +10,7 @@ import { errorHandler } from './middleware/errorHandler';
 import { rateLimiter } from './middleware/rateLimiter';
 import { requestLogger } from './middleware/logger';
 import { sanitizeInput } from './middleware/sanitizeInput';
+import { trackApiAnalytics } from './middleware/analytics';
 
 export const app: Application = express();
 app.locals.isShuttingDown = false;
