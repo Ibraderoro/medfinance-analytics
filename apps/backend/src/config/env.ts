@@ -8,6 +8,14 @@ function requireEnv(key: string): string {
   return value;
 }
 
+function requireMinLength(value: string, key: string, minLength: number): string {
+  if (value.length < minLength) {
+    throw new Error(`Environment variable ${key} must be at least ${minLength} characters long`);
+  }
+
+  return value;
+}
+
 function optionalEnv(key: string, defaultValue = ''): string {
   return process.env[key] ?? defaultValue;
 }
@@ -38,6 +46,9 @@ function parseCorsOrigins(raw: string): string[] {
     .filter((origin) => origin.length > 0);
 }
 
+const jwtSecret = requireMinLength(requireEnv('JWT_SECRET'), 'JWT_SECRET', 32);
+const refreshTokenSecret = requireMinLength(requireEnv('REFRESH_TOKEN_SECRET'), 'REFRESH_TOKEN_SECRET', 32);
+
 export const env = {
   NODE_ENV: optionalEnv('NODE_ENV', 'development'),
   PORT: parseIntEnv('PORT', 3001),
@@ -55,9 +66,11 @@ export const env = {
   REDIS_PASSWORD: optionalEnv('REDIS_PASSWORD'),
   REDIS_TLS: optionalBooleanEnv('REDIS_TLS', optionalEnv('NODE_ENV', 'development') === 'production'),
 
-  JWT_SECRET: requireEnv('JWT_SECRET'),
+  JWT_SECRET: jwtSecret,
+  JWT_ISSUER: optionalEnv('JWT_ISSUER', 'medfinance-api'),
+  JWT_AUDIENCE: optionalEnv('JWT_AUDIENCE', 'medfinance-client'),
   JWT_EXPIRES_IN: optionalEnv('JWT_EXPIRES_IN', '1d'),
-  REFRESH_TOKEN_SECRET: requireEnv('REFRESH_TOKEN_SECRET'),
+  REFRESH_TOKEN_SECRET: refreshTokenSecret,
   REFRESH_TOKEN_EXPIRES_IN: optionalEnv('REFRESH_TOKEN_EXPIRES_IN', '7d'),
 
   CORS_ALLOWED_ORIGINS: parseCorsOrigins(

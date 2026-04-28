@@ -11,8 +11,11 @@ jest.mock('../config/env', () => ({
   env: {
     JWT_SECRET: 'test_jwt_secret_at_least_32_chars_long',
     JWT_EXPIRES_IN: '1d',
-    REFRESH_TOKEN_SECRET: 'test_refresh_secret',
+    REFRESH_TOKEN_SECRET: 'test_refresh_secret_at_least_32_chars_long',
     REFRESH_TOKEN_EXPIRES_IN: '7d',
+    JWT_ISSUER: 'medfinance-api',
+    JWT_AUDIENCE: 'medfinance-client',
+    isDevelopment: () => false,
   },
 }));
 
