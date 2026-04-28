@@ -9,6 +9,7 @@ import { handleStripeWebhook } from './controllers/billing.controller';
 import { errorHandler } from './middleware/errorHandler';
 import { rateLimiter } from './middleware/rateLimiter';
 import { requestLogger } from './middleware/logger';
+import { trackApiAnalytics } from './middleware/analytics';
 
 export const app: Application = express();
 
@@ -54,6 +55,7 @@ app.use(compression());
 // ── Logging ───────────────────────────────────────────────────────────────
 app.use(morgan('combined'));
 app.use(requestLogger);
+app.use(trackApiAnalytics);
 
 // ── Routes ────────────────────────────────────────────────────────────────
 app.use('/api/v1', router);
