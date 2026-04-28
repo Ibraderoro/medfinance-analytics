@@ -4,6 +4,7 @@ import { logger } from './utils/logger';
 import { connectDatabase } from './config/database';
 import { connectRedis } from './config/redis';
 import { env } from './config/env';
+import { liveFinancialsService } from './services/liveFinancials.service';
 
 const PORT = Number.parseInt(process.env.PORT ?? `${env.PORT}`, 10);
 
@@ -12,12 +13,15 @@ async function bootstrap(): Promise<void> {
     await connectDatabase();
     await connectRedis();
 
+    await liveFinancialsService.start();
+
     const server = app.listen(PORT, () => {
       logger.info(`🚀 MedFinance API running on port ${PORT} [${env.NODE_ENV}]`);
     });
 
     const shutdown = (signal: string) => {
       logger.info(`Received ${signal}. Shutting down gracefully...`);
+      liveFinancialsService.stop();
       server.close((error) => {
         if (error) {
           logger.error('Error during server shutdown', error);

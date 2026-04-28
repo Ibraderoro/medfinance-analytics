@@ -198,3 +198,41 @@ After importing this repo in Vercel:
 ## 📄 License
 
 MIT © MedFinance Analytics
+
+---
+
+## 📡 Real-time Financial Stream (SSE)
+
+Backend endpoint:
+
+```http
+GET /api/v1/financials/live
+Accept: text/event-stream
+```
+
+What it does:
+- Runs a backend updater job every **10 seconds**.
+- Recomputes live financial metrics and stores the latest payload in Redis key:
+  - `medfinance:financials:latest_metrics`
+- Reuses Redis caching for yearly summaries (`medfinance:financials:summary:<year>`).
+- Pushes updates to connected clients via **Server-Sent Events** (`financial-update` event).
+
+### Frontend example (React / browser)
+
+```ts
+const source = new EventSource('/api/v1/financials/live');
+
+source.addEventListener('financial-update', (event) => {
+  const payload = JSON.parse((event as MessageEvent).data);
+  console.log('Live financial payload:', payload);
+  // setState(payload) or dispatch to your store
+});
+
+source.onerror = () => {
+  // Browser EventSource auto-reconnects; optional diagnostics only
+  console.warn('Live stream temporarily disconnected');
+};
+
+// Cleanup (e.g., React useEffect return)
+// source.close();
+```
