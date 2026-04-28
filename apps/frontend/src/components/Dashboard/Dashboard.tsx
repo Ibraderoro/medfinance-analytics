@@ -5,6 +5,7 @@ import { ComplianceChart } from '../Charts/ComplianceChart';
 import { useFinancials } from '../../hooks/useFinancials';
 import { useFinancialKpis } from '../../hooks/useFinancialKpis';
 import { useForecasting } from '../../hooks/useForecasting';
+import { useCompliance } from '../../hooks/useCompliance';
 import { Loading } from '../common/Loading';
 import styles from './Dashboard.module.css';
 
@@ -20,12 +21,13 @@ export function Dashboard() {
   const { revenue, isLoading: finLoading } = useFinancials();
   const { latest: kpiRow } = useFinancialKpis();
   const { forecast, isLoading: forecastLoading } = useForecasting();
+  const { items: complianceItems, isLoading: complianceLoading } = useCompliance();
 
   const complianceData = [
-    { label: 'Compliant', value: 72, color: '#057a55' },
-    { label: 'Review', value: 18, color: '#c27803' },
-    { label: 'Non-compliant', value: 10, color: '#c81e1e' },
-  ];
+    { label: 'Compliant', value: complianceItems.filter((i) => i.status === 'compliant').length, color: '#057a55' },
+    { label: 'Review', value: complianceItems.filter((i) => i.status === 'under_review').length, color: '#c27803' },
+    { label: 'Non-compliant', value: complianceItems.filter((i) => i.status === 'non_compliant').length, color: '#c81e1e' },
+  ].filter((item) => item.value > 0);
 
   const fmt = (v: string | number | null | undefined) =>
     v !== null && v !== undefined ? `$${Number(v).toLocaleString()}` : '—';
@@ -72,7 +74,7 @@ export function Dashboard() {
           )}
         </Card>
         <Card title="Compliance Status" className={styles.complianceCard}>
-          <ComplianceChart data={complianceData} width={280} height={260} />
+          {complianceLoading ? <Loading /> : <ComplianceChart data={complianceData} width={280} height={260} />}
         </Card>
       </div>
 

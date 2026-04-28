@@ -12,7 +12,7 @@ import {
 
 export const forecastingRouter = Router();
 
-// forecastingRouter.use(authenticate);
+forecastingRouter.use(authenticate);
 
 forecastingRouter.get('/forecast', forecastValidator, validateRequest, getForecast);
 forecastingRouter.get('/budget-variance', budgetVarianceValidator, validateRequest, getBudgetVariance);

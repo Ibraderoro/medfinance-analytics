@@ -55,3 +55,14 @@ export function authenticate(
     res.status(401).json({ error: 'Invalid or expired token' });
   }
 }
+
+export function requireAuthenticatedUser(req: AuthenticatedRequest): NonNullable<AuthenticatedRequest['user']> {
+  if (!req.user) {
+    const error = new Error('Unauthorized') as Error & { statusCode?: number; isOperational?: boolean };
+    error.statusCode = 401;
+    error.isOperational = true;
+    throw error;
+  }
+
+  return req.user;
+}
