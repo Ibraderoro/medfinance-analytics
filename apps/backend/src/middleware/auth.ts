@@ -7,11 +7,17 @@ export interface AuthenticatedRequest extends Request {
     id: string;
     email: string;
     role: string;
-    organisationId: string;
+    organization_id: string;
   };
 }
 
-function isUserPayload(payload: unknown): payload is AuthenticatedRequest['user'] {
+function isUserPayload(payload: unknown): payload is {
+  id: string;
+  email: string;
+  role: string;
+  organization_id?: string;
+  organisationId?: string;
+} {
   if (!payload || typeof payload !== 'object') {
     return false;
   }
@@ -21,7 +27,7 @@ function isUserPayload(payload: unknown): payload is AuthenticatedRequest['user'
     typeof candidate.id === 'string'
     && typeof candidate.email === 'string'
     && typeof candidate.role === 'string'
-    && typeof candidate.organisationId === 'string'
+    && (typeof candidate.organization_id === 'string' || typeof candidate.organisationId === 'string')
   );
 }
 
@@ -49,7 +55,19 @@ export function authenticate(
       return;
     }
 
-    req.user = payload;
+    const organizationId = payload.organization_id ?? payload.organisationId;
+    if (!organizationId) {
+      res.status(401).json({ error: 'Invalid token payload' });
+      return;
+    }
+
+    req.user = {
+      id: payload.id,
+      email: payload.email,
+      role: payload.role,
+      organization_id: organizationId,
+    };
+
     next();
   } catch {
     res.status(401).json({ error: 'Invalid or expired token' });

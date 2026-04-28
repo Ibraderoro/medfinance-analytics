@@ -5,7 +5,7 @@ export interface ComplianceItem {
   last_reviewed_at: Date | null;
   next_review_due_at: Date;
   assigned_to: string | null;
-  organisation_id: string;
+  organization_id: string;
 }
 
 export interface AuditLogEntry {
@@ -26,5 +26,5 @@ export interface RegulatoryAlert {
   regulation_code: string;
   due_date: Date;
   status: 'open' | 'acknowledged' | 'resolved';
-  organisation_id: string;
+  organization_id: string;
 }

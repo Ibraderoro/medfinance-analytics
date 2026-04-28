@@ -1,30 +1,36 @@
 import { query } from '../config/database';
 import { CacheService } from '../utils/cache';
 
-interface SummaryOptions {
-  period: string;
+interface TenantYearOptions {
   year: number;
+  organizationId: string;
+}
+
+interface SummaryOptions extends TenantYearOptions {
+  period: string;
 }
 
 interface DateRangeOptions {
   startDate?: string;
   endDate?: string;
+  organizationId: string;
 }
 
 const cache = new CacheService('financials', 300);
 
 export class FinancialsService {
-  async getKpis(opts: { year: number }) {
-    const cacheKey = `kpis:${opts.year}`;
+  async getKpis(opts: TenantYearOptions) {
+    const cacheKey = `kpis:${opts.organizationId}:${opts.year}`;
     const cached = await cache.get(cacheKey);
     if (cached) return cached;
 
     const rows = await query<Record<string, unknown>>(
       `SELECT *
        FROM financial_kpis
-       WHERE fiscal_year = $1
+       WHERE organization_id = $1
+         AND fiscal_year = $2
        ORDER BY fiscal_month ASC`,
-      [opts.year],
+      [opts.organizationId, opts.year],
     );
 
     await cache.set(cacheKey, rows);
@@ -32,7 +38,7 @@ export class FinancialsService {
   }
 
   async getSummary(opts: SummaryOptions) {
-    const cacheKey = `summary:${opts.year}`;
+    const cacheKey = `summary:${opts.organizationId}:${opts.year}`;
     const cached = await cache.get(cacheKey);
     if (cached) return cached;
 
@@ -42,8 +48,9 @@ export class FinancialsService {
          COALESCE(SUM(CASE WHEN transaction_type = 'expense' THEN amount ELSE 0 END), 0) AS total_expenses,
          COALESCE(SUM(CASE WHEN transaction_type = 'revenue' THEN amount ELSE -amount END), 0) AS net_income
        FROM transactions
-       WHERE EXTRACT(YEAR FROM occurred_on) = $1`,
-      [opts.year],
+       WHERE organization_id = $1
+         AND EXTRACT(YEAR FROM occurred_on) = $2`,
+      [opts.organizationId, opts.year],
     );
 
     const result = rows[0] ?? {};
@@ -52,50 +59,50 @@ export class FinancialsService {
   }
 
   async getRevenue(opts: DateRangeOptions) {
-    const rows = await query<Record<string, unknown>>(
+    return query<Record<string, unknown>>(
       `SELECT
          DATE_TRUNC('month', occurred_on) AS month,
          SUM(amount) AS total
        FROM transactions
-       WHERE transaction_type = 'revenue'
-         AND ($1::date IS NULL OR occurred_on >= $1::date)
-         AND ($2::date IS NULL OR occurred_on <= $2::date)
+       WHERE organization_id = $1
+         AND transaction_type = 'revenue'
+         AND ($2::date IS NULL OR occurred_on >= $2::date)
+         AND ($3::date IS NULL OR occurred_on <= $3::date)
        GROUP BY DATE_TRUNC('month', occurred_on)
        ORDER BY month ASC`,
-      [opts.startDate ?? null, opts.endDate ?? null],
+      [opts.organizationId, opts.startDate ?? null, opts.endDate ?? null],
     );
-    return rows;
   }
 
   async getExpenses(opts: DateRangeOptions) {
-    const rows = await query<Record<string, unknown>>(
+    return query<Record<string, unknown>>(
       `SELECT
          category,
          SUM(amount) AS total,
          DATE_TRUNC('month', occurred_on) AS month
        FROM transactions
-       WHERE transaction_type = 'expense'
-         AND ($1::date IS NULL OR occurred_on >= $1::date)
-         AND ($2::date IS NULL OR occurred_on <= $2::date)
+       WHERE organization_id = $1
+         AND transaction_type = 'expense'
+         AND ($2::date IS NULL OR occurred_on >= $2::date)
+         AND ($3::date IS NULL OR occurred_on <= $3::date)
        GROUP BY category, DATE_TRUNC('month', occurred_on)
        ORDER BY month ASC, total DESC`,
-      [opts.startDate ?? null, opts.endDate ?? null],
+      [opts.organizationId, opts.startDate ?? null, opts.endDate ?? null],
     );
-    return rows;
   }
 
   async getCashFlow(opts: DateRangeOptions) {
-    const rows = await query<Record<string, unknown>>(
+    return query<Record<string, unknown>>(
       `SELECT
          DATE_TRUNC('month', occurred_on) AS month,
          SUM(CASE WHEN transaction_type = 'revenue' THEN amount ELSE -amount END) AS net_cash_flow
        FROM transactions
-       WHERE ($1::date IS NULL OR occurred_on >= $1::date)
-         AND ($2::date IS NULL OR occurred_on <= $2::date)
+       WHERE organization_id = $1
+         AND ($2::date IS NULL OR occurred_on >= $2::date)
+         AND ($3::date IS NULL OR occurred_on <= $3::date)
        GROUP BY DATE_TRUNC('month', occurred_on)
        ORDER BY month ASC`,
-      [opts.startDate ?? null, opts.endDate ?? null],
+      [opts.organizationId, opts.startDate ?? null, opts.endDate ?? null],
     );
-    return rows;
   }
 }

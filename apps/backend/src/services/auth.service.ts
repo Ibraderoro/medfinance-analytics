@@ -12,11 +12,11 @@ interface UserRow {
   first_name: string;
   last_name: string;
   role: string;
-  organisation_id: string;
+  organization_id: string;
   is_active: boolean;
 }
 
-type UserIdentity = Pick<UserRow, 'id' | 'email' | 'role' | 'organisation_id'>;
+type UserIdentity = Pick<UserRow, 'id' | 'email' | 'role' | 'organization_id'>;
 
 function authError(message: string): AppError {
   const err = new Error(message) as AppError;
@@ -60,7 +60,7 @@ export class AuthService {
     password: string,
     firstName: string,
     lastName: string,
-    organisationId: string,
+    organizationId: string,
     role = 'viewer',
   ) {
     const existing = await query<{ id: string }>(
@@ -73,10 +73,10 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(password, 12);
     const [user] = await query<UserIdentity>(
-      `INSERT INTO users (email, password_hash, first_name, last_name, role, organisation_id)
+      `INSERT INTO users (email, password_hash, first_name, last_name, role, organization_id)
        VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, email, role, organisation_id`,
-      [email, passwordHash, firstName, lastName, role, organisationId],
+       RETURNING id, email, role, organization_id`,
+      [email, passwordHash, firstName, lastName, role, organizationId],
     );
 
     return this.generateTokenPair(user);
@@ -84,7 +84,7 @@ export class AuthService {
 
   async login(email: string, password: string) {
     const [user] = await query<UserRow>(
-      `SELECT id, email, password_hash, first_name, last_name, role, organisation_id, is_active
+      `SELECT id, email, password_hash, first_name, last_name, role, organization_id, is_active
        FROM users WHERE email = $1`,
       [email],
     );
@@ -116,7 +116,7 @@ export class AuthService {
     }
 
     const [user] = await query<UserIdentity>(
-      'SELECT id, email, role, organisation_id FROM users WHERE id = $1 AND is_active = true',
+      'SELECT id, email, role, organization_id FROM users WHERE id = $1 AND is_active = true',
       [row.user_id],
     );
 
@@ -141,7 +141,7 @@ export class AuthService {
         id: user.id,
         email: user.email,
         role: user.role,
-        organisationId: user.organisation_id,
+        organization_id: user.organization_id,
       },
       env.JWT_SECRET,
       { algorithm: 'HS256', expiresIn: env.JWT_EXPIRES_IN as jwt.SignOptions['expiresIn'] },

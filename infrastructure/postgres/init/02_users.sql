@@ -1,5 +1,4 @@
 -- MedFinance Analytics users schema
--- Stores application users and refresh token records.
 
 CREATE TABLE IF NOT EXISTS users (
   id               UUID         PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -9,7 +8,7 @@ CREATE TABLE IF NOT EXISTS users (
   last_name        VARCHAR(100) NOT NULL,
   role             VARCHAR(32)  NOT NULL DEFAULT 'viewer'
                      CHECK (role IN ('cfo', 'finance_manager', 'auditor', 'viewer')),
-  organisation_id  UUID         NOT NULL,
+  organization_id  UUID         NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
   is_active        BOOLEAN      NOT NULL DEFAULT true,
   last_login_at    TIMESTAMPTZ,
   created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
@@ -17,10 +16,8 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_email        ON users(email);
-CREATE INDEX IF NOT EXISTS idx_users_organisation ON users(organisation_id);
+CREATE INDEX IF NOT EXISTS idx_users_organization ON users(organization_id);
 
--- Refresh tokens are stored as SHA-256 hashes so the plain token
--- is never persisted in the database.
 CREATE TABLE IF NOT EXISTS refresh_tokens (
   id          UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id     UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,

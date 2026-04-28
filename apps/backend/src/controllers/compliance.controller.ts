@@ -12,7 +12,7 @@ export async function getComplianceStatus(
 ): Promise<void> {
   try {
     const user = requireAuthenticatedUser(req);
-    const data = await service.getComplianceStatus(user.organisationId);
+    const data = await service.getComplianceStatus(user.organization_id);
     res.json({ data });
   } catch (err) {
     next(err);
@@ -38,7 +38,7 @@ export async function getAuditLog(
           min: 1,
           max: 100,
         }) ?? 50,
-      organisationId: user.organisationId,
+      organizationId: user.organization_id,
     });
     res.json({ data });
   } catch (err) {
@@ -59,7 +59,7 @@ export async function getRegulatoryAlerts(
     }
     const data = await service.getRegulatoryAlerts({
       severity: severity as 'low' | 'medium' | 'high' | 'critical' | undefined,
-      organisationId: user.organisationId,
+      organizationId: user.organization_id,
     });
 
     res.json({ data });

@@ -39,7 +39,7 @@ function monthLabel(dateString: string): string {
 }
 
 export class InsightsService {
-  async getInsights(): Promise<InsightsResponse> {
+  async getInsights(organizationId: string): Promise<InsightsResponse> {
     const rows = await query<KpiRow>(
       `SELECT
          month_start,
@@ -51,9 +51,10 @@ export class InsightsService {
          runway_months,
          revenue_mom_growth
        FROM financial_kpis
+       WHERE organization_id = $1
        ORDER BY month_start DESC
-       LIMIT $1`,
-      [LOOKBACK_MONTHS],
+       LIMIT $2`,
+      [organizationId, LOOKBACK_MONTHS],
     );
 
     if (rows.length === 0) {
