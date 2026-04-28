@@ -1,12 +1,15 @@
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
 import { liveFinancialsService } from '../services/liveFinancials.service';
+import { AuthenticatedRequest, requireAuthenticatedUser } from '../middleware/auth';
 
 export async function getLiveFinancials(
-  req: Request,
+  req: AuthenticatedRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
   try {
+    const user = requireAuthenticatedUser(req);
+
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
@@ -19,7 +22,7 @@ export async function getLiveFinancials(
       res.write(': keep-alive\n\n');
     }, 25_000);
 
-    await liveFinancialsService.addClient(res);
+    await liveFinancialsService.addClient(res, user.organization_id);
 
     req.on('close', () => {
       clearInterval(keepAlive);
