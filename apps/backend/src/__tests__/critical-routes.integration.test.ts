@@ -3,18 +3,28 @@ process.env.REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET ?? '12345678
 process.env.DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://user:pass@localhost:5432/test';
 
 import http from 'http';
+import { NextFunction, Request, Response } from 'express';
+import { AuthenticatedRequest } from '../middleware/auth';
 
 const mockQuery = jest.fn();
 
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+
+type JsonObject = { [key: string]: JsonValue };
+
+type RequestResult = {
+  status: number;
+  body: JsonObject;
+};
 
 jest.mock('../middleware/analytics', () => ({
-  trackApiAnalytics: (_req: any, _res: any, next: any) => next(),
+  trackApiAnalytics: (_req: Request, _res: Response, next: NextFunction) => next(),
 }));
 jest.mock('../middleware/auth', () => {
   const actual = jest.requireActual('../middleware/auth');
   return {
     ...actual,
-    authenticate: (req: any, _res: any, next: any) => {
+    authenticate: (req: AuthenticatedRequest, _res: Response, next: NextFunction) => {
       req.user = {
         id: 'user-1',
         email: 'cfo@example.com',
@@ -45,13 +55,13 @@ jest.mock('../config/redis', () => ({
 
 import { app } from '../app';
 
-async function request(path: string): Promise<{ status: number; body: any }> {
+async function request(path: string): Promise<RequestResult> {
   const server = http.createServer(app);
   await new Promise<void>((resolve) => server.listen(0, resolve));
   const address = server.address();
   const port = typeof address === 'object' && address ? address.port : 0;
 
-  const body = await new Promise<any>((resolve, reject) => {
+  const response = await new Promise<{ status: number; payload: JsonObject }>((resolve, reject) => {
     const req = http.request({
       hostname: '127.0.0.1',
       port,
@@ -62,7 +72,8 @@ async function request(path: string): Promise<{ status: number; body: any }> {
       res.on('data', (chunk) => { data += chunk; });
       res.on('end', () => {
         try {
-          resolve({ status: res.statusCode ?? 0, payload: JSON.parse(data || '{}') });
+          const parsed: JsonObject = JSON.parse(data || '{}') as JsonObject;
+          resolve({ status: res.statusCode ?? 0, payload: parsed });
         } catch (error) {
           reject(error);
         }
@@ -75,7 +86,7 @@ async function request(path: string): Promise<{ status: number; body: any }> {
     server.close((err) => (err ? reject(err) : resolve()));
   });
 
-  return { status: body.status, body: body.payload };
+  return { status: response.status, body: response.payload };
 }
 
 describe('Critical route integration', () => {
@@ -100,7 +111,8 @@ describe('Critical route integration', () => {
 
     expect(result.status).toBe(400);
     expect(result.body.success).toBe(false);
-    expect(result.body.error.code).toBe('VALIDATION_ERROR');
+    const errorBody = result.body.error;
+    expect(errorBody && typeof errorBody === 'object' && 'code' in errorBody ? errorBody.code : undefined).toBe('VALIDATION_ERROR');
   });
 
   it('GET /compliance/status returns empty array when no rows exist', async () => {
