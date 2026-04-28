@@ -4,6 +4,7 @@ import { authRouter } from './auth';
 import { financialsRouter } from './financials';
 import { forecastingRouter } from './forecasting';
 import { complianceRouter } from './compliance';
+import { insightsRouter } from './insights';
 
 export const router = Router();
 
@@ -12,3 +13,4 @@ router.use('/auth', authRouter);
 router.use('/financials', financialsRouter);
 router.use('/forecasting', forecastingRouter);
 router.use('/compliance', complianceRouter);
+router.use('/insights', insightsRouter);

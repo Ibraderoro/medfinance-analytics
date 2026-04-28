@@ -25,6 +25,7 @@
 | Compliance | GET | `/compliance/status` | Yes | Compliance item statuses |
 | Compliance | GET | `/compliance/audit-log` | Yes | Paginated audit events |
 | Compliance | GET | `/compliance/alerts` | Yes | Regulatory alerts with optional severity filter |
+| Insights | GET | `/insights` | Yes | Financial health score, risk level, and explainable insights |
 
 ---
 
@@ -241,6 +242,26 @@ Returns alerts, optionally filtered by severity.
   ]
 }
 ```
+
+### 3.5 Insights
+
+#### `GET /api/v1/insights`
+Returns an explainable business-health assessment derived from recent monthly KPIs.
+
+**Response 200**
+```json
+{
+  "health_score": 78,
+  "risk_level": "medium",
+  "insights": [
+    "Profitability averaged 18.2% over the last 6 months, contributing 94 points in the score model.",
+    "Expense ratio averaged 66.5% of revenue; lower ratios improve resilience and contributed 67 points.",
+    "Revenue growth averaged 4.3% month-over-month, contributing 46 points to forward-looking health."
+  ]
+}
+```
+
+---
 
 ## 4) Data Flow Diagram (Text-Based)
 
