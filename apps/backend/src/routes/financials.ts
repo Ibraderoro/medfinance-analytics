@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authenticate } from '../middleware/auth';
 import { validateRequest } from '../middleware/validateRequest';
 import { enforceFreeHistoryWindow } from '../middleware/planAccess';
+import { auditFinancialAccess } from '../middleware/audit';
 import {
   getKpis,
   getSummary,
@@ -9,7 +10,11 @@ import {
   getExpenses,
   getCashFlow,
 } from '../controllers/financials.controller';
-import { getLiveFinancials } from '../controllers/financialsLive.controller';
+import {
+  getLiveFinancials,
+  notifyTransactionAdded,
+  notifyForecastChanged,
+} from '../controllers/financialsLive.controller';
 import {
   financialsSummaryValidator,
   dateRangeValidator,
@@ -18,6 +23,7 @@ import {
 export const financialsRouter = Router();
 
 financialsRouter.use(authenticate);
+financialsRouter.use(auditFinancialAccess);
 
 financialsRouter.get('/kpis', financialsSummaryValidator, validateRequest, getKpis);
 financialsRouter.get('/summary', financialsSummaryValidator, validateRequest, getSummary);
@@ -26,3 +32,6 @@ financialsRouter.get('/expenses', dateRangeValidator, validateRequest, enforceFr
 financialsRouter.get('/cash-flow', dateRangeValidator, validateRequest, enforceFreeHistoryWindow(3), getCashFlow);
 
 financialsRouter.get('/live', getLiveFinancials);
+
+financialsRouter.post('/live/events/transaction-added', notifyTransactionAdded);
+financialsRouter.post('/live/events/forecast-changed', notifyForecastChanged);

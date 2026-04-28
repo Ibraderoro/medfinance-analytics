@@ -4,8 +4,16 @@ import { getRedis } from '../config/redis';
 
 export const healthRouter = Router();
 
-healthRouter.get('/', async (_req: Request, res: Response) => {
+healthRouter.get('/live', (_req: Request, res: Response) => {
+  res.status(200).json({
+    status: 'alive',
+    timestamp: new Date().toISOString(),
+  });
+});
+
+healthRouter.get('/ready', async (req: Request, res: Response) => {
   const checks: Record<string, string> = {};
+  const isShuttingDown = Boolean(req.app.locals.isShuttingDown);
 
   try {
     const client = await getPool().connect();
@@ -22,11 +30,18 @@ healthRouter.get('/', async (_req: Request, res: Response) => {
     checks.redis = 'error';
   }
 
-  const allHealthy = Object.values(checks).every((v) => v === 'ok');
+  checks.server = isShuttingDown ? 'draining' : 'ok';
+
+  const allHealthy =
+    !isShuttingDown && Object.values(checks).every((v) => v === 'ok');
 
   res.status(allHealthy ? 200 : 503).json({
-    status: allHealthy ? 'healthy' : 'degraded',
+    status: allHealthy ? 'ready' : 'not_ready',
     timestamp: new Date().toISOString(),
     services: checks,
   });
+});
+
+healthRouter.get('/', (req: Request, res: Response) => {
+  res.redirect(302, `${req.baseUrl}/ready`);
 });

@@ -40,6 +40,9 @@ RUN npm ci --workspaces --omit=dev
 COPY --from=builder /app/apps/backend/dist apps/backend/dist
 COPY --from=builder /app/packages/shared/dist packages/shared/dist
 
+# Init for proper signal handling (graceful shutdown in containers)
+RUN apk add --no-cache dumb-init
+
 # Non-root user for security
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 USER appuser
@@ -47,6 +50,7 @@ USER appuser
 EXPOSE 3001
 
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-  CMD wget -qO- http://localhost:${PORT:-3001}/api/v1/health || exit 1
+  CMD wget -qO- http://localhost:${PORT:-3001}/api/v1/health/live || exit 1
 
+ENTRYPOINT ["dumb-init", "--"]
 CMD ["node", "apps/backend/dist/index.js"]

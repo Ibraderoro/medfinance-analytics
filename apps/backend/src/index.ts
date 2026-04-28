@@ -1,12 +1,24 @@
 import 'dotenv/config';
 import { app } from './app';
 import { logger } from './utils/logger';
-import { connectDatabase } from './config/database';
-import { connectRedis } from './config/redis';
+import { connectDatabase, disconnectDatabase } from './config/database';
+import { connectRedis, disconnectRedis } from './config/redis';
 import { env } from './config/env';
 import { liveFinancialsService } from './services/liveFinancials.service';
 
 const PORT = Number.parseInt(process.env.PORT ?? `${env.PORT}`, 10);
+const SHUTDOWN_TIMEOUT_MS = 10_000;
+
+let isShuttingDown = false;
+
+app.use((_req, res, next) => {
+  if (isShuttingDown) {
+    res.setHeader('Connection', 'close');
+    res.status(503).json({ message: 'Server is shutting down' });
+    return;
+  }
+  next();
+});
 
 async function bootstrap(): Promise<void> {
   try {
@@ -19,16 +31,20 @@ async function bootstrap(): Promise<void> {
       logger.info(`🚀 MedFinance API running on port ${PORT} [${env.NODE_ENV}]`);
     });
 
-    const shutdown = (signal: string) => {
+    const shutdown = async (signal: string) => {
+      if (isShuttingDown) {
+        return;
+      }
+      isShuttingDown = true;
+      app.locals.isShuttingDown = true;
+
       logger.info(`Received ${signal}. Shutting down gracefully...`);
-      liveFinancialsService.stop();
+      void liveFinancialsService.stop();
       server.close((error) => {
         if (error) {
           logger.error('Error during server shutdown', error);
           process.exit(1);
-          return;
         }
-        process.exit(0);
       });
     };
 
