@@ -8,6 +8,7 @@ import {
   getExpenses,
   getCashFlow,
 } from '../controllers/financials.controller';
+import { getLiveFinancials } from '../controllers/financialsLive.controller';
 import {
   financialsSummaryValidator,
   dateRangeValidator,
@@ -22,3 +23,5 @@ financialsRouter.get('/summary', financialsSummaryValidator, validateRequest, ge
 financialsRouter.get('/revenue', dateRangeValidator, validateRequest, getRevenue);
 financialsRouter.get('/expenses', dateRangeValidator, validateRequest, getExpenses);
 financialsRouter.get('/cash-flow', dateRangeValidator, validateRequest, getCashFlow);
+
+financialsRouter.get('/live', getLiveFinancials);
