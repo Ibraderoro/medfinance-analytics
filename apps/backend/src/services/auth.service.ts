@@ -5,6 +5,7 @@ import { query } from '../config/database';
 import { env } from '../config/env';
 import { AppError } from '../middleware/errorHandler';
 import { BillingService } from './billing.service';
+import { AuditService } from './audit.service';
 
 interface UserRow {
   id: string;
@@ -57,6 +58,8 @@ function refreshExpiryToDays(expiresIn: string): number {
 
 export class AuthService {
   private readonly billingService = new BillingService();
+  private readonly auditService = new AuditService();
+
   async register(
     email: string,
     password: string,
@@ -116,6 +119,15 @@ export class AuthService {
 
     await query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [user.id]);
 
+    await this.auditService.log({
+      action: 'login_success',
+      entityType: 'user',
+      entityId: user.id,
+      performedBy: user.id,
+      organizationId: user.organization_id,
+      metadata: { email: user.email },
+    });
+
     return this.generateTokenPair(user);
   }
 
@@ -160,7 +172,14 @@ export class AuthService {
         organization_id: user.organization_id,
       },
       env.JWT_SECRET,
-      { algorithm: 'HS256', expiresIn: env.JWT_EXPIRES_IN as jwt.SignOptions['expiresIn'] },
+      {
+        algorithm: 'HS256',
+        expiresIn: env.JWT_EXPIRES_IN as jwt.SignOptions['expiresIn'],
+        issuer: env.JWT_ISSUER,
+        audience: env.JWT_AUDIENCE,
+        subject: user.id,
+        jwtid: crypto.randomUUID(),
+      },
     );
 
     const plainRefreshToken = crypto.randomBytes(40).toString('hex');

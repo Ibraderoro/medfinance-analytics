@@ -9,6 +9,7 @@ import { handleStripeWebhook } from './controllers/billing.controller';
 import { errorHandler } from './middleware/errorHandler';
 import { rateLimiter } from './middleware/rateLimiter';
 import { requestLogger } from './middleware/logger';
+import { sanitizeInput } from './middleware/sanitizeInput';
 
 export const app: Application = express();
 
@@ -39,7 +40,11 @@ const corsOptions: CorsOptions = {
 
 // ── Security ──────────────────────────────────────────────────────────────
 app.disable('x-powered-by');
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'same-site' },
+  contentSecurityPolicy: env.isProduction(),
+  hsts: env.isProduction(),
+}));
 app.use(cors(corsOptions));
 app.use(rateLimiter);
 
@@ -49,6 +54,7 @@ app.post('/api/v1/billing/webhook', express.raw({ type: 'application/json' }), h
 // ── Body parsing & compression ────────────────────────────────────────────
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(sanitizeInput);
 app.use(compression());
 
 // ── Logging ───────────────────────────────────────────────────────────────

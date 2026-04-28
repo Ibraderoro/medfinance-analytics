@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authenticate } from '../middleware/auth';
 import { validateRequest } from '../middleware/validateRequest';
 import { enforceFreeHistoryWindow } from '../middleware/planAccess';
+import { auditFinancialAccess } from '../middleware/audit';
 import {
   getKpis,
   getSummary,
@@ -18,6 +19,7 @@ import {
 export const financialsRouter = Router();
 
 financialsRouter.use(authenticate);
+financialsRouter.use(auditFinancialAccess);
 
 financialsRouter.get('/kpis', financialsSummaryValidator, validateRequest, getKpis);
 financialsRouter.get('/summary', financialsSummaryValidator, validateRequest, getSummary);

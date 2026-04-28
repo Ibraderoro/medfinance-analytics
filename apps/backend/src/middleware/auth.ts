@@ -48,6 +48,8 @@ export function authenticate(
   try {
     const payload = jwt.verify(token, env.JWT_SECRET, {
       algorithms: ['HS256'],
+      issuer: env.JWT_ISSUER,
+      audience: env.JWT_AUDIENCE,
     });
 
     if (!isUserPayload(payload)) {
