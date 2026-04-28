@@ -74,6 +74,8 @@ npm run dev --workspace=apps/backend
 npm run dev --workspace=apps/frontend
 ```
 
+If your database volume already existed before seeding was added, run `npm run seed` once (or recreate volumes) to populate demo data.
+
 ### Production
 
 ```bash
