@@ -7,6 +7,10 @@ interface KpiRow {
   total_revenue: string;
   total_expenses: string;
   net_income: string;
+  burn_rate: string;
+  cash_reserve_amount: string;
+  runway_months: string;
+  revenue_mom_growth: string;
 }
 
 interface InsightsResponse {
@@ -25,9 +29,13 @@ function toNumber(value: string): number {
   return Number.parseFloat(value);
 }
 
-function average(values: number[]): number {
-  if (values.length === 0) return 0;
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
+function formatPct(value: number): string {
+  return `${Math.abs(value).toFixed(1)}%`;
+}
+
+function monthLabel(dateString: string): string {
+  const date = new Date(dateString);
+  return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' });
 }
 
 export class InsightsService {
@@ -37,7 +45,11 @@ export class InsightsService {
          month_start,
          total_revenue,
          total_expenses,
-         net_income
+         net_income,
+         burn_rate,
+         cash_reserve_amount,
+         runway_months,
+         revenue_mom_growth
        FROM financial_kpis
        ORDER BY month_start DESC
        LIMIT $1`,
@@ -49,101 +61,110 @@ export class InsightsService {
         health_score: 0,
         risk_level: 'high',
         insights: [
-          'No KPI history is available yet; risk is high until monthly revenue and expense data is ingested.',
+          'No KPI history is available yet; ingest monthly transactions and cash reserve balances to generate reliable insights.',
         ],
       };
     }
 
-    const chronologicallySorted = [...rows].reverse();
+    const ordered = [...rows].reverse();
+    const latest = ordered[ordered.length - 1];
+    const previous = ordered.length > 1 ? ordered[ordered.length - 2] : null;
 
-    const profitabilityMargins = chronologicallySorted
-      .filter((row) => toNumber(row.total_revenue) > 0)
-      .map((row) => (toNumber(row.net_income) / toNumber(row.total_revenue)) * 100);
-
-    const expenseRatios = chronologicallySorted
-      .filter((row) => toNumber(row.total_revenue) > 0)
-      .map((row) => (toNumber(row.total_expenses) / toNumber(row.total_revenue)) * 100);
-
-    const revenueGrowthRates: number[] = [];
-    for (let i = 1; i < chronologicallySorted.length; i += 1) {
-      const previousRevenue = toNumber(chronologicallySorted[i - 1].total_revenue);
-      const currentRevenue = toNumber(chronologicallySorted[i].total_revenue);
-
-      if (previousRevenue > 0) {
-        revenueGrowthRates.push(((currentRevenue - previousRevenue) / previousRevenue) * 100);
-      }
-    }
-
-    const profitability = average(profitabilityMargins);
-    const expenseRatio = average(expenseRatios);
-    const growthRate = average(revenueGrowthRates);
-
-    // 0..100 component scoring with business-oriented thresholds.
-    const profitabilityScore = clamp(((profitability + 10) / 30) * 100, 0, 100);
-    const expenseScore = clamp(((100 - expenseRatio) / 50) * 100, 0, 100);
-    const growthScore = clamp(((growthRate + 5) / 20) * 100, 0, 100);
-
-    const weightedScore =
-      profitabilityScore * 0.45 +
-      expenseScore * 0.3 +
-      growthScore * 0.25;
-
-    const healthScore = Math.round(clamp(weightedScore, 0, 100));
-
-    const insights: string[] = [
-      `Profitability averaged ${profitability.toFixed(1)}% over the last ${chronologicallySorted.length} months, contributing ${Math.round(profitabilityScore)} points in the score model.`,
-      `Expense ratio averaged ${expenseRatio.toFixed(1)}% of revenue; lower ratios improve resilience and contributed ${Math.round(expenseScore)} points.`,
-      `Revenue growth averaged ${growthRate.toFixed(1)}% month-over-month, contributing ${Math.round(growthScore)} points to forward-looking health.`,
-    ];
-
-    const latest = chronologicallySorted[chronologicallySorted.length - 1];
     const latestRevenue = toNumber(latest.total_revenue);
     const latestExpenses = toNumber(latest.total_expenses);
-    const latestExpenseRatio = latestRevenue > 0 ? (latestExpenses / latestRevenue) * 100 : 100;
+    const latestNetIncome = toNumber(latest.net_income);
+    const latestRunwayMonths = toNumber(latest.runway_months);
+    const latestBurnRate = toNumber(latest.burn_rate);
+    const latestMonthLabel = monthLabel(latest.month_start);
 
-    const hasHighExpenses = latestExpenseRatio >= 75;
+    const insights: string[] = [];
+    let riskPoints = 0;
 
-    let decliningRevenueStreak = 0;
-    for (let i = chronologicallySorted.length - 1; i > 0; i -= 1) {
-      const currentRevenue = toNumber(chronologicallySorted[i].total_revenue);
-      const previousRevenue = toNumber(chronologicallySorted[i - 1].total_revenue);
-      if (currentRevenue < previousRevenue) {
-        decliningRevenueStreak += 1;
-      } else {
-        break;
+    if (previous) {
+      const previousRevenue = toNumber(previous.total_revenue);
+      const previousExpenses = toNumber(previous.total_expenses);
+
+      if (previousRevenue > 0) {
+        const revenueGrowthPct = ((latestRevenue - previousRevenue) / previousRevenue) * 100;
+        const direction = revenueGrowthPct >= 0 ? 'increased' : 'decreased';
+        insights.push(
+          `Revenue ${direction} ${formatPct(revenueGrowthPct)} in ${latestMonthLabel} compared to ${monthLabel(previous.month_start)}.`,
+        );
+
+        if (revenueGrowthPct < -8) {
+          riskPoints += 2;
+        } else if (revenueGrowthPct < 0) {
+          riskPoints += 1;
+        }
       }
+
+      if (previousExpenses > 0 && previousRevenue > 0) {
+        const expenseGrowthPct = ((latestExpenses - previousExpenses) / previousExpenses) * 100;
+        const revenueGrowthPct = ((latestRevenue - previousRevenue) / previousRevenue) * 100;
+
+        if (expenseGrowthPct > revenueGrowthPct) {
+          insights.push(
+            `Expenses are growing faster than revenue (${formatPct(expenseGrowthPct)} vs ${formatPct(revenueGrowthPct)} month-over-month).`,
+          );
+
+          const growthGap = expenseGrowthPct - revenueGrowthPct;
+          if (growthGap >= 8) {
+            riskPoints += 2;
+          } else if (growthGap > 0) {
+            riskPoints += 1;
+          }
+        } else {
+          insights.push(
+            `Revenue growth is outpacing expense growth (${formatPct(revenueGrowthPct)} vs ${formatPct(expenseGrowthPct)} month-over-month).`,
+          );
+        }
+      }
+    } else {
+      insights.push(`Only one month of KPI data (${latestMonthLabel}) is available, so trend-based insights are limited.`);
     }
 
-    const recentNegativeNetIncomeCount = chronologicallySorted
+    if (latestBurnRate > 0 && latestRunwayMonths > 0) {
+      if (latestRunwayMonths < 6) {
+        insights.push(`Cash runway is ${latestRunwayMonths.toFixed(1)} months (high risk, below the 6-month threshold).`);
+        riskPoints += 3;
+      } else if (latestRunwayMonths < 9) {
+        insights.push(`Cash runway is ${latestRunwayMonths.toFixed(1)} months (medium risk, monitor burn rate closely).`);
+        riskPoints += 1;
+      } else {
+        insights.push(`Cash runway is ${latestRunwayMonths.toFixed(1)} months, which is above the 9-month safety threshold.`);
+      }
+    } else if (latestBurnRate <= 0) {
+      insights.push('Burn rate is zero this month, so runway is not currently constrained by net cash burn.');
+    } else {
+      insights.push('Cash runway could not be calculated due to missing cash reserve data.');
+      riskPoints += 1;
+    }
+
+    const netMargin = latestRevenue > 0 ? (latestNetIncome / latestRevenue) * 100 : 0;
+    if (latestNetIncome < 0) {
+      insights.push(`Net income is negative in ${latestMonthLabel} (${netMargin.toFixed(1)}% margin), indicating ongoing burn.`);
+      riskPoints += 2;
+    } else {
+      insights.push(`Net income is positive in ${latestMonthLabel} (${netMargin.toFixed(1)}% margin).`);
+    }
+
+    const threeMonthLossCount = ordered
       .slice(-3)
       .filter((row) => toNumber(row.net_income) < 0).length;
 
-    const hasNegativeTrend = decliningRevenueStreak >= 2 || recentNegativeNetIncomeCount >= 2;
-
-    if (hasHighExpenses) {
-      insights.push(
-        `Risk flag: high expenses detected this month (${latestExpenseRatio.toFixed(1)}% of revenue), which can pressure cash runway if sustained.`,
-      );
-    }
-
-    if (hasNegativeTrend) {
-      insights.push(
-        'Risk flag: negative trend detected from consecutive revenue declines or repeated monthly losses in the latest quarter.',
-      );
+    if (threeMonthLossCount >= 2) {
+      insights.push('The company reported losses in at least 2 of the last 3 months, increasing near-term risk.');
+      riskPoints += 2;
     }
 
     let riskLevel: RiskLevel = 'low';
-    const riskFlags = Number(hasHighExpenses) + Number(hasNegativeTrend);
-
-    if (healthScore < 40 || riskFlags >= 2) {
+    if (riskPoints >= 5) {
       riskLevel = 'high';
-    } else if (healthScore < 70 || riskFlags === 1) {
+    } else if (riskPoints >= 2) {
       riskLevel = 'medium';
     }
 
-    if (riskLevel === 'low') {
-      insights.push('Overall risk remains low: fundamentals are stable across profitability, cost control, and growth.');
-    }
+    const healthScore = Math.round(clamp(100 - riskPoints * 12, 0, 100));
 
     return {
       health_score: healthScore,
