@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { query } from '../config/database';
 import { env } from '../config/env';
 import { AppError } from '../middleware/errorHandler';
+import { BillingService } from './billing.service';
 
 interface UserRow {
   id: string;
@@ -55,6 +56,7 @@ function refreshExpiryToDays(expiresIn: string): number {
 }
 
 export class AuthService {
+  private readonly billingService = new BillingService();
   async register(
     email: string,
     password: string,
@@ -78,6 +80,20 @@ export class AuthService {
        RETURNING id, email, role, organization_id`,
       [email, passwordHash, firstName, lastName, role, organizationId],
     );
+
+    try {
+      await this.billingService.ensureCustomerForOrganization(
+        organizationId,
+        email,
+        `${firstName} ${lastName}`.trim(),
+      );
+    } catch (err) {
+      console.warn('Stripe customer provisioning failed during signup', {
+        organizationId,
+        email,
+        error: err instanceof Error ? err.message : 'unknown',
+      });
+    }
 
     return this.generateTokenPair(user);
   }

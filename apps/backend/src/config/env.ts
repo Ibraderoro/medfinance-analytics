@@ -63,6 +63,11 @@ export const env = {
   ),
 
   LOG_LEVEL: optionalEnv('LOG_LEVEL', 'info'),
+  STRIPE_SECRET_KEY: optionalEnv('STRIPE_SECRET_KEY'),
+  STRIPE_WEBHOOK_SECRET: optionalEnv('STRIPE_WEBHOOK_SECRET'),
+  STRIPE_PRO_PRICE_ID: optionalEnv('STRIPE_PRO_PRICE_ID'),
+  STRIPE_ENTERPRISE_PRICE_ID: optionalEnv('STRIPE_ENTERPRISE_PRICE_ID'),
+
 
   isProduction: () => optionalEnv('NODE_ENV', 'development') === 'production',
   isDevelopment: () => optionalEnv('NODE_ENV', 'development') === 'development',
