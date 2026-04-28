@@ -250,6 +250,27 @@ FROM
   ) AS exp_depts(dept_code, base_amount)
 ON CONFLICT (department_id, fiscal_year, fiscal_month, metric_type, scenario) DO NOTHING;
 
+
+-- ---------------------------------------------------------------------------
+-- 6. Compliance sample data
+-- ---------------------------------------------------------------------------
+INSERT INTO compliance_items (
+  id, regulation_code, status, last_reviewed_at, next_review_due_at, assigned_to, organisation_id
+)
+VALUES
+  (md5('cmp_item_hipaa_164_312_a_1')::uuid, 'HIPAA-164.312(a)(1)', 'compliant', NOW() - INTERVAL '21 days', NOW() + INTERVAL '69 days', 'security.lead@medfinance.test', md5('org_medfinance_demo')::uuid),
+  (md5('cmp_item_soc2_cc6_1')::uuid, 'SOC2-CC6.1', 'under_review', NOW() - INTERVAL '45 days', NOW() + INTERVAL '15 days', 'audit.manager@medfinance.test', md5('org_medfinance_demo')::uuid),
+  (md5('cmp_item_hitrust_09_m')::uuid, 'HITRUST-09.m', 'non_compliant', NOW() - INTERVAL '90 days', NOW() + INTERVAL '7 days', 'risk.owner@medfinance.test', md5('org_medfinance_demo')::uuid)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO regulatory_alerts (
+  id, title, description, severity, regulation_code, due_date, status, organisation_id
+)
+VALUES
+  (md5('alert_hipaa_access_review')::uuid, 'Quarterly access review due', 'Access certification package for privileged users is due this quarter.', 'high', 'HIPAA-164.308(a)(4)', CURRENT_DATE + INTERVAL '30 days', 'open', md5('org_medfinance_demo')::uuid),
+  (md5('alert_soc2_change_mgmt')::uuid, 'Change management evidence needed', 'Provide SOC 2 change tickets and approvals for production releases.', 'medium', 'SOC2-CC8.1', CURRENT_DATE + INTERVAL '21 days', 'acknowledged', md5('org_medfinance_demo')::uuid)
+ON CONFLICT (id) DO NOTHING;
+
 COMMIT;
 
 -- =============================================================================

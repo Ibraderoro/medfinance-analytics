@@ -38,6 +38,9 @@ done
 info "Running database migrations..."
 npm run migrate
 
+info "Seeding database with demo financial/compliance data..."
+npm run seed
+
 success "Setup complete! 🚀"
 echo ""
 echo "  Start backend:   npm run dev --workspace=apps/backend"
