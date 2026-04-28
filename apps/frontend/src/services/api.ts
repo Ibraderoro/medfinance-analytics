@@ -17,15 +17,58 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
+let refreshingPromise: Promise<string | null> | null = null;
+
+async function refreshAccessToken(): Promise<string | null> {
+  if (!refreshingPromise) {
+    refreshingPromise = (async () => {
+      const refreshToken = localStorage.getItem('refresh_token');
+      if (!refreshToken) return null;
+
+      try {
+        const response = await axios.post<{ data: { accessToken: string; refreshToken: string } }>(
+          `${BASE_URL}/auth/refresh`,
+          { refreshToken },
+          { timeout: 15_000 },
+        );
+
+        localStorage.setItem('access_token', response.data.data.accessToken);
+        localStorage.setItem('refresh_token', response.data.data.refreshToken);
+        return response.data.data.accessToken;
+      } catch {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        return null;
+      } finally {
+        refreshingPromise = null;
+      }
+    })();
+  }
+
+  return refreshingPromise;
+}
+
 // Global error handling
 apiClient.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('refresh_token');
+  async (error) => {
+    const originalRequest = error.config as { _retry?: boolean; headers?: Record<string, string> };
+
+    if (error.response?.status === 401 && !originalRequest?._retry) {
+      originalRequest._retry = true;
+      const newAccessToken = await refreshAccessToken();
+
+      if (newAccessToken) {
+        originalRequest.headers = {
+          ...(originalRequest.headers ?? {}),
+          Authorization: `Bearer ${newAccessToken}`,
+        };
+        return apiClient.request(originalRequest as never);
+      }
+
       window.location.href = '/login';
     }
+
     return Promise.reject(error);
   },
 );

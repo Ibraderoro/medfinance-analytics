@@ -32,6 +32,28 @@ function conflictError(message: string): AppError {
   return err;
 }
 
+function hashRefreshToken(token: string): string {
+  return crypto
+    .createHmac('sha256', env.REFRESH_TOKEN_SECRET)
+    .update(token)
+    .digest('hex');
+}
+
+function refreshExpiryToDays(expiresIn: string): number {
+  const match = expiresIn.trim().match(/^(\d+)([smhd]?)$/i);
+  if (!match) return 7;
+
+  const amount = Number.parseInt(match[1], 10);
+  const unit = (match[2] || 'd').toLowerCase();
+
+  if (unit === 'd') return amount;
+  if (unit === 'h') return Math.ceil(amount / 24);
+  if (unit === 'm') return Math.ceil(amount / (60 * 24));
+  if (unit === 's') return Math.ceil(amount / (60 * 60 * 24));
+
+  return 7;
+}
+
 export class AuthService {
   async register(
     email: string,
@@ -82,7 +104,7 @@ export class AuthService {
   }
 
   async refresh(refreshToken: string) {
-    const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+    const tokenHash = hashRefreshToken(refreshToken);
 
     const [row] = await query<{ user_id: string; expires_at: string }>(
       'SELECT user_id, expires_at FROM refresh_tokens WHERE token_hash = $1',
@@ -109,7 +131,7 @@ export class AuthService {
   }
 
   async logout(refreshToken: string) {
-    const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
+    const tokenHash = hashRefreshToken(refreshToken);
     await query('DELETE FROM refresh_tokens WHERE token_hash = $1', [tokenHash]);
   }
 
@@ -126,11 +148,9 @@ export class AuthService {
     );
 
     const plainRefreshToken = crypto.randomBytes(40).toString('hex');
-    const tokenHash = crypto.createHash('sha256').update(plainRefreshToken).digest('hex');
+    const tokenHash = hashRefreshToken(plainRefreshToken);
 
-    // Parse REFRESH_TOKEN_EXPIRES_IN as days (default "7d" → 7 days)
-    const expiresIn = env.REFRESH_TOKEN_EXPIRES_IN;
-    const days = Number.parseInt(expiresIn.replace(/\D/g, ''), 10) || 7;
+    const days = refreshExpiryToDays(env.REFRESH_TOKEN_EXPIRES_IN);
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + days);
 

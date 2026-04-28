@@ -16,7 +16,7 @@ import {
 
 export const financialsRouter = Router();
 
-// financialsRouter.use(authenticate);
+financialsRouter.use(authenticate);
 
 financialsRouter.get('/kpis', financialsSummaryValidator, validateRequest, getKpis);
 financialsRouter.get('/summary', financialsSummaryValidator, validateRequest, getSummary);

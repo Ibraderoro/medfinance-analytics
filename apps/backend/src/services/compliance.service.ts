@@ -3,14 +3,16 @@ import { query } from '../config/database';
 interface PaginationOptions {
   page: number;
   limit: number;
+  organisationId: string;
 }
 
 interface AlertOptions {
   severity?: string;
+  organisationId: string;
 }
 
 export class ComplianceService {
-  async getComplianceStatus() {
+  async getComplianceStatus(organisationId: string) {
     const rows = await query<Record<string, unknown>>(
       `SELECT
          regulation_code,
@@ -19,7 +21,9 @@ export class ComplianceService {
          next_review_due_at,
          assigned_to
        FROM compliance_items
+       WHERE organisation_id = $1
        ORDER BY next_review_due_at ASC`,
+      [organisationId],
     );
     return rows;
   }
@@ -38,12 +42,18 @@ export class ComplianceService {
            al.performed_at,
            al.metadata
          FROM audit_log al
+         INNER JOIN users u ON u.id = al.performed_by
+         WHERE u.organisation_id = $1
          ORDER BY al.performed_at DESC
-         LIMIT $1 OFFSET $2`,
-        [opts.limit, offset],
+         LIMIT $2 OFFSET $3`,
+        [opts.organisationId, opts.limit, offset],
       ),
       query<{ count: string }>(
-        'SELECT COUNT(*) AS count FROM audit_log',
+        `SELECT COUNT(*) AS count
+         FROM audit_log al
+         INNER JOIN users u ON u.id = al.performed_by
+         WHERE u.organisation_id = $1`,
+        [opts.organisationId],
       ),
     ]);
 
@@ -66,7 +76,8 @@ export class ComplianceService {
          due_date,
          status
        FROM regulatory_alerts
-       WHERE ($1::text IS NULL OR severity = $1)
+       WHERE organisation_id = $1
+         AND ($2::text IS NULL OR severity = $2)
        ORDER BY
          CASE severity
            WHEN 'critical' THEN 1
@@ -75,7 +86,7 @@ export class ComplianceService {
            ELSE 4
          END,
          due_date ASC`,
-      [opts.severity ?? null],
+      [opts.organisationId, opts.severity ?? null],
     );
     return rows;
   }
