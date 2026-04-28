@@ -11,11 +11,11 @@ export interface FinancialTransaction {
 }
 
 export interface FinancialSummary {
-  totalRevenue: number;
-  totalExpenses: number;
-  netIncome: number;
-  period: string;
-  year: number;
+  total_revenue: number;
+  total_expenses: number;
+  net_income: number;
+  period?: string;
+  year?: number;
 }
 
 export interface RevenueDataPoint {

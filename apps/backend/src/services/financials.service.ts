@@ -14,8 +14,25 @@ interface DateRangeOptions {
 const cache = new CacheService('financials', 300);
 
 export class FinancialsService {
+  async getKpis(opts: { year: number }) {
+    const cacheKey = `kpis:${opts.year}`;
+    const cached = await cache.get(cacheKey);
+    if (cached) return cached;
+
+    const rows = await query<Record<string, unknown>>(
+      `SELECT *
+       FROM financial_kpis
+       WHERE fiscal_year = $1
+       ORDER BY fiscal_month ASC`,
+      [opts.year],
+    );
+
+    await cache.set(cacheKey, rows);
+    return rows;
+  }
+
   async getSummary(opts: SummaryOptions) {
-    const cacheKey = `summary:${opts.period}:${opts.year}`;
+    const cacheKey = `summary:${opts.year}`;
     const cached = await cache.get(cacheKey);
     if (cached) return cached;
 

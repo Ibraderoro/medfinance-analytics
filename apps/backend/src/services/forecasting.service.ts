@@ -19,7 +19,10 @@ export class ForecastingService {
          COALESCE(SUM(t.amount), 0) AS actual_total
        FROM forecasts f
        LEFT JOIN transactions t
-         ON t.forecast_id = f.id
+         ON t.department_id = f.department_id
+        AND EXTRACT(YEAR  FROM t.occurred_on) = f.fiscal_year
+        AND EXTRACT(MONTH FROM t.occurred_on) = f.fiscal_month
+        AND t.transaction_type = f.metric_type
        WHERE f.metric_type = $1
          AND MAKE_DATE(f.fiscal_year, f.fiscal_month, 1) >= DATE_TRUNC('month', NOW()) - INTERVAL '24 months'
        GROUP BY MAKE_DATE(f.fiscal_year, f.fiscal_month, 1), f.metric_type
