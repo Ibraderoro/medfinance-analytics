@@ -11,6 +11,7 @@ import { rateLimiter } from './middleware/rateLimiter';
 import { requestLogger } from './middleware/logger';
 
 export const app: Application = express();
+app.locals.isShuttingDown = false;
 
 // ── Runtime/infra settings ───────────────────────────────────────────────
 if (env.isProduction()) {

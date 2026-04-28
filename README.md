@@ -178,6 +178,8 @@ VITE_API_URL=https://api.your-domain.com/api/v1
 
 For local development, keep this in `.env`/`.env.local`. For Vercel deployments, set `VITE_API_URL` in the Vercel project settings (Environment Variables) for each environment (Production/Preview/Development).
 
+Backend cloud deployment (Render + managed PostgreSQL/Redis): [`docs/backend-cloud-deployment-render.md`](docs/backend-cloud-deployment-render.md).
+
 ---
 
 ## ▲ Deploying frontend to Vercel

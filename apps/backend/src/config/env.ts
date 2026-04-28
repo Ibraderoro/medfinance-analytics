@@ -49,9 +49,11 @@ export const env = {
     optionalEnv('NODE_ENV', 'development') === 'production',
   ),
 
+  REDIS_URL: optionalEnv('REDIS_URL'),
   REDIS_HOST: optionalEnv('REDIS_HOST', 'localhost'),
   REDIS_PORT: parseIntEnv('REDIS_PORT', 6379),
   REDIS_PASSWORD: optionalEnv('REDIS_PASSWORD'),
+  REDIS_TLS: optionalBooleanEnv('REDIS_TLS', optionalEnv('NODE_ENV', 'development') === 'production'),
 
   JWT_SECRET: requireEnv('JWT_SECRET'),
   JWT_EXPIRES_IN: optionalEnv('JWT_EXPIRES_IN', '1d'),
