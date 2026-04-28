@@ -4,6 +4,7 @@ process.env.DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://user:pass@l
 
 import http from 'http';
 import { NextFunction, Request, Response } from 'express';
+import { AuthenticatedRequest } from '../middleware/auth';
 
 const mockQuery = jest.fn();
 
@@ -23,7 +24,7 @@ jest.mock('../middleware/auth', () => {
   const actual = jest.requireActual('../middleware/auth');
   return {
     ...actual,
-    authenticate: (req: Request, _res: Response, next: NextFunction) => {
+    authenticate: (req: AuthenticatedRequest, _res: Response, next: NextFunction) => {
       req.user = {
         id: 'user-1',
         email: 'cfo@example.com',
@@ -110,7 +111,8 @@ describe('Critical route integration', () => {
 
     expect(result.status).toBe(400);
     expect(result.body.success).toBe(false);
-    expect(result.body.error.code).toBe('VALIDATION_ERROR');
+    const errorBody = result.body.error;
+    expect(errorBody && typeof errorBody === 'object' && 'code' in errorBody ? errorBody.code : undefined).toBe('VALIDATION_ERROR');
   });
 
   it('GET /compliance/status returns empty array when no rows exist', async () => {
