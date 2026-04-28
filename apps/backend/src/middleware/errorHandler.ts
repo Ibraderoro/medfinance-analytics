@@ -13,7 +13,7 @@ export function errorHandler(
   _next: NextFunction,
 ): void {
   void _next;
-  const statusCode = err.statusCode ?? (err.message.includes('CORS blocked') ? 403 : 500);
+  const statusCode = err.statusCode ?? ((err.message.includes('CORS blocked') || err.message.includes('Origin not allowed by CORS')) ? 403 : 500);
   const isOperational = err.isOperational ?? false;
 
   if (!isOperational) {

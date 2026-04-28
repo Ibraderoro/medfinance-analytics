@@ -288,6 +288,26 @@ DO UPDATE SET
   cash_reserve_amount = EXCLUDED.cash_reserve_amount,
   updated_at = NOW();
 
+
+-- ---------------------------------------------------------------------------
+-- 7. Application users (demo credentials)
+-- ---------------------------------------------------------------------------
+INSERT INTO users (
+  id, email, password_hash, first_name, last_name, role, organisation_id, is_active
+)
+VALUES
+  (
+    md5('user_demo_cfo')::uuid,
+    'demo@medfinance.test',
+    '$2a$12$mH/JllR1HHEYeoqF5yKt4evTqGGdXja3X9Ac8T5G9WxPHqU46zKBK',
+    'Demo',
+    'CFO',
+    'cfo',
+    md5('org_medfinance_demo')::uuid,
+    true
+  )
+ON CONFLICT (email) DO NOTHING;
+
 -- ---------------------------------------------------------------------------
 -- 7. Compliance sample data
 -- ---------------------------------------------------------------------------

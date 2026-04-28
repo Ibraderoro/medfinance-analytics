@@ -10,7 +10,7 @@ import { alertsValidator, auditLogValidator } from '../validators/queryValidator
 
 export const complianceRouter = Router();
 
-// complianceRouter.use(authenticate);
+complianceRouter.use(authenticate);
 
 complianceRouter.get('/status', getComplianceStatus);
 complianceRouter.get('/audit-log', auditLogValidator, validateRequest, getAuditLog);

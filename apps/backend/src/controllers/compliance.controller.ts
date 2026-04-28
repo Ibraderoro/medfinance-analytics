@@ -1,16 +1,18 @@
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
 import { ComplianceService } from '../services/compliance.service';
 import { createBadRequestError, parseIntegerQuery } from '../utils/validation';
+import { AuthenticatedRequest, requireAuthenticatedUser } from '../middleware/auth';
 
 const service = new ComplianceService();
 
 export async function getComplianceStatus(
-  req: Request,
+  req: AuthenticatedRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
   try {
-    const data = await service.getComplianceStatus();
+    const user = requireAuthenticatedUser(req);
+    const data = await service.getComplianceStatus(user.organisationId);
     res.json({ data });
   } catch (err) {
     next(err);
@@ -18,11 +20,12 @@ export async function getComplianceStatus(
 }
 
 export async function getAuditLog(
-  req: Request,
+  req: AuthenticatedRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
   try {
+    const user = requireAuthenticatedUser(req);
     const { page, limit } = req.query;
     const data = await service.getAuditLog({
       page: parseIntegerQuery(page as string | undefined, {
@@ -35,6 +38,7 @@ export async function getAuditLog(
           min: 1,
           max: 100,
         }) ?? 50,
+      organisationId: user.organisationId,
     });
     res.json({ data });
   } catch (err) {
@@ -43,17 +47,19 @@ export async function getAuditLog(
 }
 
 export async function getRegulatoryAlerts(
-  req: Request,
+  req: AuthenticatedRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
   try {
+    const user = requireAuthenticatedUser(req);
     const { severity } = req.query;
     if (severity !== undefined && !['low', 'medium', 'high', 'critical'].includes(severity as string)) {
       throw createBadRequestError('severity must be one of: low, medium, high, critical');
     }
     const data = await service.getRegulatoryAlerts({
       severity: severity as 'low' | 'medium' | 'high' | 'critical' | undefined,
+      organisationId: user.organisationId,
     });
 
     res.json({ data });
