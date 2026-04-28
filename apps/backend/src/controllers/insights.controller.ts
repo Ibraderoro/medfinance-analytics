@@ -12,7 +12,7 @@ export async function getInsights(
   try {
     const user = requireAuthenticatedUser(req);
     const data = await service.getInsights(user.organization_id);
-    res.json({ data });
+    res.json(data);
   } catch (err) {
     next(err);
   }
