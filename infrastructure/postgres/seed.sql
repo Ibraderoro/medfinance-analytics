@@ -251,8 +251,37 @@ FROM
 ON CONFLICT (department_id, fiscal_year, fiscal_month, metric_type, scenario) DO NOTHING;
 
 
+
 -- ---------------------------------------------------------------------------
--- 6. Compliance sample data
+-- 6. Cash reserves for runway analytics
+-- ---------------------------------------------------------------------------
+INSERT INTO financial_cash_reserves (month_start, cash_reserve_amount)
+WITH monthly_net AS (
+  SELECT
+    DATE_TRUNC('month', occurred_on::timestamp)::date AS month_start,
+    COALESCE(SUM(CASE WHEN transaction_type = 'revenue' THEN amount ELSE -amount END), 0) AS net_cash_flow
+  FROM transactions
+  GROUP BY 1
+),
+running_cash AS (
+  SELECT
+    month_start,
+    12000000::numeric
+      + SUM(net_cash_flow) OVER (ORDER BY month_start ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+      AS cash_reserve_amount
+  FROM monthly_net
+)
+SELECT
+  month_start,
+  ROUND(GREATEST(cash_reserve_amount, 0), 2)
+FROM running_cash
+ON CONFLICT (month_start)
+DO UPDATE SET
+  cash_reserve_amount = EXCLUDED.cash_reserve_amount,
+  updated_at = NOW();
+
+-- ---------------------------------------------------------------------------
+-- 7. Compliance sample data
 -- ---------------------------------------------------------------------------
 INSERT INTO compliance_items (
   id, regulation_code, status, last_reviewed_at, next_review_due_at, assigned_to, organisation_id
@@ -274,7 +303,7 @@ ON CONFLICT (id) DO NOTHING;
 COMMIT;
 
 -- =============================================================================
--- 6. Convenience views  (financials_revenue / financials_expenses)
+-- 8. Convenience views  (financials_revenue / financials_expenses)
 -- =============================================================================
 
 CREATE OR REPLACE VIEW financials_revenue AS
@@ -315,7 +344,7 @@ JOIN departments  d ON d.id = t.department_id
 WHERE t.transaction_type = 'expense';
 
 -- =============================================================================
--- 7. Materialized summary view  (monthly P&L + per-category breakdown)
+-- 9. Materialized summary view  (monthly P&L + per-category breakdown)
 -- =============================================================================
 DROP MATERIALIZED VIEW IF EXISTS mv_monthly_financial_summary;
 
