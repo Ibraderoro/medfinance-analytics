@@ -6,10 +6,7 @@ import morgan from 'morgan';
 import { env } from './config/env';
 import { router } from './routes';
 import { handleStripeWebhook } from './controllers/billing.controller';
-import { errorHandler } from './middleware/errorHandler';
-import { rateLimiter } from './middleware/rateLimiter';
-import { requestLogger } from './middleware/logger';
-import { sanitizeInput } from './middleware/sanitizeInput';
+import { errorHandler, rateLimiter, requestLogger, sanitizeInput, trackApiAnalytics } from './middleware';
 
 export const app: Application = express();
 app.locals.isShuttingDown = false;
