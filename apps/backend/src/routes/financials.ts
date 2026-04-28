@@ -8,7 +8,11 @@ import {
   getExpenses,
   getCashFlow,
 } from '../controllers/financials.controller';
-import { getLiveFinancials } from '../controllers/financialsLive.controller';
+import {
+  getLiveFinancials,
+  notifyTransactionAdded,
+  notifyForecastChanged,
+} from '../controllers/financialsLive.controller';
 import {
   financialsSummaryValidator,
   dateRangeValidator,
@@ -25,3 +29,6 @@ financialsRouter.get('/expenses', dateRangeValidator, validateRequest, getExpens
 financialsRouter.get('/cash-flow', dateRangeValidator, validateRequest, getCashFlow);
 
 financialsRouter.get('/live', getLiveFinancials);
+
+financialsRouter.post('/live/events/transaction-added', notifyTransactionAdded);
+financialsRouter.post('/live/events/forecast-changed', notifyForecastChanged);

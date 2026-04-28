@@ -21,7 +21,7 @@ async function bootstrap(): Promise<void> {
 
     const shutdown = (signal: string) => {
       logger.info(`Received ${signal}. Shutting down gracefully...`);
-      liveFinancialsService.stop();
+      void liveFinancialsService.stop();
       server.close((error) => {
         if (error) {
           logger.error('Error during server shutdown', error);
