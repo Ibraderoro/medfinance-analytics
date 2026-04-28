@@ -7,14 +7,15 @@ import { env } from './config/env';
 import { liveFinancialsService } from './services/liveFinancials.service';
 
 const PORT = Number.parseInt(process.env.PORT ?? `${env.PORT}`, 10);
-const SHUTDOWN_TIMEOUT_MS = 10_000;
-
 let isShuttingDown = false;
 
 app.use((_req, res, next) => {
   if (isShuttingDown) {
     res.setHeader('Connection', 'close');
-    res.status(503).json({ message: 'Server is shutting down' });
+    res.status(503).json({
+      success: false,
+      error: { message: 'Server is shutting down', code: 'SERVER_SHUTTING_DOWN' },
+    });
     return;
   }
   next();
@@ -28,7 +29,7 @@ async function bootstrap(): Promise<void> {
     await liveFinancialsService.start();
 
     const server = app.listen(PORT, () => {
-      logger.info(`🚀 MedFinance API running on port ${PORT} [${env.NODE_ENV}]`);
+      logger.info('MedFinance API started', { port: PORT, env: env.NODE_ENV });
     });
 
     const shutdown = async (signal: string) => {
@@ -38,31 +39,41 @@ async function bootstrap(): Promise<void> {
       isShuttingDown = true;
       app.locals.isShuttingDown = true;
 
-      logger.info(`Received ${signal}. Shutting down gracefully...`);
-      void liveFinancialsService.stop();
-      server.close((error) => {
+      logger.info('Received shutdown signal', { signal });
+      await liveFinancialsService.stop();
+      server.close(async (error) => {
         if (error) {
-          logger.error('Error during server shutdown', error);
+          logger.error('Error during server shutdown', { message: error.message, stack: error.stack });
           process.exit(1);
+          return;
         }
+
+        await Promise.allSettled([disconnectDatabase(), disconnectRedis()]);
+        process.exit(0);
       });
     };
 
-    process.on('SIGTERM', () => shutdown('SIGTERM'));
-    process.on('SIGINT', () => shutdown('SIGINT'));
+    process.on('SIGTERM', () => {
+      void shutdown('SIGTERM');
+    });
+    process.on('SIGINT', () => {
+      void shutdown('SIGINT');
+    });
   } catch (error) {
-    logger.error('Failed to start server:', error);
+    const err = error as Error;
+    logger.error('Failed to start server', { message: err.message, stack: err.stack });
     process.exit(1);
   }
 }
 
 process.on('unhandledRejection', (reason) => {
-  logger.error('Unhandled Promise rejection:', reason);
+  const err = reason as Error;
+  logger.error('Unhandled promise rejection', { message: err?.message ?? String(reason), stack: err?.stack });
 });
 
 process.on('uncaughtException', (error) => {
-  logger.error('Uncaught exception:', error);
+  logger.error('Uncaught exception', { message: error.message, stack: error.stack });
   process.exit(1);
 });
 
-bootstrap();
+void bootstrap();

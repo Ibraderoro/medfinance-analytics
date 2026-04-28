@@ -8,15 +8,23 @@ function keyByIp(ip: string | undefined): string {
   return ip.trim().toLowerCase();
 }
 
+function createRateLimitMessage(message: string, code: string) {
+  return {
+    success: false,
+    error: {
+      message,
+      code,
+    },
+  };
+}
+
 export const rateLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+  windowMs: 15 * 60 * 1000,
   max: 200,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => keyByIp(req.ip),
-  message: {
-    error: 'Too many requests from this IP, please try again later.',
-  },
+  message: createRateLimitMessage('Too many requests from this IP, please try again later.', 'RATE_LIMITED'),
 });
 
 export const authRateLimiter = rateLimit({
@@ -25,7 +33,8 @@ export const authRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => keyByIp(req.ip),
-  message: {
-    error: 'Too many authentication attempts from this IP, please try again later.',
-  },
+  message: createRateLimitMessage(
+    'Too many authentication attempts from this IP, please try again later.',
+    'AUTH_RATE_LIMITED',
+  ),
 });

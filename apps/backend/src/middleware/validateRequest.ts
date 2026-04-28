@@ -13,10 +13,16 @@ export function validateRequest(
   }
 
   res.status(400).json({
-    error: 'Invalid request parameters',
-    details: result.array().map((item) => ({
-      field: item.type === 'field' ? item.path : 'request',
-      message: item.msg,
-    })),
+    success: false,
+    error: {
+      message: 'Invalid request parameters',
+      code: 'VALIDATION_ERROR',
+    },
+    data: {
+      details: result.array().map((item) => ({
+        field: item.type === 'field' ? item.path : 'request',
+        message: item.msg,
+      })),
+    },
   });
 }

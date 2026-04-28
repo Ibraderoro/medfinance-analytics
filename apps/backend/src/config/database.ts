@@ -9,6 +9,7 @@ function sqlInjectionError(message: string): AppError {
   const err = new Error(message) as AppError;
   err.statusCode = 400;
   err.isOperational = true;
+  err.code = 'INVALID_SQL_QUERY';
   return err;
 }
 
@@ -51,17 +52,30 @@ export function getPool(): Pool {
     });
 
     pool.on('error', (err) => {
-      logger.error('PostgreSQL pool error:', err);
+      logger.error('PostgreSQL pool error', { message: err.message, stack: err.stack });
     });
   }
   return pool;
 }
 
-export async function connectDatabase(): Promise<void> {
+export async function connectDatabase(retries = 12, retryDelayMs = 5_000): Promise<void> {
   const p = getPool();
-  const client: PoolClient = await p.connect();
-  client.release();
-  logger.info('✅ PostgreSQL connected');
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= retries; attempt += 1) {
+    try {
+      const client: PoolClient = await p.connect();
+      client.release();
+      logger.info('PostgreSQL connected', { attempt });
+      return;
+    } catch (error) {
+      lastError = error;
+      logger.warn('PostgreSQL connection attempt failed', { attempt, retries });
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+    }
+  }
+
+  throw lastError;
 }
 
 export async function disconnectDatabase(): Promise<void> {

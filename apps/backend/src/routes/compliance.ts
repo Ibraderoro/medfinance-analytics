@@ -6,12 +6,12 @@ import {
   getAuditLog,
   getRegulatoryAlerts,
 } from '../controllers/compliance.controller';
-import { alertsValidator, auditLogValidator } from '../validators/queryValidators';
+import { alertsValidator, auditLogValidator, complianceStatusValidator } from '../validators/queryValidators';
 
 export const complianceRouter = Router();
 
 complianceRouter.use(authenticate);
 
-complianceRouter.get('/status', getComplianceStatus);
+complianceRouter.get('/status', complianceStatusValidator, validateRequest, getComplianceStatus);
 complianceRouter.get('/audit-log', auditLogValidator, validateRequest, getAuditLog);
 complianceRouter.get('/alerts', alertsValidator, validateRequest, getRegulatoryAlerts);

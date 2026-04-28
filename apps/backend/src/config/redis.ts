@@ -11,6 +11,7 @@ export function getRedis(): Redis {
       maxRetriesPerRequest: 3,
       enableReadyCheck: true,
       tls: env.REDIS_TLS ? {} : undefined,
+      lazyConnect: true,
     };
 
     redisClient = managedRedisUrl
@@ -23,16 +24,32 @@ export function getRedis(): Redis {
         });
 
     redisClient.on('error', (err) => {
-      logger.error('Redis connection error:', err);
+      logger.error('Redis connection error', { message: err.message, stack: err.stack });
     });
   }
   return redisClient;
 }
 
-export async function connectRedis(): Promise<void> {
+export async function connectRedis(retries = 12, retryDelayMs = 3_000): Promise<void> {
   const client = getRedis();
-  await client.ping();
-  logger.info('✅ Redis connected');
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= retries; attempt += 1) {
+    try {
+      if (client.status === 'wait') {
+        await client.connect();
+      }
+      await client.ping();
+      logger.info('Redis connected', { attempt });
+      return;
+    } catch (error) {
+      lastError = error;
+      logger.warn('Redis connection attempt failed', { attempt, retries });
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+    }
+  }
+
+  throw lastError;
 }
 
 export async function disconnectRedis(): Promise<void> {
