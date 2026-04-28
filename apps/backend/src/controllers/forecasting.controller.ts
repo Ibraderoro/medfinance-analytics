@@ -1,18 +1,21 @@
-import { Request, Response, NextFunction } from 'express';
+import { Response, NextFunction } from 'express';
 import { ForecastingService } from '../services/forecasting.service';
 import { ForecastMetric } from '../services/forecasting/forecastingMath';
 import { parseIntegerQuery } from '../utils/validation';
+import { AuthenticatedRequest, requireAuthenticatedUser } from '../middleware/auth';
 
 const service = new ForecastingService();
 
 export async function getForecast(
-  req: Request,
+  req: AuthenticatedRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
   try {
+    const user = requireAuthenticatedUser(req);
     const { months, metric } = req.query;
     const data = await service.getForecast({
+      organizationId: user.organization_id,
       months:
         parseIntegerQuery(months as string | undefined, {
           label: 'months',
@@ -28,13 +31,15 @@ export async function getForecast(
 }
 
 export async function getBudgetVariance(
-  req: Request,
+  req: AuthenticatedRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> {
   try {
+    const user = requireAuthenticatedUser(req);
     const { year } = req.query;
     const data = await service.getBudgetVariance({
+      organizationId: user.organization_id,
       year:
         parseIntegerQuery(year as string | undefined, {
           label: 'year',

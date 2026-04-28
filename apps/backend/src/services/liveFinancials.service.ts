@@ -5,6 +5,7 @@ import { CacheService } from '../utils/cache';
 import { logger } from '../utils/logger';
 
 interface LiveMetricsPayload {
+  organization_id: string;
   year: number;
   summary: {
     total_revenue: number;
@@ -17,10 +18,13 @@ interface LiveMetricsPayload {
 
 const FINANCIALS_SUMMARY_CACHE_TTL_SECONDS = 300;
 const LIVE_UPDATE_INTERVAL_MS = 10_000;
-const LIVE_METRICS_REDIS_KEY = 'medfinance:financials:latest_metrics';
+
+function tenantRedisKey(organizationId: string): string {
+  return `medfinance:financials:latest_metrics:${organizationId}`;
+}
 
 export class LiveFinancialsService {
-  private readonly clients = new Set<Response>();
+  private readonly clients = new Map<Response, string>();
 
   private readonly cache = new CacheService(
     'financials',
@@ -33,8 +37,6 @@ export class LiveFinancialsService {
     if (this.ticker) {
       return;
     }
-
-    await this.refreshMetrics();
 
     this.ticker = setInterval(() => {
       void this.refreshMetrics();
@@ -55,12 +57,16 @@ export class LiveFinancialsService {
     logger.info('Live financial updater stopped');
   }
 
-  async addClient(res: Response): Promise<void> {
-    this.clients.add(res);
-    const latestMetrics = await this.getLatestMetrics();
+  async addClient(res: Response, organizationId: string): Promise<void> {
+    this.clients.set(res, organizationId);
+    const latestMetrics = await this.getLatestMetrics(organizationId);
 
     if (latestMetrics) {
       this.writeSseEvent(res, latestMetrics);
+    } else {
+      const payload = await this.buildPayload(organizationId);
+      await this.persistPayload(payload);
+      this.writeSseEvent(res, payload);
     }
 
     logger.info(`Live stream subscriber connected (${this.clients.size} active)`);
@@ -74,23 +80,31 @@ export class LiveFinancialsService {
   }
 
   private async refreshMetrics(): Promise<void> {
-    try {
-      const payload = await this.buildPayload();
-      await this.cache.set(`summary:${payload.year}`, payload.summary);
-      await getRedis().set(
-        LIVE_METRICS_REDIS_KEY,
-        JSON.stringify(payload),
-        'EX',
-        Math.ceil(LIVE_UPDATE_INTERVAL_MS / 1000) * 3,
-      );
+    const organizationIds = [...new Set(this.clients.values())];
+    if (organizationIds.length === 0) {
+      return;
+    }
 
-      this.broadcast(payload);
+    try {
+      const payloads = await Promise.all(organizationIds.map((orgId) => this.buildPayload(orgId)));
+      await Promise.all(payloads.map((payload) => this.persistPayload(payload)));
+      this.broadcast(payloads);
     } catch (error) {
       logger.warn('Live financial refresh failed:', error);
     }
   }
 
-  private async buildPayload(): Promise<LiveMetricsPayload> {
+  private async persistPayload(payload: LiveMetricsPayload): Promise<void> {
+    await this.cache.set(`summary:${payload.organization_id}:${payload.year}`, payload.summary);
+    await getRedis().set(
+      tenantRedisKey(payload.organization_id),
+      JSON.stringify(payload),
+      'EX',
+      Math.ceil(LIVE_UPDATE_INTERVAL_MS / 1000) * 3,
+    );
+  }
+
+  private async buildPayload(organizationId: string): Promise<LiveMetricsPayload> {
     const year = new Date().getFullYear();
 
     const summaryRows = await query<{
@@ -103,22 +117,25 @@ export class LiveFinancialsService {
          COALESCE(SUM(CASE WHEN transaction_type = 'expense' THEN amount ELSE 0 END), 0) AS total_expenses,
          COALESCE(SUM(CASE WHEN transaction_type = 'revenue' THEN amount ELSE -amount END), 0) AS net_income
        FROM transactions
-       WHERE EXTRACT(YEAR FROM occurred_on) = $1`,
-      [year],
+       WHERE organization_id = $1
+         AND EXTRACT(YEAR FROM occurred_on) = $2`,
+      [organizationId, year],
     );
 
     const latestKpiRows = await query<Record<string, unknown>>(
       `SELECT *
        FROM financial_kpis
-       WHERE fiscal_year = $1
+       WHERE organization_id = $1
+         AND fiscal_year = $2
        ORDER BY fiscal_month DESC
        LIMIT 1`,
-      [year],
+      [organizationId, year],
     );
 
     const summary = summaryRows[0];
 
     return {
+      organization_id: organizationId,
       year,
       summary: {
         total_revenue: Number(summary?.total_revenue ?? 0),
@@ -130,9 +147,9 @@ export class LiveFinancialsService {
     };
   }
 
-  private async getLatestMetrics(): Promise<LiveMetricsPayload | null> {
+  private async getLatestMetrics(organizationId: string): Promise<LiveMetricsPayload | null> {
     try {
-      const cached = await getRedis().get(LIVE_METRICS_REDIS_KEY);
+      const cached = await getRedis().get(tenantRedisKey(organizationId));
       return cached ? (JSON.parse(cached) as LiveMetricsPayload) : null;
     } catch (error) {
       logger.warn('Failed to read latest metrics from Redis:', error);
@@ -140,18 +157,21 @@ export class LiveFinancialsService {
     }
   }
 
-  private broadcast(payload: LiveMetricsPayload): void {
+  private broadcast(payloads: LiveMetricsPayload[]): void {
     if (this.clients.size === 0) {
       return;
     }
 
-    for (const client of this.clients) {
-      this.writeSseEvent(client, payload);
+    for (const [client, organizationId] of this.clients.entries()) {
+      const payload = payloads.find((item) => item.organization_id === organizationId);
+      if (payload) {
+        this.writeSseEvent(client, payload);
+      }
     }
   }
 
   private writeSseEvent(res: Response, payload: LiveMetricsPayload): void {
-    res.write(`event: financial-update\n`);
+    res.write('event: financial-update\n');
     res.write(`data: ${JSON.stringify(payload)}\n\n`);
   }
 }

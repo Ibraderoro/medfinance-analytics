@@ -39,7 +39,7 @@ describe('AuthService.login', () => {
         first_name: 'Alice',
         last_name: 'Smith',
         role: 'cfo',
-        organisation_id: 'org-uuid',
+        organization_id: 'org-uuid',
         is_active: true,
       },
     ]);
@@ -74,7 +74,7 @@ describe('AuthService.login', () => {
         email: 'user@example.com',
         password_hash: hash,
         role: 'viewer',
-        organisation_id: 'org-uuid',
+        organization_id: 'org-uuid',
         is_active: true,
       },
     ]);
@@ -91,7 +91,7 @@ describe('AuthService.login', () => {
         email: 'user@example.com',
         password_hash: 'irrelevant',
         role: 'viewer',
-        organisation_id: 'org-uuid',
+        organization_id: 'org-uuid',
         is_active: false,
       },
     ]);
@@ -120,7 +120,7 @@ describe('AuthService.register', () => {
         id: 'new-uuid',
         email: 'new@example.com',
         role: 'viewer',
-        organisation_id: 'org-uuid',
+        organization_id: 'org-uuid',
       },
     ]); // INSERT RETURNING
     mockQuery.mockResolvedValueOnce([]); // INSERT refresh token
@@ -166,7 +166,7 @@ describe('AuthService.refresh', () => {
         id: 'user-uuid',
         email: 'user@example.com',
         role: 'cfo',
-        organisation_id: 'org-uuid',
+        organization_id: 'org-uuid',
       },
     ]); // SELECT user
     mockQuery.mockResolvedValueOnce([]); // DELETE old token

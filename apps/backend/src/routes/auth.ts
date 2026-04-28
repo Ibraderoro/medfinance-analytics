@@ -14,7 +14,7 @@ authRouter.post(
     body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
     body('firstName').notEmpty().withMessage('First name is required'),
     body('lastName').notEmpty().withMessage('Last name is required'),
-    body('organisationId').isUUID().withMessage('Valid organisation ID (UUID) is required'),
+    body('organizationId').isUUID().withMessage('Valid organization ID (UUID) is required'),
   ],
   validateRequest,
   register,

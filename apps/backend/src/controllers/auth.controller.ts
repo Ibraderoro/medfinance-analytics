@@ -9,20 +9,20 @@ export async function register(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const { email, password, firstName, lastName, role, organisationId } = req.body as {
+    const { email, password, firstName, lastName, role, organizationId } = req.body as {
       email: string;
       password: string;
       firstName: string;
       lastName: string;
       role?: string;
-      organisationId: string;
+      organizationId: string;
     };
     const tokens = await service.register(
       email,
       password,
       firstName,
       lastName,
-      organisationId,
+      organizationId,
       role,
     );
     res.status(201).json({ data: tokens });

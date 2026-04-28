@@ -5,7 +5,7 @@ export interface FinancialTransaction {
   category: string;
   description: string;
   transaction_date: Date;
-  organisation_id: string;
+  organization_id: string;
   created_at: Date;
   updated_at: Date;
 }
@@ -15,6 +15,6 @@ export interface Budget {
   category: string;
   budgeted_amount: number;
   fiscal_year: number;
-  organisation_id: string;
+  organization_id: string;
   created_at: Date;
 }

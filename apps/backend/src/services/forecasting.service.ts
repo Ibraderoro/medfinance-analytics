@@ -10,10 +10,12 @@ import {
 interface ForecastOptions {
   months: number;
   metric: ForecastMetric;
+  organizationId: string;
 }
 
 interface BudgetVarianceOptions {
   year: number;
+  organizationId: string;
 }
 
 interface MonthlyFinancialRow {
@@ -51,7 +53,7 @@ function normalizeMonthValue(value: string | Date): string {
 }
 
 export class ForecastingService {
-  private async getMonthlyFinancialSeries(): Promise<MonthlyPoint[]> {
+  private async getMonthlyFinancialSeries(organizationId: string): Promise<MonthlyPoint[]> {
     const currentMonth = getMonthStart(new Date());
     const startMonth = addMonths(currentMonth, -(HISTORY_MONTHS - 1));
 
@@ -65,7 +67,8 @@ export class ForecastingService {
            SUM(CASE WHEN t.transaction_type = 'revenue' THEN t.amount ELSE 0 END) AS revenue,
            SUM(CASE WHEN t.transaction_type = 'expense' THEN t.amount ELSE 0 END) AS expense
          FROM transactions t
-         WHERE t.occurred_on >= $1::date
+         WHERE t.organization_id = $3
+           AND t.occurred_on >= $1::date
            AND t.occurred_on < ($2::date + interval '1 month')
          GROUP BY DATE_TRUNC('month', t.occurred_on)::date
        )
@@ -76,7 +79,7 @@ export class ForecastingService {
        FROM month_series ms
        LEFT JOIN monthly_totals mt ON mt.month = ms.month
        ORDER BY ms.month ASC`,
-      [formatMonth(startMonth), formatMonth(currentMonth)],
+      [formatMonth(startMonth), formatMonth(currentMonth), organizationId],
     );
 
     return rows.map((row) => {
@@ -92,7 +95,7 @@ export class ForecastingService {
   }
 
   async getForecast(opts: ForecastOptions) {
-    const monthlySeries = await this.getMonthlyFinancialSeries();
+    const monthlySeries = await this.getMonthlyFinancialSeries(opts.organizationId);
 
     const months = monthlySeries.map((point) => point.month);
     const revenueSeries = monthlySeries.map((point) => point.revenue);
@@ -139,7 +142,7 @@ export class ForecastingService {
   }
 
   async getBudgetVariance(opts: BudgetVarianceOptions) {
-    const rows = await query<Record<string, unknown>>(
+    return query<Record<string, unknown>>(
       `SELECT
          d.name AS department,
          f.metric_type,
@@ -147,16 +150,16 @@ export class ForecastingService {
          COALESCE(SUM(t.amount), 0) AS actual_amount,
          SUM(f.projected_amount) - COALESCE(SUM(t.amount), 0) AS variance
        FROM forecasts f
-       INNER JOIN departments d ON d.id = f.department_id
+       INNER JOIN departments d ON d.id = f.department_id AND d.organization_id = $1
        LEFT JOIN transactions t
          ON t.forecast_id = f.id
-        AND EXTRACT(YEAR FROM t.occurred_on) = $1
-       WHERE f.fiscal_year = $1
+        AND t.organization_id = $1
+        AND EXTRACT(YEAR FROM t.occurred_on) = $2
+       WHERE f.organization_id = $1
+         AND f.fiscal_year = $2
        GROUP BY d.name, f.metric_type
        ORDER BY variance DESC`,
-      [opts.year],
+      [opts.organizationId, opts.year],
     );
-
-    return rows;
   }
 }

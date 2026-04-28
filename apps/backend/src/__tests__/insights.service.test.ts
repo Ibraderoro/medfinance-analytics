@@ -18,7 +18,7 @@ describe('InsightsService.getInsights', () => {
   it('returns high risk when no KPI history exists', async () => {
     mockQuery.mockResolvedValueOnce([]);
 
-    const result = await service.getInsights();
+    const result = await service.getInsights('org-uuid');
 
     expect(result.health_score).toBe(0);
     expect(result.risk_level).toBe('high');
@@ -49,7 +49,7 @@ describe('InsightsService.getInsights', () => {
       },
     ]);
 
-    const result = await service.getInsights();
+    const result = await service.getInsights('org-uuid');
 
     expect(result.insights.join(' ')).toContain('Revenue increased');
     expect(result.insights.join(' ')).toContain('Revenue growth is outpacing expense growth');
@@ -91,7 +91,7 @@ describe('InsightsService.getInsights', () => {
       },
     ]);
 
-    const result = await service.getInsights();
+    const result = await service.getInsights('org-uuid');
 
     expect(result.risk_level).toBe('high');
     expect(result.insights.join(' ')).toContain('Cash runway is 4.7 months (high risk');
