@@ -39,7 +39,10 @@ export function authenticate(
   const authHeader = req.headers.authorization;
 
   if (!authHeader?.startsWith('Bearer ')) {
-    res.status(401).json({ error: 'Missing or invalid authorization header' });
+    res.status(401).json({
+      success: false,
+      error: { message: 'Missing or invalid authorization header', code: 'AUTH_MISSING_HEADER' },
+    });
     return;
   }
 
@@ -53,13 +56,19 @@ export function authenticate(
     });
 
     if (!isUserPayload(payload)) {
-      res.status(401).json({ error: 'Invalid token payload' });
+      res.status(401).json({
+        success: false,
+        error: { message: 'Invalid token payload', code: 'AUTH_INVALID_PAYLOAD' },
+      });
       return;
     }
 
     const organizationId = payload.organization_id ?? payload.organisationId;
     if (!organizationId) {
-      res.status(401).json({ error: 'Invalid token payload' });
+      res.status(401).json({
+        success: false,
+        error: { message: 'Invalid token payload', code: 'AUTH_INVALID_PAYLOAD' },
+      });
       return;
     }
 
@@ -72,15 +81,19 @@ export function authenticate(
 
     next();
   } catch {
-    res.status(401).json({ error: 'Invalid or expired token' });
+    res.status(401).json({
+      success: false,
+      error: { message: 'Invalid or expired token', code: 'AUTH_INVALID_TOKEN' },
+    });
   }
 }
 
 export function requireAuthenticatedUser(req: AuthenticatedRequest): NonNullable<AuthenticatedRequest['user']> {
   if (!req.user) {
-    const error = new Error('Unauthorized') as Error & { statusCode?: number; isOperational?: boolean };
+    const error = new Error('Unauthorized') as Error & { statusCode?: number; isOperational?: boolean; code?: string };
     error.statusCode = 401;
     error.isOperational = true;
+    error.code = 'AUTH_REQUIRED';
     throw error;
   }
 

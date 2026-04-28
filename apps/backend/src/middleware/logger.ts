@@ -10,11 +10,12 @@ export function requestLogger(
 
   res.on('finish', () => {
     const duration = Date.now() - start;
-    logger.info('HTTP request', {
+    logger.info('HTTP request completed', {
+      requestId: req.requestId,
       method: req.method,
-      url: req.originalUrl,
+      path: req.originalUrl,
       statusCode: res.statusCode,
-      duration: `${duration}ms`,
+      durationMs: duration,
       ip: req.ip,
     });
   });

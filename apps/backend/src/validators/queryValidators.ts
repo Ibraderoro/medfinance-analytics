@@ -71,3 +71,10 @@ export const alertsValidator = [
     .isIn(['low', 'medium', 'high', 'critical'])
     .withMessage('severity must be one of: low, medium, high, critical'),
 ];
+
+export const complianceStatusValidator = [
+  query('includeResolved')
+    .optional()
+    .isBoolean()
+    .withMessage('includeResolved must be a boolean value'),
+];
