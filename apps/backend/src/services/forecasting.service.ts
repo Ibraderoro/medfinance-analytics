@@ -17,7 +17,7 @@ interface BudgetVarianceOptions {
 }
 
 interface MonthlyFinancialRow {
-  month: string;
+  month: string | Date;
   revenue: string;
   expense: string;
 }
@@ -35,6 +35,19 @@ function toNumber(value: string | number | null | undefined): number {
   if (value === null || value === undefined) return 0;
   const parsed = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizeMonthValue(value: string | Date): string {
+  if (value instanceof Date) {
+    return value.toISOString().slice(0, 10);
+  }
+
+  const asDate = new Date(`${value}T00:00:00.000Z`);
+  if (!Number.isNaN(asDate.getTime())) {
+    return asDate.toISOString().slice(0, 10);
+  }
+
+  return String(value).slice(0, 10);
 }
 
 export class ForecastingService {
@@ -70,7 +83,7 @@ export class ForecastingService {
       const revenue = toNumber(row.revenue);
       const expense = toNumber(row.expense);
       return {
-        month: row.month,
+        month: normalizeMonthValue(row.month),
         revenue,
         expense,
         net_income: revenue - expense,
