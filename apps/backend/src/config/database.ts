@@ -30,6 +30,14 @@ export async function connectDatabase(): Promise<void> {
   logger.info('✅ PostgreSQL connected');
 }
 
+export async function disconnectDatabase(): Promise<void> {
+  if (!pool) {
+    return;
+  }
+
+  await pool.end();
+}
+
 export async function query<T extends QueryResultRow>(
   text: string,
   params?: unknown[],
