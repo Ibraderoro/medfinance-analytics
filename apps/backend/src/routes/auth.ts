@@ -15,6 +15,10 @@ authRouter.post(
     body('firstName').notEmpty().withMessage('First name is required'),
     body('lastName').notEmpty().withMessage('Last name is required'),
     body('organizationId').isUUID().withMessage('Valid organization ID (UUID) is required'),
+    body('role')
+      .optional()
+      .isIn(['cfo', 'finance_manager', 'auditor', 'viewer'])
+      .withMessage('role must be one of cfo, finance_manager, auditor, viewer'),
   ],
   validateRequest,
   register,

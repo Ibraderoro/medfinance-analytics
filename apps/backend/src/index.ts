@@ -30,6 +30,9 @@ async function bootstrap(): Promise<void> {
     const server = app.listen(PORT, () => {
       logger.info(`🚀 MedFinance API running on port ${PORT} [${env.NODE_ENV}]`);
     });
+    server.requestTimeout = env.HTTP_REQUEST_TIMEOUT_MS;
+    server.headersTimeout = env.HTTP_HEADERS_TIMEOUT_MS;
+    server.keepAliveTimeout = env.HTTP_KEEP_ALIVE_TIMEOUT_MS;
 
     const shutdown = async (signal: string) => {
       if (isShuttingDown) {
@@ -39,12 +42,25 @@ async function bootstrap(): Promise<void> {
       app.locals.isShuttingDown = true;
 
       logger.info(`Received ${signal}. Shutting down gracefully...`);
-      void liveFinancialsService.stop();
+      const forceExitTimer = setTimeout(() => {
+        logger.error('Graceful shutdown timed out; forcing exit');
+        process.exit(1);
+      }, SHUTDOWN_TIMEOUT_MS);
+
+      try {
+        await liveFinancialsService.stop();
+        await disconnectRedis();
+        await disconnectDatabase();
+      } finally {
+        clearTimeout(forceExitTimer);
+      }
+
       server.close((error) => {
         if (error) {
           logger.error('Error during server shutdown', error);
           process.exit(1);
         }
+        process.exit(0);
       });
     };
 
