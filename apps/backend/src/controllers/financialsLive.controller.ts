@@ -33,3 +33,31 @@ export async function getLiveFinancials(
     next(error);
   }
 }
+
+export async function notifyTransactionAdded(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const user = requireAuthenticatedUser(req);
+    await liveFinancialsService.publishTransactionAdded(user.organization_id);
+    res.status(202).json({ ok: true, event: 'transaction-added' });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function notifyForecastChanged(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const user = requireAuthenticatedUser(req);
+    await liveFinancialsService.publishForecastChanged(user.organization_id);
+    res.status(202).json({ ok: true, event: 'forecast-changed' });
+  } catch (error) {
+    next(error);
+  }
+}

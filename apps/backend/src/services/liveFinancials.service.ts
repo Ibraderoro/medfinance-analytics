@@ -1,3 +1,4 @@
+import Redis from 'ioredis';
 import { Response } from 'express';
 import { query } from '../config/database';
 import { getRedis } from '../config/redis';
@@ -16,11 +17,23 @@ interface LiveMetricsPayload {
   updatedAt: string;
 }
 
+type LiveEventType = 'transaction-added' | 'forecast-changed';
+
+interface LiveBroadcastEvent {
+  type: LiveEventType;
+  organization_id: string;
+  updatedAt: string;
+}
+
 const FINANCIALS_SUMMARY_CACHE_TTL_SECONDS = 300;
-const LIVE_UPDATE_INTERVAL_MS = 10_000;
+const LIVE_EVENT_CHANNEL = 'medfinance:financials:live-events';
 
 function tenantRedisKey(organizationId: string): string {
   return `medfinance:financials:latest_metrics:${organizationId}`;
+}
+
+function eventKey(type: LiveEventType, organizationId: string): string {
+  return `${type}:${organizationId}`;
 }
 
 export class LiveFinancialsService {
@@ -31,30 +44,38 @@ export class LiveFinancialsService {
     FINANCIALS_SUMMARY_CACHE_TTL_SECONDS,
   );
 
-  private ticker: NodeJS.Timeout | null = null;
+  private subscriber: Redis | null = null;
+
+  private readonly inFlightRefreshes = new Map<string, Promise<void>>();
 
   async start(): Promise<void> {
-    if (this.ticker) {
+    if (this.subscriber) {
       return;
     }
 
-    this.ticker = setInterval(() => {
-      void this.refreshMetrics();
-    }, LIVE_UPDATE_INTERVAL_MS);
+    this.subscriber = getRedis().duplicate();
+    await this.subscriber.subscribe(LIVE_EVENT_CHANNEL);
 
-    logger.info(
-      `Live financial updater started (interval: ${LIVE_UPDATE_INTERVAL_MS}ms)`,
-    );
+    this.subscriber.on('message', (channel, message) => {
+      if (channel !== LIVE_EVENT_CHANNEL) {
+        return;
+      }
+
+      void this.handlePubSubEvent(message);
+    });
+
+    logger.info(`Live financial pub/sub started (${LIVE_EVENT_CHANNEL})`);
   }
 
-  stop(): void {
-    if (!this.ticker) {
+  async stop(): Promise<void> {
+    if (!this.subscriber) {
       return;
     }
 
-    clearInterval(this.ticker);
-    this.ticker = null;
-    logger.info('Live financial updater stopped');
+    await this.subscriber.unsubscribe(LIVE_EVENT_CHANNEL);
+    this.subscriber.disconnect();
+    this.subscriber = null;
+    logger.info('Live financial pub/sub stopped');
   }
 
   async addClient(res: Response, organizationId: string): Promise<void> {
@@ -62,11 +83,11 @@ export class LiveFinancialsService {
     const latestMetrics = await this.getLatestMetrics(organizationId);
 
     if (latestMetrics) {
-      this.writeSseEvent(res, latestMetrics);
+      this.writeSseEvent(res, 'snapshot', latestMetrics);
     } else {
       const payload = await this.buildPayload(organizationId);
       await this.persistPayload(payload);
-      this.writeSseEvent(res, payload);
+      this.writeSseEvent(res, 'snapshot', payload);
     }
 
     logger.info(`Live stream subscriber connected (${this.clients.size} active)`);
@@ -79,18 +100,57 @@ export class LiveFinancialsService {
     );
   }
 
-  private async refreshMetrics(): Promise<void> {
-    const organizationIds = [...new Set(this.clients.values())];
-    if (organizationIds.length === 0) {
+  async publishTransactionAdded(organizationId: string): Promise<void> {
+    await this.publishEvent('transaction-added', organizationId);
+  }
+
+  async publishForecastChanged(organizationId: string): Promise<void> {
+    await this.publishEvent('forecast-changed', organizationId);
+  }
+
+  private async publishEvent(type: LiveEventType, organizationId: string): Promise<void> {
+    const event: LiveBroadcastEvent = {
+      type,
+      organization_id: organizationId,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await getRedis().publish(LIVE_EVENT_CHANNEL, JSON.stringify(event));
+  }
+
+  private async handlePubSubEvent(rawMessage: string): Promise<void> {
+    try {
+      const event = JSON.parse(rawMessage) as LiveBroadcastEvent;
+      if (!event?.organization_id || !event?.type) {
+        return;
+      }
+
+      await this.refreshAndBroadcast(event);
+    } catch (error) {
+      logger.warn('Invalid live financial pub/sub event:', error);
+    }
+  }
+
+  private async refreshAndBroadcast(event: LiveBroadcastEvent): Promise<void> {
+    const eventLock = eventKey(event.type, event.organization_id);
+    const existingRefresh = this.inFlightRefreshes.get(eventLock);
+    if (existingRefresh) {
+      await existingRefresh;
       return;
     }
 
+    const refreshTask = (async () => {
+      const payload = await this.buildPayload(event.organization_id);
+      await this.persistPayload(payload);
+      this.broadcast(event.type, payload);
+    })();
+
+    this.inFlightRefreshes.set(eventLock, refreshTask);
+
     try {
-      const payloads = await Promise.all(organizationIds.map((orgId) => this.buildPayload(orgId)));
-      await Promise.all(payloads.map((payload) => this.persistPayload(payload)));
-      this.broadcast(payloads);
-    } catch (error) {
-      logger.warn('Live financial refresh failed:', error);
+      await refreshTask;
+    } finally {
+      this.inFlightRefreshes.delete(eventLock);
     }
   }
 
@@ -100,7 +160,7 @@ export class LiveFinancialsService {
       tenantRedisKey(payload.organization_id),
       JSON.stringify(payload),
       'EX',
-      Math.ceil(LIVE_UPDATE_INTERVAL_MS / 1000) * 3,
+      FINANCIALS_SUMMARY_CACHE_TTL_SECONDS,
     );
   }
 
@@ -157,21 +217,24 @@ export class LiveFinancialsService {
     }
   }
 
-  private broadcast(payloads: LiveMetricsPayload[]): void {
+  private broadcast(eventType: LiveEventType, payload: LiveMetricsPayload): void {
     if (this.clients.size === 0) {
       return;
     }
 
     for (const [client, organizationId] of this.clients.entries()) {
-      const payload = payloads.find((item) => item.organization_id === organizationId);
-      if (payload) {
-        this.writeSseEvent(client, payload);
+      if (organizationId === payload.organization_id) {
+        this.writeSseEvent(client, eventType, payload);
       }
     }
   }
 
-  private writeSseEvent(res: Response, payload: LiveMetricsPayload): void {
-    res.write('event: financial-update\n');
+  private writeSseEvent(
+    res: Response,
+    event: LiveEventType | 'snapshot',
+    payload: LiveMetricsPayload,
+  ): void {
+    res.write(`event: ${event}\n`);
     res.write(`data: ${JSON.stringify(payload)}\n\n`);
   }
 }

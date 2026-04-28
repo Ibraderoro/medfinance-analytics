@@ -39,28 +39,10 @@ async function bootstrap(): Promise<void> {
       app.locals.isShuttingDown = true;
 
       logger.info(`Received ${signal}. Shutting down gracefully...`);
-
-      const forcedShutdown = setTimeout(() => {
-        logger.error(`Graceful shutdown timed out after ${SHUTDOWN_TIMEOUT_MS}ms`);
-        process.exit(1);
-      }, SHUTDOWN_TIMEOUT_MS);
-
-      server.close(async (error) => {
-        try {
-          liveFinancialsService.stop();
-          await disconnectRedis();
-          await disconnectDatabase();
-          clearTimeout(forcedShutdown);
-
-          if (error) {
-            logger.error('Error during server shutdown', error);
-            process.exit(1);
-            return;
-          }
-
-          process.exit(0);
-        } catch (shutdownError) {
-          logger.error('Error while closing dependencies during shutdown', shutdownError);
+      void liveFinancialsService.stop();
+      server.close((error) => {
+        if (error) {
+          logger.error('Error during server shutdown', error);
           process.exit(1);
         }
       });
