@@ -18,7 +18,7 @@ export function RevenueChart({ data, width = 600, height = 300 }: RevenueChartPr
   useEffect(() => {
     if (!svgRef.current || data.length === 0) return;
 
-    const margin = { top: 20, right: 30, bottom: 40, left: 60 };
+    const margin = { top: 20, right: 30, bottom: 60, left: 60 };
     const innerWidth = width - margin.left - margin.right;
     const innerHeight = height - margin.top - margin.bottom;
 
@@ -69,12 +69,22 @@ export function RevenueChart({ data, width = 600, height = 300 }: RevenueChartPr
       .attr('fill', '#1a56db')
       .attr('rx', 3);
 
+    const maxXTicks = 12;
+    const step = Math.max(1, Math.ceil(data.length / maxXTicks));
+    const xTickValues = data
+      .map((d) => d.month)
+      .filter((_, index) => index % step === 0);
+
     // Axes
     g.append('g')
       .attr('transform', `translate(0,${innerHeight})`)
-      .call(d3.axisBottom(x))
+      .call(d3.axisBottom(x).tickValues(xTickValues).tickSizeOuter(0))
       .selectAll('text')
-      .attr('font-size', '11px');
+      .attr('font-size', '11px')
+      .attr('text-anchor', 'end')
+      .attr('transform', 'rotate(-35)')
+      .attr('dx', '-0.5em')
+      .attr('dy', '0.35em');
 
     g.append('g')
       .call(
