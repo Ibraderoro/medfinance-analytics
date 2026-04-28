@@ -22,6 +22,14 @@ BEGIN;
 -- ---------------------------------------------------------------------------
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+-- Ensure KPI dependency exists even when migrations/init scripts were not applied
+CREATE TABLE IF NOT EXISTS financial_cash_reserves (
+  month_start DATE PRIMARY KEY,
+  cash_reserve_amount NUMERIC(16, 2) NOT NULL DEFAULT 0 CHECK (cash_reserve_amount >= 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- ---------------------------------------------------------------------------
 -- 1. Departments
 -- ---------------------------------------------------------------------------
