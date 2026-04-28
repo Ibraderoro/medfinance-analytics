@@ -2,7 +2,7 @@
   "name": "@medfinance/backend",
   "version": "1.0.0",
   "private": true,
-  "description": "MedFinance Analytics — Express REST API",
+  "description": "MedFinance Analytics \u2014 Express REST API",
   "main": "dist/index.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
@@ -13,7 +13,8 @@
     "test": "jest --coverage",
     "migrate": "node -r ts-node/register src/db/migrate.ts",
     "migrate:rollback": "node -r ts-node/register src/db/migrate.ts rollback",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "seed": "node -r ts-node/register src/db/seed.ts"
   },
   "dependencies": {
     "@medfinance/shared": "*",

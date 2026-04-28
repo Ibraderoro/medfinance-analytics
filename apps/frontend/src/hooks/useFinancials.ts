@@ -44,7 +44,7 @@ export function useFinancials(year?: number): UseFinancialsReturn {
         setPrevSummary(prevSummaryRes.data.data as FinancialSummary);
         const mapped = (revenueRes.data.data as Array<{ month: string; total: string | number }>).map(
           (d) => ({
-            month: new Date(d.month).toLocaleString('default', { month: 'short', year: '2-digit' }),
+            month: new Date(d.month).toLocaleString('default', { month: 'short', year: '2-digit', timeZone: 'UTC' }),
             total: Number(d.total),
           }),
         );

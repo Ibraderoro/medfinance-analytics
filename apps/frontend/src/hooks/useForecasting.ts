@@ -40,7 +40,7 @@ export function useForecasting(months = 12, metric = 'revenue'): UseForecastingR
           const actualValue = Number(d.actual_total);
           const forecastValue = Number(d.projected_total);
           return {
-            month: new Date(d.month).toLocaleString('default', { month: 'short', year: '2-digit' }),
+            month: new Date(d.month).toLocaleString('default', { month: 'short', year: '2-digit', timeZone: 'UTC' }),
             // Only show actual when a real value is present (> 0)
             actual: actualValue > 0 ? actualValue : undefined,
             forecast: forecastValue > 0 ? forecastValue : undefined,
