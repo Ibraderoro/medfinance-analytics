@@ -21,9 +21,9 @@ export class FinancialsService {
 
     const rows = await query<Record<string, unknown>>(
       `SELECT
-         SUM(CASE WHEN transaction_type = 'revenue' THEN amount ELSE 0 END) AS total_revenue,
-         SUM(CASE WHEN transaction_type = 'expense' THEN amount ELSE 0 END) AS total_expenses,
-         SUM(CASE WHEN transaction_type = 'revenue' THEN amount ELSE -amount END) AS net_income
+         COALESCE(SUM(CASE WHEN transaction_type = 'revenue' THEN amount ELSE 0 END), 0) AS total_revenue,
+         COALESCE(SUM(CASE WHEN transaction_type = 'expense' THEN amount ELSE 0 END), 0) AS total_expenses,
+         COALESCE(SUM(CASE WHEN transaction_type = 'revenue' THEN amount ELSE -amount END), 0) AS net_income
        FROM transactions
        WHERE EXTRACT(YEAR FROM occurred_on) = $1`,
       [opts.year],

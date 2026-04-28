@@ -33,22 +33,39 @@ export function useFinancials(year?: number): UseFinancialsReturn {
     const currentYear = year ?? new Date().getFullYear();
     const previousYear = currentYear - 1;
 
-    Promise.all([
+    Promise.allSettled([
       financialsApi.getSummary(currentYear),
       financialsApi.getSummary(previousYear),
       financialsApi.getRevenue(),
     ])
       .then(([summaryRes, prevSummaryRes, revenueRes]) => {
         if (cancelled) return;
-        setSummary(summaryRes.data.data as FinancialSummary);
-        setPrevSummary(prevSummaryRes.data.data as FinancialSummary);
-        const mapped = (revenueRes.data.data as Array<{ month: string; total: string | number }>).map(
-          (d) => ({
-            month: new Date(d.month).toLocaleString('default', { month: 'short', year: '2-digit', timeZone: 'UTC' }),
-            total: Number(d.total),
-          }),
-        );
-        setRevenue(mapped);
+
+        if (summaryRes.status === 'fulfilled') {
+          setSummary(summaryRes.value.data.data as FinancialSummary);
+        }
+
+        if (prevSummaryRes.status === 'fulfilled') {
+          setPrevSummary(prevSummaryRes.value.data.data as FinancialSummary);
+        }
+
+        if (revenueRes.status === 'fulfilled') {
+          const mapped = (revenueRes.value.data.data as Array<{ month: string; total: string | number }>).map(
+            (d) => ({
+              month: new Date(d.month).toLocaleString('default', { month: 'short', year: '2-digit', timeZone: 'UTC' }),
+              total: Number(d.total),
+            }),
+          );
+          setRevenue(mapped);
+        }
+
+        if (
+          summaryRes.status === 'rejected'
+          && prevSummaryRes.status === 'rejected'
+          && revenueRes.status === 'rejected'
+        ) {
+          throw summaryRes.reason;
+        }
       })
       .catch((err: Error) => {
         if (!cancelled) setError(err);
