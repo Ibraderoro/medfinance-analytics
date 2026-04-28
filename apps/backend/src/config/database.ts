@@ -46,9 +46,9 @@ export function getPool(): Pool {
       ssl: env.PG_SSL
         ? { rejectUnauthorized: env.PG_SSL_REJECT_UNAUTHORIZED }
         : undefined,
-      max: 20,
-      idleTimeoutMillis: 30_000,
-      connectionTimeoutMillis: 5_000,
+      max: env.PG_POOL_MAX,
+      idleTimeoutMillis: env.PG_IDLE_TIMEOUT_MS,
+      connectionTimeoutMillis: env.PG_CONNECTION_TIMEOUT_MS,
     });
 
     pool.on('error', (err) => {

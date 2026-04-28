@@ -31,6 +31,9 @@ async function bootstrap(): Promise<void> {
     const server = app.listen(PORT, () => {
       logger.info('MedFinance API started', { port: PORT, env: env.NODE_ENV });
     });
+    server.requestTimeout = env.HTTP_REQUEST_TIMEOUT_MS;
+    server.headersTimeout = env.HTTP_HEADERS_TIMEOUT_MS;
+    server.keepAliveTimeout = env.HTTP_KEEP_ALIVE_TIMEOUT_MS;
 
     const shutdown = async (signal: string) => {
       if (isShuttingDown) {

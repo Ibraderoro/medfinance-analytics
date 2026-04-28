@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { AuthService } from '../services/auth.service';
+import { env } from '../config/env';
 
 const service = new AuthService();
 
@@ -9,6 +10,11 @@ export async function register(
   next: NextFunction,
 ): Promise<void> {
   try {
+    if (!env.ALLOW_SELF_SERVICE_REGISTRATION) {
+      res.status(403).json({ error: 'Self-service registration is disabled' });
+      return;
+    }
+
     const { email, password, firstName, lastName, role, organizationId } = req.body as {
       email: string;
       password: string;

@@ -19,6 +19,7 @@ interface UserRow {
 }
 
 type UserIdentity = Pick<UserRow, 'id' | 'email' | 'role' | 'organization_id'>;
+const ALLOWED_ROLES = new Set(['cfo', 'finance_manager', 'auditor', 'viewer']);
 
 function authError(message: string): AppError {
   const err = new Error(message) as AppError;
@@ -30,6 +31,13 @@ function authError(message: string): AppError {
 function conflictError(message: string): AppError {
   const err = new Error(message) as AppError;
   err.statusCode = 409;
+  err.isOperational = true;
+  return err;
+}
+
+function validationError(message: string): AppError {
+  const err = new Error(message) as AppError;
+  err.statusCode = 400;
   err.isOperational = true;
   return err;
 }
@@ -68,6 +76,10 @@ export class AuthService {
     organizationId: string,
     role = 'viewer',
   ) {
+    if (!ALLOWED_ROLES.has(role)) {
+      throw validationError('Invalid role');
+    }
+
     const existing = await query<{ id: string }>(
       'SELECT id FROM users WHERE email = $1',
       [email],

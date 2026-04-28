@@ -1,4 +1,6 @@
 import { query } from '../config/database';
+import { env } from '../config/env';
+import { logger } from '../utils/logger';
 
 export interface AdminMetricsSnapshot {
   generatedAt: string;
@@ -38,6 +40,19 @@ interface ActiveUsersRow {
 }
 
 export class AnalyticsService {
+  private readonly queue: Array<{
+    endpoint: string;
+    method: string;
+    statusCode: number;
+    latencyMs: number;
+    userId?: string;
+    organizationId?: string;
+  }> = [];
+
+  private flushTimer: NodeJS.Timeout | null = null;
+
+  private flushInProgress = false;
+
   async recordApiRequest(input: {
     endpoint: string;
     method: string;
@@ -46,22 +61,29 @@ export class AnalyticsService {
     userId?: string;
     organizationId?: string;
   }): Promise<void> {
-    await query(
-      `INSERT INTO api_request_metrics
-       (endpoint, method, status_code, latency_ms, user_id, organization_id)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [
-        input.endpoint,
-        input.method,
-        input.statusCode,
-        input.latencyMs,
-        input.userId ?? null,
-        input.organizationId ?? null,
-      ],
-    );
+    if (Math.random() > env.ANALYTICS_SAMPLE_RATE) {
+      return;
+    }
+
+    if (this.queue.length >= env.ANALYTICS_MAX_QUEUE_SIZE) {
+      logger.warn('Dropping analytics events because queue is full', {
+        queueSize: this.queue.length,
+        maxQueueSize: env.ANALYTICS_MAX_QUEUE_SIZE,
+      });
+      return;
+    }
+
+    this.queue.push(input);
+    this.ensureFlushLoop();
+
+    if (this.queue.length >= env.ANALYTICS_BATCH_SIZE) {
+      await this.flush();
+    }
   }
 
   async getAdminMetrics(windowMinutes = 60, activeWindowMinutes = 5): Promise<AdminMetricsSnapshot> {
+    await this.flush();
+
     const safeWindowMinutes = Number.isFinite(windowMinutes) ? Math.max(1, Math.floor(windowMinutes)) : 60;
     const safeActiveWindowMinutes = Number.isFinite(activeWindowMinutes)
       ? Math.max(1, Math.floor(activeWindowMinutes))
@@ -123,6 +145,58 @@ export class AnalyticsService {
         errorRatePercent: Number.parseFloat(row.error_rate_percent),
       })),
     };
+  }
+
+  private ensureFlushLoop(): void {
+    if (this.flushTimer) {
+      return;
+    }
+
+    this.flushTimer = setInterval(() => {
+      void this.flush();
+    }, env.ANALYTICS_FLUSH_INTERVAL_MS);
+    this.flushTimer.unref();
+  }
+
+  private async flush(): Promise<void> {
+    if (this.flushInProgress || this.queue.length === 0) {
+      return;
+    }
+
+    this.flushInProgress = true;
+    const batch = this.queue.splice(0, env.ANALYTICS_BATCH_SIZE);
+
+    const values: unknown[] = [];
+    const placeholders = batch
+      .map((item, index) => {
+        const offset = index * 6;
+        values.push(
+          item.endpoint,
+          item.method,
+          item.statusCode,
+          item.latencyMs,
+          item.userId ?? null,
+          item.organizationId ?? null,
+        );
+        return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6})`;
+      })
+      .join(', ');
+
+    try {
+      await query(
+        `INSERT INTO api_request_metrics
+         (endpoint, method, status_code, latency_ms, user_id, organization_id)
+         VALUES ${placeholders}`,
+        values,
+      );
+    } catch (error) {
+      logger.warn('Failed to flush analytics batch', {
+        error: error instanceof Error ? error.message : 'unknown',
+        batchSize: batch.length,
+      });
+    } finally {
+      this.flushInProgress = false;
+    }
   }
 }
 
