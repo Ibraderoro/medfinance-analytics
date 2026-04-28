@@ -10,7 +10,7 @@ export async function getInsights(
 ): Promise<void> {
   try {
     const data = await service.getInsights();
-    res.json(data);
+    res.json({ data });
   } catch (err) {
     next(err);
   }
