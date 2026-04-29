@@ -202,3 +202,61 @@ LEFT JOIN financial_cash_reserves r
   ON r.organization_id = k.organization_id
  AND r.month_start = k.month_start
 ORDER BY k.organization_id, k.month_start;
+
+-- Enforce tenant isolation in Postgres itself with RLS (defense-in-depth against app bugs).
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE departments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE forecasts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE financial_cash_reserves ENABLE ROW LEVEL SECURITY;
+ALTER TABLE compliance_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE regulatory_alerts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS users_tenant_isolation ON users;
+CREATE POLICY users_tenant_isolation ON users
+  FOR ALL
+  USING (organization_id = current_setting('current_user.organization_id', true)::uuid)
+  WITH CHECK (organization_id = current_setting('current_user.organization_id', true)::uuid);
+
+DROP POLICY IF EXISTS departments_tenant_isolation ON departments;
+CREATE POLICY departments_tenant_isolation ON departments
+  FOR ALL
+  USING (organization_id = current_setting('current_user.organization_id', true)::uuid)
+  WITH CHECK (organization_id = current_setting('current_user.organization_id', true)::uuid);
+
+DROP POLICY IF EXISTS forecasts_tenant_isolation ON forecasts;
+CREATE POLICY forecasts_tenant_isolation ON forecasts
+  FOR ALL
+  USING (organization_id = current_setting('current_user.organization_id', true)::uuid)
+  WITH CHECK (organization_id = current_setting('current_user.organization_id', true)::uuid);
+
+DROP POLICY IF EXISTS transactions_tenant_isolation ON transactions;
+CREATE POLICY transactions_tenant_isolation ON transactions
+  FOR ALL
+  USING (organization_id = current_setting('current_user.organization_id', true)::uuid)
+  WITH CHECK (organization_id = current_setting('current_user.organization_id', true)::uuid);
+
+DROP POLICY IF EXISTS financial_cash_reserves_tenant_isolation ON financial_cash_reserves;
+CREATE POLICY financial_cash_reserves_tenant_isolation ON financial_cash_reserves
+  FOR ALL
+  USING (organization_id = current_setting('current_user.organization_id', true)::uuid)
+  WITH CHECK (organization_id = current_setting('current_user.organization_id', true)::uuid);
+
+DROP POLICY IF EXISTS compliance_items_tenant_isolation ON compliance_items;
+CREATE POLICY compliance_items_tenant_isolation ON compliance_items
+  FOR ALL
+  USING (organization_id = current_setting('current_user.organization_id', true)::uuid)
+  WITH CHECK (organization_id = current_setting('current_user.organization_id', true)::uuid);
+
+DROP POLICY IF EXISTS regulatory_alerts_tenant_isolation ON regulatory_alerts;
+CREATE POLICY regulatory_alerts_tenant_isolation ON regulatory_alerts
+  FOR ALL
+  USING (organization_id = current_setting('current_user.organization_id', true)::uuid)
+  WITH CHECK (organization_id = current_setting('current_user.organization_id', true)::uuid);
+
+DROP POLICY IF EXISTS audit_log_tenant_isolation ON audit_log;
+CREATE POLICY audit_log_tenant_isolation ON audit_log
+  FOR ALL
+  USING (organization_id = current_setting('current_user.organization_id', true)::uuid)
+  WITH CHECK (organization_id = current_setting('current_user.organization_id', true)::uuid);
