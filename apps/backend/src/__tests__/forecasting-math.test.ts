@@ -47,6 +47,57 @@ describe('forecastingMath financial accuracy', () => {
     expect(result.series[4].forecast).toBeGreaterThanOrEqual(0);
   });
 
+
+  it('remains finite when historical data includes extreme outliers', () => {
+    // Failure Mode: Extraordinary spikes/drops can produce NaN/Infinity and break dashboards.
+    const result = buildForecastSeries({
+      metric: 'revenue',
+      historicalValues: [120, 130, 125, 1400, 115, 118],
+      historicalMonths: ['2026-01-01', '2026-02-01', '2026-03-01', '2026-04-01', '2026-05-01', '2026-06-01'],
+      forecastMonths: 3,
+      alpha: 0.45,
+    });
+
+    for (const point of result.series) {
+      expect(Number.isFinite(point.forecast)).toBe(true);
+      expect(Number.isFinite(point.confidence_interval.lower)).toBe(true);
+      expect(Number.isFinite(point.confidence_interval.upper)).toBe(true);
+    }
+  });
+
+  it('handles missing months in history without crashing interpolation/forecast generation', () => {
+    // Failure Mode: Incomplete accounting periods can skip months and destabilize the time-series pipeline.
+    const result = buildForecastSeries({
+      metric: 'revenue',
+      historicalValues: [90, 92, 95, 99],
+      historicalMonths: ['2026-01-01', '2026-03-01', '2026-06-01', '2026-07-01'],
+      forecastMonths: 2,
+      alpha: 0.35,
+    });
+
+    expect(result.series).toHaveLength(6);
+    expect(result.series[4].month).toBe('2026-08-01');
+    expect(result.series[5].month).toBe('2026-09-01');
+    expect(result.series.every((point) => Number.isFinite(point.forecast))).toBe(true);
+  });
+
+  it('sanitizes invalid numeric inputs and zero-revenue histories into safe zero outputs', () => {
+    // Failure Mode: Null-like ingest artifacts (NaN) plus zero baselines should not propagate invalid numbers.
+    const result = buildForecastSeries({
+      metric: 'revenue',
+      historicalValues: [0, Number.NaN, 0, 0],
+      historicalMonths: ['2026-01-01', '2026-02-01', '2026-03-01', '2026-04-01'],
+      forecastMonths: 1,
+      alpha: 0.3,
+    });
+
+    for (const point of result.series) {
+      expect(point.forecast).toBe(0);
+      expect(point.confidence_interval.lower).toBe(0);
+      expect(point.confidence_interval.upper).toBe(0);
+    }
+  });
+
   it('produces expense forecasts that can be used for margin calculations', () => {
     // Failure Mode: Expense smoothing can drift and break net-margin denominator assumptions.
     const expenseResult = buildForecastSeries({
