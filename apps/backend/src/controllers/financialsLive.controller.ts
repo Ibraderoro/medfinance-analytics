@@ -17,9 +17,11 @@ export async function getLiveFinancials(
 
     res.flushHeaders();
     res.write('retry: 10000\n\n');
+    (res as any).flush?.();
 
     const keepAlive = setInterval(() => {
       res.write(': keep-alive\n\n');
+      (res as any).flush?.();
     }, 25_000);
 
     await liveFinancialsService.addClient(res, user.organization_id);

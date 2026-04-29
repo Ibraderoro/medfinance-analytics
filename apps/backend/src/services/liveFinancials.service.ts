@@ -235,7 +235,9 @@ export class LiveFinancialsService {
     payload: LiveMetricsPayload,
   ): void {
     res.write(`event: ${event}\n`);
+    (res as any).flush?.();
     res.write(`data: ${JSON.stringify(payload)}\n\n`);
+    (res as any).flush?.();
   }
 }
 
