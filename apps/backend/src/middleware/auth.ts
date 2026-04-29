@@ -11,6 +11,8 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
+export type Role = 'admin' | 'analyst' | 'viewer';
+
 function isUserPayload(payload: unknown): payload is {
   id: string;
   email: string;
@@ -30,6 +32,10 @@ function isUserPayload(payload: unknown): payload is {
     && typeof candidate.role === 'string'
     && (typeof candidate.organization_id === 'string' || typeof candidate.organisationId === 'string' || typeof candidate.organizationId === 'string')
   );
+}
+
+function isRole(role: string): role is Role {
+  return role === 'admin' || role === 'analyst' || role === 'viewer';
 }
 
 export function authenticate(
@@ -99,4 +105,28 @@ export function requireAuthenticatedUser(req: AuthenticatedRequest): NonNullable
   }
 
   return req.user;
+}
+
+export function authorize(requiredRole: Role) {
+  return (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
+    const user = requireAuthenticatedUser(req);
+
+    if (!isRole(user.role)) {
+      res.status(403).json({
+        success: false,
+        error: { message: 'Invalid user role', code: 'AUTH_INVALID_ROLE' },
+      });
+      return;
+    }
+
+    if (user.role === 'admin' || user.role === requiredRole) {
+      next();
+      return;
+    }
+
+    res.status(403).json({
+      success: false,
+      error: { message: 'Insufficient permissions', code: 'AUTH_FORBIDDEN' },
+    });
+  };
 }
