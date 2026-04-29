@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { query } from '../config/database';
 import { env } from '../config/env';
+import { getRedis } from '../config/redis';
 import { AppError } from '../middleware/errorHandler';
 import { BillingService } from './billing.service';
 import { AuditService } from './audit.service';
@@ -20,6 +21,7 @@ interface UserRow {
 
 type UserIdentity = Pick<UserRow, 'id' | 'email' | 'role' | 'organization_id'>;
 const ALLOWED_ROLES = new Set(['admin', 'analyst', 'viewer']);
+const MFA_TTL_SECONDS = 5 * 60;
 
 function authError(message: string): AppError {
   const err = new Error(message) as AppError;
@@ -66,7 +68,10 @@ function refreshExpiryToDays(expiresIn: string): number {
 
 export class AuthService {
   private readonly billingService = new BillingService();
+
   private readonly auditService = new AuditService();
+
+  private readonly redis = getRedis();
 
   async register(
     email: string,
@@ -113,6 +118,26 @@ export class AuthService {
     return this.generateTokenPair(user);
   }
 
+  async initiateSsoLogin(provider: 'saml' | 'oidc', email: string) {
+    const [user] = await query<UserIdentity & { is_active: boolean }>(
+      'SELECT id, email, role, organization_id, is_active FROM users WHERE email = $1',
+      [email],
+    );
+
+    if (!user || !user.is_active) {
+      throw authError('SSO user not found or inactive');
+    }
+
+    const state = crypto.randomUUID();
+    await this.redis.setex(
+      `auth:sso:state:${state}`,
+      MFA_TTL_SECONDS,
+      JSON.stringify({ userId: user.id, provider, organizationId: user.organization_id }),
+    );
+
+    return { provider, state, status: 'sso_initiated' as const };
+  }
+
   async login(email: string, password: string, organizationId: string) {
     const [user] = await query<UserRow>(
       `SELECT id, email, password_hash, first_name, last_name, role, organization_id, is_active
@@ -129,6 +154,30 @@ export class AuthService {
       throw authError('Invalid credentials');
     }
 
+    if (user.role === 'admin') {
+      const tempToken = crypto.randomUUID();
+      const mfaCode = this.generateMfaCode();
+      await this.redis.setex(
+        `auth:mfa:pending:${tempToken}`,
+        MFA_TTL_SECONDS,
+        JSON.stringify({ userId: user.id, code: mfaCode, organizationId: user.organization_id }),
+      );
+
+      await this.auditService.log({
+        action: 'admin_mfa_required',
+        entityType: 'user',
+        entityId: user.id,
+        performedBy: user.id,
+        organizationId: user.organization_id,
+        metadata: { email: user.email },
+      });
+
+      return {
+        status: 'mfa_required' as const,
+        tempToken,
+      };
+    }
+
     await query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [user.id]);
 
     await this.auditService.log({
@@ -138,6 +187,47 @@ export class AuthService {
       performedBy: user.id,
       organizationId: user.organization_id,
       metadata: { email: user.email },
+    });
+
+    return {
+      status: 'success' as const,
+      ...(await this.generateTokenPair(user)),
+    };
+  }
+
+  async verifyMfa(tempToken: string, code: string) {
+    const key = `auth:mfa:pending:${tempToken}`;
+    const raw = await this.redis.get(key);
+
+    if (!raw) {
+      throw authError('Invalid or expired MFA token');
+    }
+
+    const parsed = JSON.parse(raw) as { userId: string; code: string; organizationId: string };
+    if (parsed.code !== code.trim()) {
+      throw authError('Invalid MFA code');
+    }
+
+    await this.redis.del(key);
+
+    const [user] = await query<UserIdentity & { is_active: boolean }>(
+      'SELECT id, email, role, organization_id, is_active FROM users WHERE id = $1',
+      [parsed.userId],
+    );
+
+    if (!user || !user.is_active) {
+      throw authError('User not found or inactive');
+    }
+
+    await query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [user.id]);
+
+    await this.auditService.log({
+      action: 'admin_mfa_verified',
+      entityType: 'user',
+      entityId: user.id,
+      performedBy: user.id,
+      organizationId: user.organization_id,
+      metadata: { method: 'totp_or_otp' },
     });
 
     return this.generateTokenPair(user);
@@ -164,7 +254,6 @@ export class AuthService {
       throw authError('User not found or inactive');
     }
 
-    // Rotate: delete old token and issue a new pair
     await query('DELETE FROM refresh_tokens WHERE token_hash = $1', [tokenHash]);
 
     return this.generateTokenPair(user);
@@ -173,6 +262,10 @@ export class AuthService {
   async logout(refreshToken: string) {
     const tokenHash = hashRefreshToken(refreshToken);
     await query('DELETE FROM refresh_tokens WHERE token_hash = $1', [tokenHash]);
+  }
+
+  private generateMfaCode(): string {
+    return `${Math.floor(100000 + Math.random() * 900000)}`;
   }
 
   private async generateTokenPair(user: UserIdentity) {

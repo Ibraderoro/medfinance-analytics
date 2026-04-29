@@ -25,15 +25,17 @@ export function trackApiAnalytics(req: RequestWithUser, res: Response, next: Nex
     const end = process.hrtime.bigint();
     const latencyMs = Math.round(Number(end - start) / 1_000_000);
 
-    void analyticsService.recordApiRequest({
+    // Push to Redis Stream to decouple request path from analytics persistence load.
+    void analyticsService.enqueueApiTelemetry({
       endpoint: `${req.method} ${req.path}`,
       method: req.method,
       statusCode: res.statusCode,
       latencyMs,
       userId: req.user?.id,
       organizationId: req.user?.organization_id,
+      capturedAt: new Date().toISOString(),
     }).catch((error: unknown) => {
-      logger.warn('Failed to write API analytics event', {
+      logger.warn('Failed to enqueue API analytics event', {
         path: req.path,
         method: req.method,
         error: error instanceof Error ? error.message : 'Unknown error',
