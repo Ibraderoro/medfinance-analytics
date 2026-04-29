@@ -22,7 +22,7 @@ export async function getKpis(
           max: 2100,
         }) ?? new Date().getFullYear(),
     });
-    res.json({ data });
+    res.json(data);
   } catch (err) {
     next(err);
   }
@@ -46,7 +46,7 @@ export async function getSummary(
           max: 2100,
         }) ?? new Date().getFullYear(),
     });
-    res.json({ data });
+    res.json(data);
   } catch (err) {
     next(err);
   }
@@ -65,7 +65,7 @@ export async function getRevenue(
       startDate: parseIsoDateQuery(startDate as string | undefined, 'startDate'),
       endDate: parseIsoDateQuery(endDate as string | undefined, 'endDate'),
     });
-    res.json({ data });
+    res.json(data);
   } catch (err) {
     next(err);
   }
@@ -84,7 +84,7 @@ export async function getExpenses(
       startDate: parseIsoDateQuery(startDate as string | undefined, 'startDate'),
       endDate: parseIsoDateQuery(endDate as string | undefined, 'endDate'),
     });
-    res.json({ data });
+    res.json(data);
   } catch (err) {
     next(err);
   }
@@ -103,7 +103,7 @@ export async function getCashFlow(
       startDate: parseIsoDateQuery(startDate as string | undefined, 'startDate'),
       endDate: parseIsoDateQuery(endDate as string | undefined, 'endDate'),
     });
-    res.json({ data });
+    res.json(data);
   } catch (err) {
     next(err);
   }

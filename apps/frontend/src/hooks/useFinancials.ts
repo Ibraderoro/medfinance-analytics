@@ -32,11 +32,13 @@ export function useFinancials(year?: number): UseFinancialsReturn {
 
     const currentYear = year ?? new Date().getFullYear();
     const previousYear = currentYear - 1;
+    const startDate = `${currentYear}-01-01`;
+    const endDate = `${currentYear}-12-31`;
 
     Promise.allSettled([
       financialsApi.getSummary(currentYear),
       financialsApi.getSummary(previousYear),
-      financialsApi.getRevenue(),
+      financialsApi.getRevenue(startDate, endDate),
     ])
       .then(([summaryRes, prevSummaryRes, revenueRes]) => {
         if (cancelled) return;
@@ -59,12 +61,8 @@ export function useFinancials(year?: number): UseFinancialsReturn {
           setRevenue(mapped);
         }
 
-        if (
-          summaryRes.status === 'rejected'
-          && prevSummaryRes.status === 'rejected'
-          && revenueRes.status === 'rejected'
-        ) {
-          throw summaryRes.reason;
+        if (summaryRes.status === 'rejected' || revenueRes.status === 'rejected') {
+          throw new Error('Failed to load critical financial data');
         }
       })
       .catch((err: Error) => {
