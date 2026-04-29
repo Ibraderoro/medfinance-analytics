@@ -5,6 +5,7 @@ import { FinancialsPage } from './pages/Financials';
 import { ForecastingPage } from './pages/Forecasting';
 import { CompliancePage } from './pages/Compliance';
 import { LoginPage } from './pages/Login';
+import { RegisterPage } from './pages/Register';
 
 function isAuthenticated(): boolean {
   return Boolean(localStorage.getItem('access_token'));
@@ -26,6 +27,11 @@ export default function App() {
           path="/login"
           element={isAuthenticated() ? <Navigate to="/dashboard" replace /> : <LoginPage />}
         />
+        <Route
+          path="/register"
+          element={isAuthenticated() ? <Navigate to="/dashboard" replace /> : <RegisterPage />}
+        />
+
 
         <Route
           path="/"
