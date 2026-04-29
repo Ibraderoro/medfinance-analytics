@@ -40,6 +40,10 @@ function isUserPayload(payload: unknown): payload is {
   );
 }
 
+function isRole(role: string): role is Role {
+  return role === 'admin' || role === 'analyst' || role === 'viewer';
+}
+
 export function authenticate(
   req: AuthenticatedRequest,
   res: Response,

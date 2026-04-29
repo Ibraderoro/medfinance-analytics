@@ -11,6 +11,8 @@ const PLAN_PRIORITY: Record<SubscriptionPlan, number> = {
   enterprise: 2,
 };
 
+const ACTIVE_SUBSCRIPTION_STATUSES = new Set(['active', 'trialing']);
+
 function parseDate(value: string | undefined): Date | null {
   if (!value) return null;
   const date = new Date(value);
@@ -24,7 +26,7 @@ export function requireMinimumPlan(minimumPlan: SubscriptionPlan) {
       const user = requireAuthenticatedUser(req);
       const subscription = await billingService.getOrganizationSubscription(user.organization_id);
 
-      if (PLAN_PRIORITY[subscription.plan] < PLAN_PRIORITY[minimumPlan]) {
+      if (!ACTIVE_SUBSCRIPTION_STATUSES.has(subscription.status) || PLAN_PRIORITY[subscription.plan] < PLAN_PRIORITY[minimumPlan]) {
         res.status(403).json({
           error: `${minimumPlan.toUpperCase()} plan required for this feature`,
         });

@@ -4,7 +4,6 @@ import cors, { CorsOptions } from 'cors';
 import compression from 'compression';
 import { env } from './config/env';
 import { router } from './routes';
-import { handleStripeWebhook } from './controllers/billing.controller';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { rateLimiter } from './middleware/rateLimiter';
 import { requestLogger } from './middleware/logger';
@@ -12,6 +11,7 @@ import { sanitizeInput } from './middleware/sanitizeInput';
 import { trackApiAnalytics } from './middleware/analytics';
 import { requestContext } from './middleware/requestContext';
 import { responseEnvelope } from './middleware/responseEnvelope';
+import { observabilityMiddleware } from './middleware/observability';
 
 export const app: Application = express();
 app.locals.isShuttingDown = false;
@@ -60,13 +60,13 @@ app.use(compression({
 app.use(rateLimiter);
 app.use(requestContext);
 
-app.post('/api/v1/billing/webhook', express.raw({ type: 'application/json' }), handleStripeWebhook);
-
+app.use('/api/v1/billing/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json({ limit: '100kb' }));
 app.use(express.urlencoded({ extended: true, limit: '100kb' }));
 app.use(sanitizeInput);
 app.use(responseEnvelope);
 
+app.use(observabilityMiddleware);
 app.use(requestLogger);
 app.use(trackApiAnalytics);
 
