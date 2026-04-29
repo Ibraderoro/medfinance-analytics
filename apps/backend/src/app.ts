@@ -25,6 +25,8 @@ const allowedOrigins: string[] = env.CORS_ALLOWED_ORIGINS;
 const corsOptions: CorsOptions = {
   origin: (origin, callback) => {
     if (!origin) {
+      // Requests with no Origin header are server-to-server or CLI tools (e.g. curl).
+      // credentials:true only applies to browser requests, so this is intentional.
       callback(null, true);
       return;
     }
@@ -46,15 +48,15 @@ app.use(helmet({
   hsts: env.isProduction(),
 }));
 app.use(cors(corsOptions));
+app.use(compression());
 app.use(rateLimiter);
 app.use(requestContext);
 
 app.post('/api/v1/billing/webhook', express.raw({ type: 'application/json' }), handleStripeWebhook);
 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '100kb' }));
+app.use(express.urlencoded({ extended: true, limit: '100kb' }));
 app.use(sanitizeInput);
-app.use(compression());
 app.use(responseEnvelope);
 
 app.use(requestLogger);

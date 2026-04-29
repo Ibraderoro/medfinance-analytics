@@ -1,14 +1,14 @@
 import { Card } from '../components/common/Card';
 import { ComplianceChart } from '../components/Charts/ComplianceChart';
-import { Loading } from '../components/common/Loading';
+import { PageCard } from '../components/common/PageCard';
 import { useCompliance } from '../hooks/useCompliance';
 import type { ComplianceDataPoint } from '../components/Charts/ComplianceChart';
 import styles from './Page.module.css';
 
 const STATUS_COLORS: Record<string, string> = {
-  compliant: '#057a55',
-  under_review: '#c27803',
-  non_compliant: '#c81e1e',
+  compliant: 'var(--color-status-compliant)',
+  under_review: 'var(--color-status-review)',
+  non_compliant: 'var(--color-status-danger)',
 };
 
 export function CompliancePage() {
@@ -24,10 +24,7 @@ export function CompliancePage() {
     <div className={styles.page}>
       <h1 className={styles.title}>Compliance</h1>
 
-      {isLoading && <Loading />}
-      {error && <p className={styles.error}>Failed to load compliance data.</p>}
-
-      {!isLoading && !error && (
+      <PageCard title="Compliance" isLoading={isLoading} error={error}>
         <div className={styles.twoCol}>
           <Card title="Compliance Overview">
             {chartData.length > 0 ? (
@@ -73,7 +70,7 @@ export function CompliancePage() {
             </table>
           </Card>
         </div>
-      )}
+      </PageCard>
     </div>
   );
 }
@@ -82,7 +79,7 @@ function StatusBadge({ status }: { status: string }) {
   return (
     <span
       style={{
-        background: STATUS_COLORS[status] ?? '#6b7280',
+        background: STATUS_COLORS[status] ?? '#374151',
         color: '#fff',
         padding: '2px 8px',
         borderRadius: 9999,

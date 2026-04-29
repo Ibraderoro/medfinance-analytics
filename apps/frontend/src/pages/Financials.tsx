@@ -1,7 +1,6 @@
-import { Card } from '../components/common/Card';
 import { RevenueChart } from '../components/Charts/RevenueChart';
 import { useFinancials } from '../hooks/useFinancials';
-import { Loading } from '../components/common/Loading';
+import { PageCard } from '../components/common/PageCard';
 import styles from './Page.module.css';
 
 export function FinancialsPage() {
@@ -10,11 +9,9 @@ export function FinancialsPage() {
   return (
     <div className={styles.page}>
       <h1 className={styles.title}>Financials</h1>
-      <Card title="Revenue Trend">
-        {isLoading && <Loading />}
-        {error && <p className={styles.error}>Failed to load data.</p>}
-        {!isLoading && !error && <RevenueChart data={revenue} width={700} height={350} />}
-      </Card>
+      <PageCard title="Revenue Trend" isLoading={isLoading} error={error}>
+        <RevenueChart data={revenue} width={700} height={350} />
+      </PageCard>
     </div>
   );
 }
