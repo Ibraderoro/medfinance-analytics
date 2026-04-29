@@ -43,8 +43,8 @@ export async function login(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const { email, password } = req.body as { email: string; password: string };
-    const tokens = await service.login(email, password);
+    const { email, password, organizationId } = req.body as { email: string; password: string; organizationId: string };
+    const tokens = await service.login(email, password, organizationId);
     res.json(tokens);
   } catch (err) {
     next(err);

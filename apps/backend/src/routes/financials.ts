@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { authenticate, authorize } from '../middleware/auth';
+import { authenticate } from '../middleware/auth';
+import { attachTenantContext, blockTenantOverride } from '../middleware/tenantContext';
 import { validateRequest } from '../middleware/validateRequest';
 import { enforceFreeHistoryWindow } from '../middleware/planAccess';
 import { auditFinancialAccess } from '../middleware/audit';
@@ -23,6 +24,8 @@ import {
 export const financialsRouter = Router();
 
 financialsRouter.use(authenticate);
+financialsRouter.use(attachTenantContext);
+financialsRouter.use(blockTenantOverride);
 financialsRouter.use(auditFinancialAccess);
 
 financialsRouter.get('/kpis', authorize('viewer'), financialsSummaryValidator, validateRequest, getKpis);
