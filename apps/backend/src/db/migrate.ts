@@ -1,14 +1,33 @@
 #!/usr/bin/env node
 /**
  * Simple migration runner.
- * Runs SQL files from src/db/migrations in numeric order.
+ * Runs SQL files in numeric order.
  * Tracks applied migrations in a `schema_migrations` table.
  */
 import fs from 'fs';
 import path from 'path';
 import { getPool } from '../config/database';
 
-const MIGRATIONS_DIR = path.join(__dirname, 'migrations');
+function resolveMigrationsDir(): string {
+  const candidates = [
+    path.join(__dirname, 'migrations'),
+    path.join(process.cwd(), 'dist', 'db', 'migrations'),
+    path.join(process.cwd(), 'src', 'db', 'migrations'),
+    path.join(process.cwd(), 'apps', 'backend', 'dist', 'db', 'migrations'),
+    path.join(process.cwd(), 'apps', 'backend', 'src', 'db', 'migrations'),
+  ];
+
+  const found = candidates.find((dir) => fs.existsSync(dir) && fs.statSync(dir).isDirectory());
+  if (!found) {
+    throw new Error(
+      `Unable to locate migrations directory. Checked: ${candidates.join(', ')}`,
+    );
+  }
+
+  return found;
+}
+
+const MIGRATIONS_DIR = resolveMigrationsDir();
 
 async function ensureMigrationsTable(): Promise<void> {
   await getPool().query(`
@@ -131,4 +150,3 @@ if (require.main === module) {
       process.exit(1);
     });
 }
-
