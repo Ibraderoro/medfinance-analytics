@@ -40,7 +40,7 @@ function isUserPayload(payload: unknown): payload is {
   );
 }
 
-function isRole(role: string): role is Role {
+function isRole(role: string): role is RbacRole {
   return role === 'admin' || role === 'analyst' || role === 'viewer';
 }
 
