@@ -52,12 +52,15 @@ export function useFinancials(year?: number): UseFinancialsReturn {
         }
 
         if (revenueRes.status === 'fulfilled') {
-          const mapped = (revenueRes.value.data.data as Array<{ month: string; total: string | number }>).map(
-            (d) => ({
-              month: new Date(d.month).toLocaleString('default', { month: 'short', year: '2-digit', timeZone: 'UTC' }),
-              total: Number(d.total),
-            }),
-          );
+          const revenueData = revenueRes.value.data.data;
+          const safeRevenueData = Array.isArray(revenueData)
+            ? (revenueData as Array<{ month: string; total: string | number }>)
+            : [];
+
+          const mapped = safeRevenueData.map((d) => ({
+            month: new Date(d.month).toLocaleString('default', { month: 'short', year: '2-digit', timeZone: 'UTC' }),
+            total: Number(d.total),
+          }));
           setRevenue(mapped);
         }
 

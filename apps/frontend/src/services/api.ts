@@ -131,3 +131,9 @@ export const complianceApi = {
   getAlerts: (severity?: string) =>
     apiClient.get('/compliance/alerts', { params: { severity } }),
 };
+
+
+// ── Insights ────────────────────────────────────────────────────────────────
+export const insightsApi = {
+  getInsights: () => apiClient.get('/insights'),
+};
