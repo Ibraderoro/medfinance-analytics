@@ -123,3 +123,37 @@ describe('forecastingMath financial accuracy', () => {
     expect(projectedMarginPct).toBeLessThan(80);
   });
 });
+
+
+describe('Edge Case Resilience', () => {
+  it('keeps forecasts finite under an extreme month-over-month spike', () => {
+    const result = buildForecastSeries({
+      metric: 'revenue',
+      historicalValues: [100, 1000000, 120, 130, 140],
+      historicalMonths: ['2026-01-01', '2026-02-01', '2026-03-01', '2026-04-01', '2026-05-01'],
+      forecastMonths: 2,
+      alpha: 0.35,
+    });
+
+    for (const point of result.series) {
+      expect(Number.isFinite(point.forecast)).toBe(true);
+      expect(Number.isFinite(point.confidence_interval.lower)).toBe(true);
+      expect(Number.isFinite(point.confidence_interval.upper)).toBe(true);
+    }
+  });
+
+  it('handles gapped historical data containing null-like and zero intermediate values', () => {
+    const result = buildForecastSeries({
+      metric: 'revenue',
+      historicalValues: [250, null as unknown as number, 0, 300, 0, 325],
+      historicalMonths: ['2026-01-01', '2026-02-01', '2026-03-01', '2026-04-01', '2026-05-01', '2026-06-01'],
+      forecastMonths: 2,
+      alpha: 0.4,
+    });
+
+    expect(result.series).toHaveLength(8);
+    expect(result.series.every((point) => Number.isFinite(point.forecast))).toBe(true);
+    expect(result.series.every((point) => Number.isFinite(point.confidence_interval.lower))).toBe(true);
+    expect(result.series.every((point) => Number.isFinite(point.confidence_interval.upper))).toBe(true);
+  });
+});
