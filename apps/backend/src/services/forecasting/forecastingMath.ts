@@ -113,7 +113,7 @@ export function buildForecastSeries(params: {
     };
   }
 
-  const normalized = historicalValues.map((value) => Math.max(0, value));
+  const normalized = historicalValues.map((value) => (Number.isFinite(value) ? Math.max(0, value) : 0));
   const smoothing = exponentialSmoothing(normalized, alpha);
 
   const residuals = normalized
