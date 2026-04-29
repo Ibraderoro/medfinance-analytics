@@ -52,19 +52,26 @@ export function useFinancials(year?: number): UseFinancialsReturn {
         }
 
         if (revenueRes.status === 'fulfilled') {
-          const revenueData = revenueRes.value.data.data;
-          const safeRevenueData = Array.isArray(revenueData)
-            ? (revenueData as Array<{ month: string; total: string | number }>)
-            : [];
-
-          const mapped = safeRevenueData.map((d) => ({
-            month: new Date(d.month).toLocaleString('default', { month: 'short', year: '2-digit', timeZone: 'UTC' }),
-            total: Number(d.total),
-          }));
-          setRevenue(mapped);
+          const rawData = revenueRes.value.data?.data;
+          if (Array.isArray(rawData)) {
+            const mapped = rawData.map((d: any) => ({
+              month: new Date(d.month).toLocaleString('default', {
+                month: 'short',
+                year: '2-digit',
+                timeZone: 'UTC',
+              }),
+              total: Number(d.total),
+            }));
+            setRevenue(mapped);
+          } else {
+            setRevenue([]);
+          }
         }
 
-        if (summaryRes.status === 'rejected' || revenueRes.status === 'rejected') {
+        if (
+          summaryRes.status === 'rejected' ||
+          revenueRes.status === 'rejected'
+        ) {
           throw new Error('Failed to load critical financial data');
         }
       })
@@ -75,8 +82,17 @@ export function useFinancials(year?: number): UseFinancialsReturn {
         if (!cancelled) setIsLoading(false);
       });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [year, tick]);
 
-  return { summary, prevSummary, revenue, isLoading, error, refetch: () => setTick((t) => t + 1) };
+  return {
+    summary,
+    prevSummary,
+    revenue,
+    isLoading,
+    error,
+    refetch: () => setTick((t) => t + 1),
+  };
 }
