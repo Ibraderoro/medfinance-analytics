@@ -1,6 +1,5 @@
 import { Request } from 'express';
-import rateLimit from 'express-rate-limit';
-import { RedisStore } from 'rate-limit-redis';
+import rateLimit, { MemoryStore, Store } from 'express-rate-limit';
 import { getRedis } from '../config/redis';
 
 function keyByIp(ip: string | undefined): string {
@@ -23,12 +22,56 @@ function createRateLimitMessage(message: string, code: string) {
 
 const redisClient = getRedis();
 
-function createRedisStore(prefix: string): RedisStore {
-  return new RedisStore({
-    // Redis-backed throttling prevents per-pod counter drift and ensures global consistency.
-    prefix,
-    sendCommand: (...args: string[]) => redisClient.call(args[0], ...args.slice(1)),
-  });
+function supportsRedisCommands(client: unknown): client is { call: (...args: string[]) => Promise<unknown> } {
+  return Boolean(client && typeof (client as { call?: unknown }).call === 'function');
+}
+
+class RedisBackedStore implements Store {
+  windowMs!: number;
+
+  localKeys = false;
+
+  prefix: string;
+
+  constructor(prefix: string) {
+    this.prefix = prefix;
+  }
+
+  init(options: { windowMs: number }): void {
+    this.windowMs = options.windowMs;
+  }
+
+  private toKey(key: string): string {
+    return `${this.prefix}${key}`;
+  }
+
+  async increment(key: string): Promise<{ totalHits: number; resetTime: Date }> {
+    const redisKey = this.toKey(key);
+    const totalHits = Number(await redisClient.call('INCR', redisKey));
+    const ttlMs = Number(await redisClient.call('PTTL', redisKey));
+
+    if (ttlMs < 0) {
+      await redisClient.call('PEXPIRE', redisKey, String(this.windowMs));
+    }
+
+    const effectiveTtlMs = ttlMs > 0 ? ttlMs : this.windowMs;
+    return { totalHits, resetTime: new Date(Date.now() + effectiveTtlMs) };
+  }
+
+  async decrement(key: string): Promise<void> {
+    await redisClient.call('DECR', this.toKey(key));
+  }
+
+  async resetKey(key: string): Promise<void> {
+    await redisClient.call('DEL', this.toKey(key));
+  }
+}
+
+function createRedisStore(prefix: string): Store {
+  if (!supportsRedisCommands(redisClient)) {
+    return new MemoryStore();
+  }
+  return new RedisBackedStore(prefix);
 }
 
 export const rateLimiter = rateLimit({
@@ -42,7 +85,7 @@ export const rateLimiter = rateLimit({
 });
 
 export const authRateLimiter = rateLimit({
-  // Security-critical: auth limiter must be shared across all pods to stop distributed brute force attempts.
+  // Shared Redis counters enforce global auth throttling across backend pods.
   store: createRedisStore('rate-limit:auth:'),
   windowMs: 15 * 60 * 1000,
   max: 20,

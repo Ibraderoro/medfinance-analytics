@@ -138,7 +138,12 @@ export class AuthService {
     return { provider, state, status: 'sso_initiated' as const };
   }
 
-  async login(email: string, password: string, organizationId: string) {
+  async login(email: string, password: string, organizationId: string): Promise<{
+    status: 'success' | 'mfa_required';
+    accessToken?: string;
+    refreshToken?: string;
+    tempToken?: string;
+  }> {
     const [user] = await query<UserRow>(
       `SELECT id, email, password_hash, first_name, last_name, role, organization_id, is_active
        FROM users WHERE email = $1 AND organization_id = $2`,
