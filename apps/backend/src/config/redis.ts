@@ -6,7 +6,7 @@ let redisClient: Redis;
 
 export function getRedis(): Redis {
   if (!redisClient) {
-    const managedRedisUrl = env.REDIS_URL.trim();
+    const managedRedisUrl = (env.REDIS_URL ?? "").trim();
     const baseOptions = {
       maxRetriesPerRequest: 3,
       enableReadyCheck: true,

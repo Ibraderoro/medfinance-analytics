@@ -6,7 +6,7 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
-    "build": "tsc --project tsconfig.json",
+    "build": "tsc --project tsconfig.json && mkdir -p dist/db/migrations && cp -R src/db/migrations/. dist/db/migrations/",
     "serve": "node dist/index.js",
     "start": "npm run build && npm run serve",
     "lint": "eslint 'src/**/*.ts' --fix",
