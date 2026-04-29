@@ -81,7 +81,6 @@ jobs:
   security-scan:
     name: Security Scan
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
     permissions:
       contents: read
       pull-requests: read
@@ -90,7 +89,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Dependency Review (SCA)
+      - name: Dependency Review (SCA gate)
+        if: github.event_name == 'pull_request'
         uses: actions/dependency-review-action@v4
         with:
           fail-on-severity: high
+
+      - name: Install OSV-Scanner
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/google/osv-scanner/main/install.sh | sh -s -- -b .
+
+      - name: Run OSV-Scanner against backend and frontend manifests
+        run: |
+          ./osv-scanner --recursive --severity HIGH,CRITICAL --exit-code-on-vuln 1 ./apps/backend ./apps/frontend
