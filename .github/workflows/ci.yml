@@ -97,8 +97,8 @@ jobs:
 
       - name: Install OSV-Scanner
         run: |
-          curl -sSfL https://raw.githubusercontent.com/google/osv-scanner/main/install.sh | sh -s -- -b .
+          curl -sSfL https://raw.githubusercontent.com/google/osv-scanner/main/install.sh | sh -s -- -b /usr/local/bin
 
       - name: Run OSV-Scanner against backend and frontend manifests
         run: |
-          ./osv-scanner --recursive --severity HIGH,CRITICAL --exit-code-on-vuln 1 ./apps/backend ./apps/frontend
+          osv-scanner --recursive --severity HIGH,CRITICAL --exit-code-on-vuln 1 ./apps/backend ./apps/frontend
