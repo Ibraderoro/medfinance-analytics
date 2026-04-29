@@ -11,7 +11,13 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
-export type Role = 'admin' | 'analyst' | 'viewer';
+export type RbacRole = 'admin' | 'analyst' | 'viewer';
+
+const ROLE_HIERARCHY: Record<RbacRole, number> = {
+  viewer: 1,
+  analyst: 2,
+  admin: 3,
+};
 
 function isUserPayload(payload: unknown): payload is {
   id: string;
@@ -107,26 +113,27 @@ export function requireAuthenticatedUser(req: AuthenticatedRequest): NonNullable
   return req.user;
 }
 
-export function authorize(requiredRole: Role) {
+export function authorize(requiredRole: RbacRole) {
   return (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
     const user = requireAuthenticatedUser(req);
 
-    if (!isRole(user.role)) {
+    if (!(user.role in ROLE_HIERARCHY)) {
       res.status(403).json({
         success: false,
-        error: { message: 'Invalid user role', code: 'AUTH_INVALID_ROLE' },
+        error: { message: 'Unknown role', code: 'AUTH_INVALID_ROLE' },
       });
       return;
     }
 
-    if (user.role === 'admin' || user.role === requiredRole) {
-      next();
+    const currentRole = user.role as RbacRole;
+    if (ROLE_HIERARCHY[currentRole] < ROLE_HIERARCHY[requiredRole]) {
+      res.status(403).json({
+        success: false,
+        error: { message: 'Insufficient permissions', code: 'AUTH_FORBIDDEN' },
+      });
       return;
     }
 
-    res.status(403).json({
-      success: false,
-      error: { message: 'Insufficient permissions', code: 'AUTH_FORBIDDEN' },
-    });
+    next();
   };
 }
