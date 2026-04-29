@@ -16,14 +16,20 @@ export function LoginPage() {
     setIsSubmitting(true);
 
     try {
-      const res = await authApi.login(email, password);
-      const tokens = res.data.data;
-
-      localStorage.setItem('access_token', tokens.accessToken);
-      localStorage.setItem('refresh_token', tokens.refreshToken);
+      await authApi.login(email, password);
+      // TODO: Backend must set httpOnly cookies for access_token and refresh_token.
+      // Tokens should never be stored in localStorage in a healthcare application.
+      // The server's Set-Cookie header handles auth persistence after this point.
       navigate('/dashboard', { replace: true });
-    } catch {
-      setError('Login failed. Check your email/password and try again.');
+    } catch (err: unknown) {
+      const isAxiosError = (e: unknown): e is { response?: { status?: number } } =>
+        typeof e === 'object' && e !== null && 'response' in e;
+      const status = isAxiosError(err) ? err.response?.status : null;
+      setError(
+        status === 401
+          ? 'Invalid email or password.'
+          : 'Unable to sign in. Please check your connection and try again.'
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -42,6 +48,8 @@ export function LoginPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
+            maxLength={254}
+            autoComplete="email"
             style={{ width: '100%', padding: '0.65rem', marginTop: 4 }}
           />
         </label>
@@ -53,6 +61,8 @@ export function LoginPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
+            maxLength={128}
+            autoComplete="current-password"
             style={{ width: '100%', padding: '0.65rem', marginTop: 4 }}
           />
         </label>

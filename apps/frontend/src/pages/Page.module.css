@@ -6,7 +6,7 @@
 
 .title {
   font-size: 1.5rem;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--color-text);
 }
 
@@ -17,7 +17,7 @@
 
 .twoCol {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: minmax(280px, auto) minmax(0, 1fr);
   gap: 1rem;
   align-items: start;
 }
@@ -45,4 +45,11 @@
   text-transform: uppercase;
   letter-spacing: .05em;
   font-weight: 600;
+}
+
+
+@media (max-width: 640px) {
+  .twoCol {
+    grid-template-columns: 1fr;
+  }
 }
