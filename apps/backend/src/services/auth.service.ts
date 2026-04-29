@@ -19,7 +19,7 @@ interface UserRow {
 }
 
 type UserIdentity = Pick<UserRow, 'id' | 'email' | 'role' | 'organization_id'>;
-const ALLOWED_ROLES = new Set(['cfo', 'finance_manager', 'auditor', 'viewer']);
+const ALLOWED_ROLES = new Set(['admin', 'analyst', 'viewer']);
 
 function authError(message: string): AppError {
   const err = new Error(message) as AppError;
