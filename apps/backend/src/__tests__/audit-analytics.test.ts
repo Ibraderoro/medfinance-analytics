@@ -14,7 +14,9 @@ jest.mock('../config/database', () => ({ query: (...args: unknown[]) => mockQuer
 jest.mock('../services/analytics.service', () => ({ analyticsService: { enqueueApiTelemetry: (...args: unknown[]) => enqueueApiTelemetry(...args) } }));
 
 describe('AuditService', () => {
-  beforeEach(() => { mockQuery.mockReset(); });
+  beforeEach(() => {
+    mockQuery.mockReset();
+  });
 
   it('throws critical error when log insert fails', async () => {
     mockQuery.mockRejectedValueOnce(new Error('db down'));
@@ -29,14 +31,19 @@ describe('AuditService', () => {
   });
 });
 
+type TestUser = { id: string; organization_id: string };
+type AnalyticsRequest = { method: string; path: string; user: TestUser };
+type AnalyticsResponse = EventEmitter & { statusCode: number };
+
 describe('analytics middleware', () => {
-  it('enqueues telemetry on finish for api paths', async () => {
-    const req: any = { method: 'GET', path: '/api/v1/financials', user: { id: 'u', organization_id: 'org' } };
-    const res: any = new EventEmitter();
-    res.statusCode = 200;
+  it('enqueues telemetry on finish for api paths', () => {
+    const req: AnalyticsRequest = { method: 'GET', path: '/api/v1/financials', user: { id: 'u', organization_id: 'org' } };
+    const res: AnalyticsResponse = Object.assign(new EventEmitter(), { statusCode: 200 });
     const next = jest.fn();
-    trackApiAnalytics(req, res, next);
+
+    trackApiAnalytics(req as never, res as never, next);
     res.emit('finish');
+
     expect(next).toHaveBeenCalled();
     expect(enqueueApiTelemetry).toHaveBeenCalled();
   });
