@@ -3,11 +3,14 @@ import { body } from 'express-validator';
 import {
   createSubscription,
   getCurrentSubscription,
+  handleStripeWebhook,
 } from '../controllers/billing.controller';
 import { authenticate } from '../middleware/auth';
 import { validateRequest } from '../middleware/validateRequest';
 
 export const billingRouter = Router();
+
+billingRouter.post('/webhook', handleStripeWebhook);
 
 billingRouter.use(authenticate);
 

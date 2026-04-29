@@ -111,6 +111,17 @@ export class BillingService {
         input.currentPeriodEnd ?? null,
       ],
     );
+
+
+    await query(
+      `UPDATE users
+       SET stripe_customer_id = $1,
+           subscription_status = $2,
+           plan = $3,
+           updated_at = NOW()
+       WHERE organization_id = $4`,
+      [customer.stripe_customer_id, input.status, plan, customer.organization_id],
+    );
   }
 
   private readonly stripe = new StripeService();
@@ -230,6 +241,16 @@ export class BillingService {
       ],
     );
 
+    await query(
+      `UPDATE users
+       SET stripe_customer_id = $1,
+           subscription_status = $2,
+           plan = $3,
+           updated_at = NOW()
+       WHERE organization_id = $4`,
+      [customer.stripe_customer_id, saved.status, saved.plan, organizationId],
+    );
+
     return saved;
   }
 
@@ -238,12 +259,24 @@ export class BillingService {
       return;
     }
 
-    if (event.type === 'invoice.payment_succeeded') {
+    if (event.type === 'checkout.session.completed') {
+      const session = event.data.object as { customer?: string; subscription?: string };
+      if (session.customer && session.subscription) {
+        await this.upsertStripeSubscription({
+          stripeCustomerId: session.customer,
+          stripeSubscriptionId: session.subscription,
+          status: 'active',
+        });
+      }
+      return;
+    }
+
+    if (event.type === 'invoice.paid') {
       const invoice = event.data.object as StripeWebhookInvoice;
       await this.upsertStripeSubscription({
         stripeCustomerId: invoice.customer,
         stripeSubscriptionId: invoice.subscription,
-        status: invoice.status,
+        status: 'active',
         priceId: invoice.lines?.data?.[0]?.price?.id,
         currentPeriodStart: invoice.lines?.data?.[0]?.period?.start,
         currentPeriodEnd: invoice.lines?.data?.[0]?.period?.end,
@@ -251,12 +284,23 @@ export class BillingService {
       return;
     }
 
-    if (event.type === 'customer.subscription.updated') {
+    if (event.type === 'invoice.payment_failed') {
+      const invoice = event.data.object as StripeWebhookInvoice;
+      await this.upsertStripeSubscription({
+        stripeCustomerId: invoice.customer,
+        stripeSubscriptionId: invoice.subscription,
+        status: 'past_due',
+        priceId: invoice.lines?.data?.[0]?.price?.id,
+      });
+      return;
+    }
+
+    if (event.type === 'customer.subscription.deleted') {
       const subscription = event.data.object as StripeWebhookSubscription;
       await this.upsertStripeSubscription({
         stripeCustomerId: subscription.customer,
         stripeSubscriptionId: subscription.id,
-        status: subscription.status,
+        status: 'canceled',
         priceId: subscription.items?.data?.[0]?.price?.id,
         currentPeriodStart: subscription.current_period_start,
         currentPeriodEnd: subscription.current_period_end,
