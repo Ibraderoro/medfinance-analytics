@@ -47,7 +47,7 @@ async function applyMigration(filename: string): Promise<void> {
   }
 }
 
-async function rollbackLatestMigration(): Promise<void> {
+export async function rollbackLatestMigration(): Promise<void> {
   await ensureMigrationsTable();
 
   const latest = await getPool().query<{ filename: string }>(
@@ -88,7 +88,7 @@ async function rollbackLatestMigration(): Promise<void> {
   }
 }
 
-async function migrate(): Promise<void> {
+export async function migrate(): Promise<void> {
   await ensureMigrationsTable();
   const applied = await getAppliedMigrations();
 
@@ -123,9 +123,12 @@ async function run(): Promise<void> {
   await migrate();
 }
 
-run()
-  .then(() => process.exit(0))
-  .catch((err) => {
-    console.error('Migration failed:', err);
-    process.exit(1);
-  });
+if (require.main === module) {
+  run()
+    .then(() => process.exit(0))
+    .catch((err) => {
+      console.error('Migration failed:', err);
+      process.exit(1);
+    });
+}
+

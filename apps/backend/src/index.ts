@@ -2,6 +2,8 @@ import 'dotenv/config';
 import { app } from './app';
 import { logger } from './utils/logger';
 import { connectDatabase, disconnectDatabase } from './config/database';
+import { migrate } from './db/migrate';
+import { validateRequiredTables } from './db/schemaValidation';
 import { connectRedis, disconnectRedis } from './config/redis';
 import { env } from './config/env';
 import { liveFinancialsService } from './services/liveFinancials.service';
@@ -24,6 +26,8 @@ app.use((_req, res, next) => {
 async function bootstrap(): Promise<void> {
   try {
     await connectDatabase();
+    await migrate();
+    await validateRequiredTables();
     await connectRedis();
 
     await liveFinancialsService.start();
