@@ -81,8 +81,8 @@ export class AuthService {
     }
 
     const existing = await query<{ id: string }>(
-      'SELECT id FROM users WHERE email = $1',
-      [email],
+      'SELECT id FROM users WHERE email = $1 AND organization_id = $2',
+      [email, organizationId],
     );
     if (existing.length > 0) {
       throw conflictError('Email already registered');
@@ -113,11 +113,11 @@ export class AuthService {
     return this.generateTokenPair(user);
   }
 
-  async login(email: string, password: string) {
+  async login(email: string, password: string, organizationId: string) {
     const [user] = await query<UserRow>(
       `SELECT id, email, password_hash, first_name, last_name, role, organization_id, is_active
-       FROM users WHERE email = $1`,
-      [email],
+       FROM users WHERE email = $1 AND organization_id = $2`,
+      [email, organizationId],
     );
 
     if (!user || !user.is_active) {

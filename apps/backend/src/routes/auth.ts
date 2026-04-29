@@ -30,6 +30,7 @@ authRouter.post(
   [
     body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
     body('password').notEmpty().withMessage('Password is required'),
+    body('organizationId').isUUID().withMessage('Valid organization ID (UUID) is required'),
   ],
   validateRequest,
   login,
