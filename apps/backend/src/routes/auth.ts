@@ -17,8 +17,8 @@ authRouter.post(
     body('organizationId').isUUID().withMessage('Valid organization ID (UUID) is required'),
     body('role')
       .optional()
-      .isIn(['cfo', 'finance_manager', 'auditor', 'viewer'])
-      .withMessage('role must be one of cfo, finance_manager, auditor, viewer'),
+      .isIn(['admin', 'analyst', 'viewer'])
+      .withMessage('role must be one of admin, analyst, viewer'),
   ],
   validateRequest,
   register,
