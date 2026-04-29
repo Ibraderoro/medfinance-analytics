@@ -5,6 +5,8 @@ import { getRedis } from '../config/redis';
 import { CacheService } from '../utils/cache';
 import { logger } from '../utils/logger';
 
+type FlushableResponse = Response & { flush?: () => void };
+
 interface LiveMetricsPayload {
   organization_id: string;
   year: number;
@@ -234,10 +236,11 @@ export class LiveFinancialsService {
     event: LiveEventType | 'snapshot',
     payload: LiveMetricsPayload,
   ): void {
-    res.write(`event: ${event}\n`);
-    (res as any).flush?.();
-    res.write(`data: ${JSON.stringify(payload)}\n\n`);
-    (res as any).flush?.();
+    const sseResponse = res as FlushableResponse;
+    sseResponse.write(`event: ${event}\n`);
+    sseResponse.flush?.();
+    sseResponse.write(`data: ${JSON.stringify(payload)}\n\n`);
+    sseResponse.flush?.();
   }
 }
 

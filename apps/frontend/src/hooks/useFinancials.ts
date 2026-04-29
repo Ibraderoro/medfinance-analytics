@@ -8,6 +8,11 @@ interface FinancialSummary {
   net_income: string | number;
 }
 
+interface RevenueApiPoint {
+  month: string;
+  total: string | number;
+}
+
 interface UseFinancialsReturn {
   summary: FinancialSummary | null;
   prevSummary: FinancialSummary | null;
@@ -54,7 +59,7 @@ export function useFinancials(year?: number): UseFinancialsReturn {
         if (revenueRes.status === 'fulfilled') {
           const rawData = revenueRes.value.data?.data;
           if (Array.isArray(rawData)) {
-            const mapped = rawData.map((d: any) => ({
+            const mapped = (rawData as RevenueApiPoint[]).map((d) => ({
               month: new Date(d.month).toLocaleString('default', {
                 month: 'short',
                 year: '2-digit',

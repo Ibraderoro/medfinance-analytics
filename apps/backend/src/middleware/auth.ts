@@ -40,7 +40,7 @@ function isUserPayload(payload: unknown): payload is {
   );
 }
 
-function isRole(role: string): role is Role {
+function isRole(role: string): role is RbacRole {
   return role === 'admin' || role === 'analyst' || role === 'viewer';
 }
 
@@ -117,7 +117,7 @@ export function authorize(requiredRole: RbacRole) {
   return (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
     const user = requireAuthenticatedUser(req);
 
-    if (!(user.role in ROLE_HIERARCHY)) {
+    if (!isRole(user.role)) {
       res.status(403).json({
         success: false,
         error: { message: 'Unknown role', code: 'AUTH_INVALID_ROLE' },
@@ -125,8 +125,7 @@ export function authorize(requiredRole: RbacRole) {
       return;
     }
 
-    const currentRole = user.role as RbacRole;
-    if (ROLE_HIERARCHY[currentRole] < ROLE_HIERARCHY[requiredRole]) {
+    if (ROLE_HIERARCHY[user.role] < ROLE_HIERARCHY[requiredRole]) {
       res.status(403).json({
         success: false,
         error: { message: 'Insufficient permissions', code: 'AUTH_FORBIDDEN' },
