@@ -51,7 +51,7 @@ describe('AuthService.login', () => {
     // Third query: INSERT refresh token.
     mockQuery.mockResolvedValueOnce([]);
 
-    const result = await service.login('user@example.com', 'password123');
+    const result = await service.login('user@example.com', 'password123', 'org-uuid');
 
     expect(result).toHaveProperty('accessToken');
     expect(result).toHaveProperty('refreshToken');
@@ -62,7 +62,7 @@ describe('AuthService.login', () => {
   it('throws 401 when user is not found', async () => {
     mockQuery.mockResolvedValueOnce([]); // no user returned
 
-    await expect(service.login('ghost@example.com', 'pass')).rejects.toMatchObject({
+    await expect(service.login('ghost@example.com', 'pass', 'org-uuid')).rejects.toMatchObject({
       statusCode: 401,
       message: 'Invalid credentials',
     });
@@ -82,7 +82,7 @@ describe('AuthService.login', () => {
       },
     ]);
 
-    await expect(service.login('user@example.com', 'wrong_password')).rejects.toMatchObject({
+    await expect(service.login('user@example.com', 'wrong_password', 'org-uuid')).rejects.toMatchObject({
       statusCode: 401,
     });
   });
@@ -99,7 +99,7 @@ describe('AuthService.login', () => {
       },
     ]);
 
-    await expect(service.login('user@example.com', 'pass')).rejects.toMatchObject({
+    await expect(service.login('user@example.com', 'pass', 'org-uuid')).rejects.toMatchObject({
       statusCode: 401,
     });
   });

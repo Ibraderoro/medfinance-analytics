@@ -48,6 +48,7 @@ END$$;
 
 DROP INDEX IF EXISTS idx_users_organisation;
 CREATE INDEX IF NOT EXISTS idx_users_organization ON users(organization_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_organization_unique ON users(email, organization_id);
 
 -- Tenant columns on financial and compliance tables
 ALTER TABLE departments ADD COLUMN IF NOT EXISTS organization_id UUID;
