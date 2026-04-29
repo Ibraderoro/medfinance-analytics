@@ -31,7 +31,7 @@ export async function register(
       organizationId,
       role,
     );
-    res.status(201).json({ data: tokens });
+    res.status(201).json(tokens);
   } catch (err) {
     next(err);
   }
@@ -45,7 +45,7 @@ export async function login(
   try {
     const { email, password } = req.body as { email: string; password: string };
     const tokens = await service.login(email, password);
-    res.json({ data: tokens });
+    res.json(tokens);
   } catch (err) {
     next(err);
   }
@@ -59,7 +59,7 @@ export async function refresh(
   try {
     const { refreshToken } = req.body as { refreshToken: string };
     const tokens = await service.refresh(refreshToken);
-    res.json({ data: tokens });
+    res.json(tokens);
   } catch (err) {
     next(err);
   }
