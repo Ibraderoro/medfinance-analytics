@@ -1,20 +1,74 @@
-import { addMonths, buildForecastSeries, formatMonth, getMonthStart } from '../services/forecasting/forecastingMath';
+import { buildForecastSeries } from '../services/forecasting/forecastingMath';
 
-describe('forecasting math', () => {
-  it('builds forecast series with future months', () => {
-    const result = buildForecastSeries({ metric: 'revenue', historicalValues: [100, 120, 130], historicalMonths: ['2026-01-01', '2026-02-01', '2026-03-01'], forecastMonths: 2 });
-    expect(result.series).toHaveLength(5);
-    expect(result.series[0].actual).toBe(100);
-    expect(result.series[4].actual).toBeNull();
+describe('forecastingMath financial accuracy', () => {
+  it('derives an increasing trend for high-volatility data with improving slope', () => {
+    // Failure Mode: Volatile datasets can flatten trend detection and hide improving performance.
+    const result = buildForecastSeries({
+      metric: 'revenue',
+      historicalValues: [100, 220, 140, 280, 210, 350],
+      historicalMonths: ['2026-01-01', '2026-02-01', '2026-03-01', '2026-04-01', '2026-05-01', '2026-06-01'],
+      forecastMonths: 3,
+      alpha: 0.4,
+    });
+
+    expect(result.trend).toBe('increasing');
+    expect(result.series).toHaveLength(9);
+    expect(result.series[8].confidence_interval.upper).toBeGreaterThan(result.series[8].confidence_interval.lower);
   });
 
-  it('handles empty history', () => {
-    const result = buildForecastSeries({ metric: 'expense', historicalValues: [], historicalMonths: [], forecastMonths: 3 });
-    expect(result.series).toEqual([]);
+  it('keeps margin-relevant forecast bounded at zero when revenue history is zero', () => {
+    // Failure Mode: Zero-revenue months can create negative fitted values and impossible negative margins.
+    const result = buildForecastSeries({
+      metric: 'revenue',
+      historicalValues: [0, 0, 0, 0],
+      historicalMonths: ['2026-01-01', '2026-02-01', '2026-03-01', '2026-04-01'],
+      forecastMonths: 2,
+    });
+
+    for (const point of result.series) {
+      expect(point.forecast).toBe(0);
+      expect(point.confidence_interval.lower).toBe(0);
+      expect(point.confidence_interval.upper).toBe(0);
+    }
   });
 
-  it('date helpers are deterministic', () => {
-    const d = getMonthStart(new Date('2026-04-15T12:00:00.000Z'));
-    expect(formatMonth(addMonths(d, 1))).toBe('2026-05-01');
+  it('normalizes negative growth and negative actuals to avoid invalid financial outputs', () => {
+    // Failure Mode: Data import glitches can inject negative revenue and corrupt projections.
+    const result = buildForecastSeries({
+      metric: 'revenue',
+      historicalValues: [300, 250, 200, -50],
+      historicalMonths: ['2026-01-01', '2026-02-01', '2026-03-01', '2026-04-01'],
+      forecastMonths: 1,
+      alpha: 0.5,
+    });
+
+    expect(result.trend).toBe('decreasing');
+    expect(result.series[3].actual).toBe(0);
+    expect(result.series[4].forecast).toBeGreaterThanOrEqual(0);
+  });
+
+  it('produces expense forecasts that can be used for margin calculations', () => {
+    // Failure Mode: Expense smoothing can drift and break net-margin denominator assumptions.
+    const expenseResult = buildForecastSeries({
+      metric: 'expense',
+      historicalValues: [40, 45, 47, 43, 44],
+      historicalMonths: ['2026-01-01', '2026-02-01', '2026-03-01', '2026-04-01', '2026-05-01'],
+      forecastMonths: 1,
+    });
+
+    const revenueResult = buildForecastSeries({
+      metric: 'revenue',
+      historicalValues: [100, 102, 104, 105, 106],
+      historicalMonths: ['2026-01-01', '2026-02-01', '2026-03-01', '2026-04-01', '2026-05-01'],
+      forecastMonths: 1,
+    });
+
+    const revenueForecast = revenueResult.series[5].forecast;
+    const expenseForecast = expenseResult.series[5].forecast;
+    const projectedMarginPct = Number((((revenueForecast - expenseForecast) / revenueForecast) * 100).toFixed(2));
+
+    expect(expenseForecast).toBeGreaterThan(0);
+    expect(projectedMarginPct).toBeGreaterThan(40);
+    expect(projectedMarginPct).toBeLessThan(80);
   });
 });
