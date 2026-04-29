@@ -17,6 +17,7 @@ function isUserPayload(payload: unknown): payload is {
   role: string;
   organization_id?: string;
   organisationId?: string;
+  organizationId?: string;
 } {
   if (!payload || typeof payload !== 'object') {
     return false;
@@ -27,7 +28,7 @@ function isUserPayload(payload: unknown): payload is {
     typeof candidate.id === 'string'
     && typeof candidate.email === 'string'
     && typeof candidate.role === 'string'
-    && (typeof candidate.organization_id === 'string' || typeof candidate.organisationId === 'string')
+    && (typeof candidate.organization_id === 'string' || typeof candidate.organisationId === 'string' || typeof candidate.organizationId === 'string')
   );
 }
 
@@ -63,7 +64,7 @@ export function authenticate(
       return;
     }
 
-    const organizationId = payload.organization_id ?? payload.organisationId;
+    const organizationId = payload.organization_id ?? payload.organisationId ?? payload.organizationId;
     if (!organizationId) {
       res.status(401).json({
         success: false,

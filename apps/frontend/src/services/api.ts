@@ -85,7 +85,7 @@ export const authApi = {
     password: string;
     firstName: string;
     lastName: string;
-    organisationId: string;
+    organizationId: string;
     role?: string;
   }) =>
     apiClient.post<{ data: { accessToken: string; refreshToken: string } }>(
