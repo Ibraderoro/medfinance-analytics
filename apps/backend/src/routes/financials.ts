@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticate } from '../middleware/auth';
+import { authenticate, authorize } from '../middleware/auth';
 import { attachTenantContext, blockTenantOverride } from '../middleware/tenantContext';
 import { validateRequest } from '../middleware/validateRequest';
 import { enforceFreeHistoryWindow } from '../middleware/planAccess';
