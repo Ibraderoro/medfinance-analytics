@@ -2,6 +2,8 @@ import { Response, NextFunction } from 'express';
 import { liveFinancialsService } from '../services/liveFinancials.service';
 import { AuthenticatedRequest, requireAuthenticatedUser } from '../middleware/auth';
 
+type FlushableResponse = Response & { flush?: () => void };
+
 export async function getLiveFinancials(
   req: AuthenticatedRequest,
   res: Response,
@@ -9,27 +11,28 @@ export async function getLiveFinancials(
 ): Promise<void> {
   try {
     const user = requireAuthenticatedUser(req);
+    const sseResponse = res as FlushableResponse;
 
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache, no-transform');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no');
+    sseResponse.setHeader('Content-Type', 'text/event-stream');
+    sseResponse.setHeader('Cache-Control', 'no-cache, no-transform');
+    sseResponse.setHeader('Connection', 'keep-alive');
+    sseResponse.setHeader('X-Accel-Buffering', 'no');
 
-    res.flushHeaders();
-    res.write('retry: 10000\n\n');
-    (res as any).flush?.();
+    sseResponse.flushHeaders();
+    sseResponse.write('retry: 10000\n\n');
+    sseResponse.flush?.();
 
     const keepAlive = setInterval(() => {
-      res.write(': keep-alive\n\n');
-      (res as any).flush?.();
+      sseResponse.write(': keep-alive\n\n');
+      sseResponse.flush?.();
     }, 25_000);
 
-    await liveFinancialsService.addClient(res, user.organization_id);
+    await liveFinancialsService.addClient(sseResponse, user.organization_id);
 
     req.on('close', () => {
       clearInterval(keepAlive);
-      liveFinancialsService.removeClient(res);
-      res.end();
+      liveFinancialsService.removeClient(sseResponse);
+      sseResponse.end();
     });
   } catch (error) {
     next(error);
