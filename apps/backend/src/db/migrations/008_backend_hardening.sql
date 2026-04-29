@@ -17,10 +17,10 @@ DO $$
 BEGIN
   IF EXISTS (
     SELECT 1 FROM information_schema.columns
-    WHERE table_name='compliance_items' AND column_name='organisation_id'
+    WHERE table_schema='public' AND table_name='compliance_items' AND column_name='organisation_id'
   ) AND NOT EXISTS (
     SELECT 1 FROM information_schema.columns
-    WHERE table_name='compliance_items' AND column_name='organization_id'
+    WHERE table_schema='public' AND table_name='compliance_items' AND column_name='organization_id'
   ) THEN
     ALTER TABLE compliance_items RENAME COLUMN organisation_id TO organization_id;
   END IF;
@@ -30,10 +30,10 @@ DO $$
 BEGIN
   IF EXISTS (
     SELECT 1 FROM information_schema.columns
-    WHERE table_name='regulatory_alerts' AND column_name='organisation_id'
+    WHERE table_schema='public' AND table_name='regulatory_alerts' AND column_name='organisation_id'
   ) AND NOT EXISTS (
     SELECT 1 FROM information_schema.columns
-    WHERE table_name='regulatory_alerts' AND column_name='organization_id'
+    WHERE table_schema='public' AND table_name='regulatory_alerts' AND column_name='organization_id'
   ) THEN
     ALTER TABLE regulatory_alerts RENAME COLUMN organisation_id TO organization_id;
   END IF;
