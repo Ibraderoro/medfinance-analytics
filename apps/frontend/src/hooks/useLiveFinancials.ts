@@ -1,5 +1,15 @@
 import { useEffect } from 'react';
 
+const BASE_URL = import.meta.env.VITE_API_URL ?? '/api/v1';
+
+function buildLiveFinancialsUrl(): string {
+  if (BASE_URL.startsWith('http://') || BASE_URL.startsWith('https://')) {
+    return `${BASE_URL.replace(/\/$/, '')}/financials/live`;
+  }
+
+  return `${BASE_URL.replace(/\/$/, '')}/financials/live`;
+}
+
 export interface LiveFinancialPayload {
   organization_id: string;
   year: number;
@@ -42,7 +52,7 @@ export function useLiveFinancials({
     const controller = new AbortController();
 
     const consumeStream = async (): Promise<void> => {
-      const response = await fetch('/api/v1/financials/live', {
+      const response = await fetch(buildLiveFinancialsUrl(), {
         method: 'GET',
         headers: {
           Accept: 'text/event-stream',
