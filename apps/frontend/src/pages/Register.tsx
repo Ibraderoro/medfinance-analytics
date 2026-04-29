@@ -3,8 +3,11 @@ import { Link, useNavigate } from 'react-router-dom';
 import { authApi } from '../services/api';
 import styles from './Page.module.css';
 
-export function LoginPage() {
+export function RegisterPage() {
   const navigate = useNavigate();
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [organizationId, setOrganizationId] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -16,23 +19,19 @@ export function LoginPage() {
     setIsSubmitting(true);
 
     try {
-      const response = await authApi.login(email, password);
+      const response = await authApi.register({
+        firstName,
+        lastName,
+        organizationId,
+        email,
+        password,
+      });
       const { accessToken, refreshToken } = response.data.data;
       localStorage.setItem('access_token', accessToken);
       localStorage.setItem('refresh_token', refreshToken);
-      // TODO: Backend must set httpOnly cookies for access_token and refresh_token.
-      // Tokens should never be stored in localStorage in a healthcare application.
-      // The server's Set-Cookie header handles auth persistence after this point.
       navigate('/dashboard', { replace: true });
-    } catch (err: unknown) {
-      const isAxiosError = (e: unknown): e is { response?: { status?: number } } =>
-        typeof e === 'object' && e !== null && 'response' in e;
-      const status = isAxiosError(err) ? err.response?.status : null;
-      setError(
-        status === 401
-          ? 'Invalid email or password.'
-          : 'Unable to sign in. Please check your connection and try again.'
-      );
+    } catch {
+      setError('Unable to register. Please check your details and try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -40,10 +39,49 @@ export function LoginPage() {
 
   return (
     <div className={styles.page} style={{ maxWidth: 420, margin: '4rem auto' }}>
-      <h1 className={styles.title}>Sign in</h1>
-      <p style={{ marginTop: 0, color: '#6b7280' }}>Use your MedFinance credentials to access dashboards.</p>
+      <h1 className={styles.title}>Create account</h1>
+      <p style={{ marginTop: 0, color: '#6b7280' }}>Register to access your MedFinance dashboards.</p>
 
       <form onSubmit={submit} style={{ display: 'grid', gap: 12 }}>
+        <label>
+          <span>First Name</span>
+          <input
+            type="text"
+            value={firstName}
+            onChange={(e) => setFirstName(e.target.value)}
+            required
+            maxLength={100}
+            autoComplete="given-name"
+            style={{ width: '100%', padding: '0.65rem', marginTop: 4 }}
+          />
+        </label>
+
+        <label>
+          <span>Last Name</span>
+          <input
+            type="text"
+            value={lastName}
+            onChange={(e) => setLastName(e.target.value)}
+            required
+            maxLength={100}
+            autoComplete="family-name"
+            style={{ width: '100%', padding: '0.65rem', marginTop: 4 }}
+          />
+        </label>
+
+        <label>
+          <span>Organization ID</span>
+          <input
+            type="text"
+            value={organizationId}
+            onChange={(e) => setOrganizationId(e.target.value)}
+            required
+            maxLength={100}
+            autoComplete="organization"
+            style={{ width: '100%', padding: '0.65rem', marginTop: 4 }}
+          />
+        </label>
+
         <label>
           <span>Email</span>
           <input
@@ -65,7 +103,7 @@ export function LoginPage() {
             onChange={(e) => setPassword(e.target.value)}
             required
             maxLength={128}
-            autoComplete="current-password"
+            autoComplete="new-password"
             style={{ width: '100%', padding: '0.65rem', marginTop: 4 }}
           />
         </label>
@@ -73,11 +111,11 @@ export function LoginPage() {
         {error && <p className={styles.error}>{error}</p>}
 
         <button type="submit" disabled={isSubmitting} style={{ padding: '0.7rem', fontWeight: 600 }}>
-          {isSubmitting ? 'Signing in…' : 'Sign in'}
+          {isSubmitting ? 'Creating account…' : 'Register'}
         </button>
 
         <p style={{ margin: 0, fontSize: '0.95rem' }}>
-          Don't have an account? <Link to="/register">Register here</Link>
+          Already have an account? <Link to="/login">Sign in</Link>
         </p>
       </form>
     </div>
