@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { getPool } from '../config/database';
 import { getRedis } from '../config/redis';
+import { metricsService } from '../services/metrics.service';
 
 export const healthRouter = Router();
 
@@ -39,6 +40,18 @@ healthRouter.get('/ready', async (req: Request, res: Response) => {
     status: allHealthy ? 'ready' : 'not_ready',
     timestamp: new Date().toISOString(),
     services: checks,
+  });
+});
+
+healthRouter.get('/metrics', (_req: Request, res: Response) => {
+  res.type('text/plain').status(200).send(metricsService.toPrometheus());
+});
+
+healthRouter.get('/metrics/summary', (_req: Request, res: Response) => {
+  res.status(200).json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    metrics: metricsService.getSnapshot(),
   });
 });
 

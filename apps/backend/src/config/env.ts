@@ -99,6 +99,7 @@ export const env = {
   ),
 
   LOG_LEVEL: optionalEnv('LOG_LEVEL', 'info'),
+  ERROR_RATE_ALERT_THRESHOLD: parseFloatEnv('ERROR_RATE_ALERT_THRESHOLD', 0.05),
   ANALYTICS_SAMPLE_RATE: parseFloatEnv('ANALYTICS_SAMPLE_RATE', 1),
   ANALYTICS_BATCH_SIZE: parseIntEnv('ANALYTICS_BATCH_SIZE', 100),
   ANALYTICS_FLUSH_INTERVAL_MS: parseIntEnv('ANALYTICS_FLUSH_INTERVAL_MS', 1000),
@@ -129,4 +130,8 @@ if (env.REQUIRE_SECURE_TRANSPORT && env.isProduction()) {
   if (!env.REDIS_TLS) {
     throw new Error('REDIS_TLS must be enabled in production when REQUIRE_SECURE_TRANSPORT=true');
   }
+}
+
+if (env.ERROR_RATE_ALERT_THRESHOLD < 0 || env.ERROR_RATE_ALERT_THRESHOLD > 1) {
+  throw new Error('ERROR_RATE_ALERT_THRESHOLD must be between 0 and 1');
 }

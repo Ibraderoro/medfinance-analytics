@@ -10,8 +10,11 @@ export function requestLogger(
 
   res.on('finish', () => {
     const duration = Date.now() - start;
+    const requestUser = (req as Request & { user?: { id?: string; organization_id?: string } }).user;
     logger.info('HTTP request completed', {
       requestId: req.requestId,
+      userId: requestUser?.id,
+      orgId: requestUser?.organization_id,
       method: req.method,
       path: req.originalUrl,
       statusCode: res.statusCode,

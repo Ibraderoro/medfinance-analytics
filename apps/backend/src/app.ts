@@ -11,6 +11,7 @@ import { sanitizeInput } from './middleware/sanitizeInput';
 import { trackApiAnalytics } from './middleware/analytics';
 import { requestContext } from './middleware/requestContext';
 import { responseEnvelope } from './middleware/responseEnvelope';
+import { observabilityMiddleware } from './middleware/observability';
 
 export const app: Application = express();
 app.locals.isShuttingDown = false;
@@ -65,6 +66,7 @@ app.use(express.urlencoded({ extended: true, limit: '100kb' }));
 app.use(sanitizeInput);
 app.use(responseEnvelope);
 
+app.use(observabilityMiddleware);
 app.use(requestLogger);
 app.use(trackApiAnalytics);
 
