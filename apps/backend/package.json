@@ -2,7 +2,7 @@
   "name": "@medfinance/backend",
   "version": "1.0.0",
   "private": true,
-  "description": "MedFinance Analytics \u2014 Express REST API",
+  "description": "MedFinance Analytics — Express REST API",
   "main": "dist/index.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
