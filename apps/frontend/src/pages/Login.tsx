@@ -16,7 +16,10 @@ export function LoginPage() {
     setIsSubmitting(true);
 
     try {
-      await authApi.login(email, password);
+      const response = await authApi.login(email, password);
+      const { accessToken, refreshToken } = response.data.data;
+      localStorage.setItem('access_token', accessToken);
+      localStorage.setItem('refresh_token', refreshToken);
       // TODO: Backend must set httpOnly cookies for access_token and refresh_token.
       // Tokens should never be stored in localStorage in a healthcare application.
       // The server's Set-Cookie header handles auth persistence after this point.
