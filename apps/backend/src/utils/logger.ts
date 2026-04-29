@@ -1,7 +1,7 @@
 import winston from 'winston';
 import { env } from '../config/env';
 
-const { combine, timestamp, errors, json, colorize, simple } = winston.format;
+const { combine, timestamp, errors, json } = winston.format;
 
 export const logger = winston.createLogger({
   level: env.LOG_LEVEL,
@@ -13,9 +13,7 @@ export const logger = winston.createLogger({
   defaultMeta: { service: 'medfinance-backend' },
   transports: [
     new winston.transports.Console({
-      format: env.isDevelopment()
-        ? combine(colorize(), simple())
-        : combine(timestamp(), json()),
+      format: combine(timestamp(), errors({ stack: true }), json()),
     }),
   ],
 });
