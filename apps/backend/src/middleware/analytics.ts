@@ -23,7 +23,7 @@ export function trackApiAnalytics(req: RequestWithUser, res: Response, next: Nex
 
   res.on('finish', () => {
     const end = process.hrtime.bigint();
-    const latencyMs = Number(end - start) / 1_000_000;
+    const latencyMs = Math.round(Number(end - start) / 1_000_000);
 
     void analyticsService.recordApiRequest({
       endpoint: `${req.method} ${req.path}`,

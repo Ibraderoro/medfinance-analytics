@@ -174,7 +174,7 @@ export class AnalyticsService {
           item.endpoint,
           item.method,
           item.statusCode,
-          item.latencyMs,
+          Math.round(item.latencyMs),
           item.userId ?? null,
           item.organizationId ?? null,
         );
