@@ -97,12 +97,12 @@ ALTER TABLE regulatory_alerts DROP COLUMN IF EXISTS organization_id;
 ALTER TABLE audit_log DROP COLUMN IF EXISTS organization_id;
 
 -- Restore original spelling from migrations 002 and 003
-ALTER TABLE users ADD COLUMN IF NOT EXISTS organisation_id UUID;
-ALTER TABLE compliance_items ADD COLUMN IF NOT EXISTS organisation_id UUID;
-ALTER TABLE regulatory_alerts ADD COLUMN IF NOT EXISTS organisation_id UUID;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS organization_id UUID;
+ALTER TABLE compliance_items ADD COLUMN IF NOT EXISTS organization_id UUID;
+ALTER TABLE regulatory_alerts ADD COLUMN IF NOT EXISTS organization_id UUID;
 
-CREATE INDEX IF NOT EXISTS idx_users_organisation ON users(organisation_id);
-CREATE INDEX IF NOT EXISTS idx_compliance_items_org ON compliance_items(organisation_id);
-CREATE INDEX IF NOT EXISTS idx_regulatory_alerts_org ON regulatory_alerts(organisation_id);
+CREATE INDEX IF NOT EXISTS idx_users_organization ON users(organization_id);
+CREATE INDEX IF NOT EXISTS idx_compliance_items_org ON compliance_items(organization_id);
+CREATE INDEX IF NOT EXISTS idx_regulatory_alerts_org ON regulatory_alerts(organization_id);
 
 DROP TABLE IF EXISTS organizations;

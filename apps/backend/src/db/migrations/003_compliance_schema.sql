@@ -9,12 +9,12 @@ CREATE TABLE IF NOT EXISTS compliance_items (
   last_reviewed_at    TIMESTAMPTZ,
   next_review_due_at  TIMESTAMPTZ  NOT NULL,
   assigned_to         VARCHAR(255),
-  organisation_id     UUID         NOT NULL,
+  organization_id     UUID         NOT NULL,
   created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
   updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_compliance_items_org    ON compliance_items(organisation_id);
+CREATE INDEX IF NOT EXISTS idx_compliance_items_org    ON compliance_items(organization_id);
 CREATE INDEX IF NOT EXISTS idx_compliance_items_status ON compliance_items(status);
 
 CREATE TABLE IF NOT EXISTS audit_log (
@@ -41,11 +41,11 @@ CREATE TABLE IF NOT EXISTS regulatory_alerts (
   due_date         DATE         NOT NULL,
   status           VARCHAR(24)  NOT NULL DEFAULT 'open'
                      CHECK (status IN ('open', 'acknowledged', 'resolved')),
-  organisation_id  UUID         NOT NULL,
+  organization_id  UUID         NOT NULL,
   created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
   updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_regulatory_alerts_severity ON regulatory_alerts(severity);
 CREATE INDEX IF NOT EXISTS idx_regulatory_alerts_due_date ON regulatory_alerts(due_date ASC);
-CREATE INDEX IF NOT EXISTS idx_regulatory_alerts_org      ON regulatory_alerts(organisation_id);
+CREATE INDEX IF NOT EXISTS idx_regulatory_alerts_org      ON regulatory_alerts(organization_id);
