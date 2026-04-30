@@ -42,6 +42,7 @@ interface ActiveUsersRow {
 export class AnalyticsService {
   private readonly redis = getRedis();
 
+
   async enqueueApiTelemetry(input: {
     endpoint: string;
     method: string;
@@ -56,27 +57,60 @@ export class AnalyticsService {
     }
 
     // Durable stream append prevents direct DB write amplification from hot API paths.
-    await this.redis.xadd(
-      'api_telemetry_stream',
-      'MAXLEN',
-      '~',
-      String(env.ANALYTICS_MAX_QUEUE_SIZE),
-      '*',
-      'endpoint',
-      input.endpoint,
-      'method',
-      input.method,
-      'status_code',
-      String(input.statusCode),
-      'latency_ms',
-      String(Math.round(input.latencyMs)),
-      'user_id',
-      input.userId ?? '',
-      'organization_id',
-      input.organizationId ?? '',
-      'captured_at',
-      input.capturedAt,
-    );
+    const redisClient = this.redis as { xadd?: (...args: string[]) => Promise<unknown>; call?: (...args: string[]) => Promise<unknown> };
+
+    if (typeof redisClient.xadd === 'function') {
+      await redisClient.xadd(
+        'api_telemetry_stream',
+        'MAXLEN',
+        '~',
+        String(env.ANALYTICS_MAX_QUEUE_SIZE),
+        '*',
+        'endpoint',
+        input.endpoint,
+        'method',
+        input.method,
+        'status_code',
+        String(input.statusCode),
+        'latency_ms',
+        String(Math.round(input.latencyMs)),
+        'user_id',
+        input.userId ?? '',
+        'organization_id',
+        input.organizationId ?? '',
+        'captured_at',
+        input.capturedAt,
+      );
+      return;
+    }
+
+    if (typeof redisClient.call === 'function') {
+      await redisClient.call(
+        'XADD',
+        'api_telemetry_stream',
+        'MAXLEN',
+        '~',
+        String(env.ANALYTICS_MAX_QUEUE_SIZE),
+        '*',
+        'endpoint',
+        input.endpoint,
+        'method',
+        input.method,
+        'status_code',
+        String(input.statusCode),
+        'latency_ms',
+        String(Math.round(input.latencyMs)),
+        'user_id',
+        input.userId ?? '',
+        'organization_id',
+        input.organizationId ?? '',
+        'captured_at',
+        input.capturedAt,
+      );
+      return;
+    }
+
+    throw new Error('Redis client does not support XADD/call for analytics stream writes');
   }
 
   async getAdminMetrics(windowMinutes = 60, activeWindowMinutes = 5): Promise<AdminMetricsSnapshot> {
