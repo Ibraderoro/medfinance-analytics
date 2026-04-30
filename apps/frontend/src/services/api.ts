@@ -90,10 +90,10 @@ apiClient.interceptors.response.use(
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 export const authApi = {
-  login: (email: string, password: string) =>
+  login: (email: string, password: string, organizationId: string) =>
     apiClient.post<{ data: { accessToken: string; refreshToken: string } }>(
       '/auth/login',
-      { email, password },
+      { email, password, organizationId },
     ),
   register: (data: {
     email: string;
