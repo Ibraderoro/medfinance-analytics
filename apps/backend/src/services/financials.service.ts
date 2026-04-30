@@ -26,7 +26,11 @@ export class FinancialsService {
 
   private async withCacheInvalidation<T>(organizationId: string, operation: () => Promise<T>): Promise<T> {
     const result = await operation();
-    await invalidateOrganizationFinancialCache(organizationId);
+    try {
+      await invalidateOrganizationFinancialCache(organizationId);
+    } catch (error) {
+      console.error('Failed to invalidate organization financial cache:', error);
+    }
     return result;
   }
 
