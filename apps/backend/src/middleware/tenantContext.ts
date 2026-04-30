@@ -10,7 +10,7 @@ declare module 'express-serve-static-core' {
   }
 }
 
-const TENANT_ORG_FIELDS = ['organization_id', 'organizationId', 'organisation_id', 'organisationId'];
+const TENANT_ORG_FIELDS = ['organization_id', 'organizationId', 'organization_id', 'organisationId'];
 
 export function attachTenantContext(
   req: AuthenticatedRequest,

@@ -39,7 +39,7 @@ users (1) ────────< audit_log.performed_by (optional)
 - **Purpose**: Application identities and role-based access.
 - **Primary key**: `id UUID`.
 - **Foreign keys**:
-  - `organisation_id → organisations(id)` (`ON DELETE CASCADE`)
+  - `organization_id → organisations(id)` (`ON DELETE CASCADE`)
 - **Constraints**:
   - `email` unique
   - role check: `cfo | finance_manager | auditor | viewer`
@@ -49,28 +49,28 @@ users (1) ────────< audit_log.performed_by (optional)
 - **Purpose**: Ledger-like store of revenues and expenses.
 - **Primary key**: `id UUID`.
 - **Foreign keys**:
-  - `organisation_id → organisations(id)` (`ON DELETE CASCADE`)
+  - `organization_id → organisations(id)` (`ON DELETE CASCADE`)
 - **Constraints**:
   - type check: `revenue | expense`
   - `amount NUMERIC(18,2)`
 - **Analytical columns**:
   - `category`, `transaction_date`, `reference_number`
 - **Indexes**:
-  - `organisation_id`, `transaction_date`, `type`
+  - `organization_id`, `transaction_date`, `type`
 
 ### `budgets`
 - **Purpose**: Category-level budgeting by fiscal year.
 - **Primary key**: `id UUID`.
 - **Foreign keys**:
-  - `organisation_id → organisations(id)` (`ON DELETE CASCADE`)
+  - `organization_id → organisations(id)` (`ON DELETE CASCADE`)
 - **Constraints**:
-  - unique composite key `(organisation_id, category, fiscal_year)`
+  - unique composite key `(organization_id, category, fiscal_year)`
 
 ### `compliance_items`
 - **Purpose**: Compliance control checklist by regulation.
 - **Primary key**: `id UUID`.
 - **Foreign keys**:
-  - `organisation_id → organisations(id)` (`ON DELETE CASCADE`)
+  - `organization_id → organisations(id)` (`ON DELETE CASCADE`)
   - `assigned_to → users(id)` (nullable)
 - **Constraints**:
   - status check: `compliant | non_compliant | under_review`
@@ -79,7 +79,7 @@ users (1) ────────< audit_log.performed_by (optional)
 - **Purpose**: Time-sensitive compliance alerts with severity and lifecycle status.
 - **Primary key**: `id UUID`.
 - **Foreign keys**:
-  - `organisation_id → organisations(id)` (`ON DELETE CASCADE`)
+  - `organization_id → organisations(id)` (`ON DELETE CASCADE`)
 - **Constraints**:
   - severity check: `critical | high | medium | low`
   - status check: `open | acknowledged | resolved` (default `open`)
@@ -88,12 +88,12 @@ users (1) ────────< audit_log.performed_by (optional)
 - **Purpose**: Immutable-style event stream for actions performed on domain entities.
 - **Primary key**: `id BIGSERIAL`.
 - **Foreign keys**:
-  - `organisation_id → organisations(id)` (`ON DELETE SET NULL`)
+  - `organization_id → organisations(id)` (`ON DELETE SET NULL`)
   - `performed_by → users(id)` (`ON DELETE SET NULL`)
 - **Important columns**:
   - `action`, `entity_type`, `entity_id`, `performed_at`, `metadata JSONB`
 - **Indexes**:
-  - `organisation_id`
+  - `organization_id`
   - descending `performed_at`
 
 ## 4) Query Patterns Supported by Current Services
@@ -108,7 +108,7 @@ users (1) ────────< audit_log.performed_by (optional)
 
 ## 5) Data Governance Considerations
 
-- Tenant separation is encoded via `organisation_id` across core domain tables.
+- Tenant separation is encoded via `organization_id` across core domain tables.
 - Auditability is provided through dedicated `audit_log` with JSONB metadata for extensibility.
 - Enumerated checks protect status/severity/role data integrity at the schema level.
 

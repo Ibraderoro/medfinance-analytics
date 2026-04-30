@@ -18,12 +18,12 @@ DO $$
 BEGIN
   IF EXISTS (
     SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'organisation_id'
+    WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'organization_id'
   ) AND NOT EXISTS (
     SELECT 1 FROM information_schema.columns
     WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'organization_id'
   ) THEN
-    ALTER TABLE users RENAME COLUMN organisation_id TO organization_id;
+    ALTER TABLE users RENAME COLUMN organization_id TO organization_id;
   END IF;
 END$$;
 
@@ -46,7 +46,7 @@ BEGIN
   END IF;
 END$$;
 
-DROP INDEX IF EXISTS idx_users_organisation;
+DROP INDEX IF EXISTS idx_users_organization;
 CREATE INDEX IF NOT EXISTS idx_users_organization ON users(organization_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_organization_unique ON users(email, organization_id);
 
@@ -68,9 +68,9 @@ DO $$
 BEGIN
   IF EXISTS (
     SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public' AND table_name = 'compliance_items' AND column_name = 'organisation_id'
+    WHERE table_schema = 'public' AND table_name = 'compliance_items' AND column_name = 'organization_id'
   ) THEN
-    EXECUTE 'UPDATE compliance_items SET organization_id = COALESCE(organization_id, organisation_id, md5(''default_organization'')::uuid)';
+    EXECUTE 'UPDATE compliance_items SET organization_id = COALESCE(organization_id, organization_id, md5(''default_organization'')::uuid)';
   ELSE
     UPDATE compliance_items SET organization_id = COALESCE(organization_id, md5('default_organization')::uuid);
   END IF;
@@ -80,9 +80,9 @@ DO $$
 BEGIN
   IF EXISTS (
     SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public' AND table_name = 'regulatory_alerts' AND column_name = 'organisation_id'
+    WHERE table_schema = 'public' AND table_name = 'regulatory_alerts' AND column_name = 'organization_id'
   ) THEN
-    EXECUTE 'UPDATE regulatory_alerts SET organization_id = COALESCE(organization_id, organisation_id, md5(''default_organization'')::uuid)';
+    EXECUTE 'UPDATE regulatory_alerts SET organization_id = COALESCE(organization_id, organization_id, md5(''default_organization'')::uuid)';
   ELSE
     UPDATE regulatory_alerts SET organization_id = COALESCE(organization_id, md5('default_organization')::uuid);
   END IF;
