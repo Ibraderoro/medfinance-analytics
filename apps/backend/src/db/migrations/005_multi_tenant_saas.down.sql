@@ -18,7 +18,9 @@ ALTER TABLE regulatory_alerts DISABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_log DISABLE ROW LEVEL SECURITY;
 
 -- Restore non-tenant KPI view shape from migration 004
-CREATE OR REPLACE VIEW financial_kpis AS
+DROP VIEW IF EXISTS financial_kpis;
+
+CREATE VIEW financial_kpis AS
 WITH monthly_totals AS (
   SELECT
     DATE_TRUNC('month', t.occurred_on::timestamp)::date AS month_start,
