@@ -25,6 +25,6 @@ billingRouter.post(
       .isIn(['pro', 'enterprise'])
       .withMessage('plan must be one of: pro, enterprise'),
   ],
-  validateRequest,
+  validateRequest(),
   createSubscription,
 );
