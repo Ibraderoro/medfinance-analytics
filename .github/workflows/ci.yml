@@ -76,7 +76,7 @@ jobs:
         run: npm ci
 
       - name: Run frontend component tests (RTL)
-        run: npm run test --workspace=apps/frontend -- --coverage --passWithNoTests
+        run: npm run test --workspace=apps/frontend -- --coverage
 
   security-scan:
     name: Security Scan
