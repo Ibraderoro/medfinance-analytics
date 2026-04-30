@@ -148,7 +148,9 @@ CREATE INDEX IF NOT EXISTS idx_regulatory_alerts_organization ON regulatory_aler
 CREATE INDEX IF NOT EXISTS idx_audit_log_organization ON audit_log(organization_id);
 
 -- Rebuild KPI view so every row is tenant-scoped.
-CREATE OR REPLACE VIEW financial_kpis AS
+DROP VIEW IF EXISTS financial_kpis;
+
+CREATE VIEW financial_kpis AS
 WITH monthly_totals AS (
   SELECT
     t.organization_id,

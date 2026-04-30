@@ -12,7 +12,9 @@ CREATE INDEX IF NOT EXISTS idx_transactions_month_type
   ON transactions ((DATE_TRUNC('month', occurred_on::timestamp)), transaction_type)
   INCLUDE (amount, category);
 
-CREATE OR REPLACE VIEW financial_kpis AS
+DROP VIEW IF EXISTS financial_kpis;
+
+CREATE VIEW financial_kpis AS
 WITH monthly_totals AS (
   SELECT
     DATE_TRUNC('month', t.occurred_on::timestamp)::date AS month_start,
