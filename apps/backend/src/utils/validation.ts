@@ -9,17 +9,14 @@ export function createBadRequestError(message: string, details?: unknown): AppEr
   return err;
 }
 
-type Parser<T> = (input: Record<string, unknown>) => T;
+type SchemaParser<T> = (input: unknown) => T;
 
-export interface QuerySchema<T> {
-  parse: Parser<T>;
+export interface Schema<T> {
+  parse: SchemaParser<T>;
 }
 
-export function parseWithSchema<T>(schema: QuerySchema<T>, input: unknown): T {
-  if (!input || typeof input !== 'object') {
-    throw createBadRequestError('Invalid request parameters');
-  }
-  return schema.parse(input as Record<string, unknown>);
+export function parseWithSchema<T>(schema: Schema<T>, input: unknown): T {
+  return schema.parse(input);
 }
 
 function toInt(value: unknown, label: string, min?: number, max?: number, fallback?: number): number {
@@ -49,42 +46,52 @@ export function parseIsoDateQuery(value: string | undefined, label: string): str
 
 export const financialQuerySchemas = {
   summary: {
-    parse: (input: Record<string, unknown>) => ({
-      period: input.period === undefined ? 'monthly' : String(input.period),
-      year: toInt(input.year, 'year', 2000, 2100, new Date().getFullYear()),
-    }),
-  } as QuerySchema<{ period: string; year: number }>,
+    parse: (input: unknown) => {
+      if (!input || typeof input !== 'object') throw createBadRequestError('Invalid request parameters');
+      const record = input as Record<string, unknown>;
+      return {
+        period: record.period === undefined ? 'monthly' : String(record.period),
+        year: toInt(record.year, 'year', 2000, 2100, new Date().getFullYear()),
+      };
+    },
+  } as Schema<{ period: string; year: number }>,
   dateRange: {
-    parse: (input: Record<string, unknown>) => {
-      const startDate = input.startDate === undefined ? undefined : parseIsoDateQuery(String(input.startDate), 'startDate');
-      const endDate = input.endDate === undefined ? undefined : parseIsoDateQuery(String(input.endDate), 'endDate');
-      if (startDate && endDate && startDate > endDate) {
-        throw createBadRequestError('endDate must be greater than or equal to startDate');
-      }
+    parse: (input: unknown) => {
+      if (!input || typeof input !== 'object') throw createBadRequestError('Invalid request parameters');
+      const record = input as Record<string, unknown>;
+      const startDate = record.startDate === undefined ? undefined : parseIsoDateQuery(String(record.startDate), 'startDate');
+      const endDate = record.endDate === undefined ? undefined : parseIsoDateQuery(String(record.endDate), 'endDate');
+      if (startDate && endDate && startDate > endDate) throw createBadRequestError('endDate must be greater than or equal to startDate');
       return { startDate, endDate };
     },
-  } as QuerySchema<{ startDate?: string; endDate?: string }>,
+  } as Schema<{ startDate?: string; endDate?: string }>,
 };
 
 export const forecastingQuerySchemas = {
   forecast: {
-    parse: (input: Record<string, unknown>) => ({
-      months: toInt(input.months, 'months', 1, 36, 12),
-      metric: input.metric === undefined ? 'revenue' : String(input.metric),
-    }),
-  } as QuerySchema<{ months: number; metric: 'revenue' | 'expense' | 'net_income' }>,
+    parse: (input: unknown) => {
+      if (!input || typeof input !== 'object') throw createBadRequestError('Invalid request parameters');
+      const record = input as Record<string, unknown>;
+      const metric = record.metric === undefined ? 'revenue' : String(record.metric);
+      if (!['revenue', 'expense', 'net_income'].includes(metric)) throw createBadRequestError('metric must be revenue, expense, or net_income');
+      return { months: toInt(record.months, 'months', 1, 36, 12), metric: metric as 'revenue' | 'expense' | 'net_income' };
+    },
+  } as Schema<{ months: number; metric: 'revenue' | 'expense' | 'net_income' }>,
   budgetVariance: {
-    parse: (input: Record<string, unknown>) => ({
-      year: toInt(input.year, 'year', 2000, 2100, new Date().getFullYear()),
-    }),
-  } as QuerySchema<{ year: number }>,
+    parse: (input: unknown) => {
+      if (!input || typeof input !== 'object') throw createBadRequestError('Invalid request parameters');
+      const record = input as Record<string, unknown>;
+      return { year: toInt(record.year, 'year', 2000, 2100, new Date().getFullYear()) };
+    },
+  } as Schema<{ year: number }>,
 };
 
 export const complianceQuerySchemas = {
   auditLog: {
-    parse: (input: Record<string, unknown>) => ({
-      page: toInt(input.page, 'page', 1, 1000, 1),
-      limit: toInt(input.limit, 'limit', 1, 100, 20),
-    }),
-  } as QuerySchema<{ page: number; limit: number }>,
+    parse: (input: unknown) => {
+      if (!input || typeof input !== 'object') throw createBadRequestError('Invalid request parameters');
+      const record = input as Record<string, unknown>;
+      return { page: toInt(record.page, 'page', 1, 1000, 1), limit: toInt(record.limit, 'limit', 1, 100, 20) };
+    },
+  } as Schema<{ page: number; limit: number }>,
 };

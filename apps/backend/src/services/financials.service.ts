@@ -20,12 +20,26 @@ interface DateRangeOptions {
 const cache = new CacheService('financials', CACHE_TTL?.financialDataSeconds ?? 300);
 
 export class FinancialsService {
+  private async runTracedQuery<T extends Record<string, unknown>>(sql: string, params: unknown[]): Promise<T[]> {
+    return query<T>(sql, params);
+  }
+
+  private async withCacheInvalidation<T>(organizationId: string, operation: () => Promise<T>): Promise<T> {
+    const result = await operation();
+    try {
+      await invalidateOrganizationFinancialCache(organizationId);
+    } catch (error) {
+      console.error('Failed to invalidate organization financial cache:', error);
+    }
+    return result;
+  }
+
   async getKpis(opts: TenantYearOptions) {
     const cacheKey = `kpis:${opts.organizationId}:${opts.year}`;
     const cached = await cache.get(cacheKey);
     if (cached) return cached;
 
-    const rows = await query<Record<string, unknown>>(
+    const rows = await this.runTracedQuery<Record<string, unknown>>(
       `SELECT *
        FROM financial_kpis
        WHERE organization_id = $1
@@ -43,7 +57,7 @@ export class FinancialsService {
     const cached = await cache.get(cacheKey);
     if (cached) return cached;
 
-    const rows = await query<Record<string, unknown>>(
+    const rows = await this.runTracedQuery<Record<string, unknown>>(
       `SELECT
          COALESCE(SUM(CASE WHEN transaction_type = 'revenue' THEN amount ELSE 0 END), 0) AS total_revenue,
          COALESCE(SUM(CASE WHEN transaction_type = 'expense' THEN amount ELSE 0 END), 0) AS total_expenses,
