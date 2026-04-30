@@ -11,6 +11,25 @@ export function LoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const extractTokens = (
+    payload: unknown,
+  ): { accessToken: string; refreshToken: string } | null => {
+    if (typeof payload !== 'object' || payload === null) {
+      return null;
+    }
+
+    const maybeWrapped = payload as { data?: unknown; accessToken?: unknown; refreshToken?: unknown };
+    const candidate = (typeof maybeWrapped.data === 'object' && maybeWrapped.data !== null
+      ? maybeWrapped.data
+      : maybeWrapped) as { accessToken?: unknown; refreshToken?: unknown };
+
+    if (typeof candidate.accessToken === 'string' && typeof candidate.refreshToken === 'string') {
+      return { accessToken: candidate.accessToken, refreshToken: candidate.refreshToken };
+    }
+
+    return null;
+  };
+
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setError(null);
