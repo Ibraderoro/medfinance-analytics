@@ -19,49 +19,9 @@ interface DateRangeOptions {
 
 const cache = new CacheService('financials', CACHE_TTL?.financialDataSeconds ?? 300);
 
-type SpanLike = {
-  setAttribute: (k: string, v: unknown) => void;
-  recordException: (e: Error) => void;
-  setStatus: (status: { code: number }) => void;
-  end: () => void;
-};
-
-const NOOP_SPAN: SpanLike = {
-  setAttribute: () => undefined,
-  recordException: () => undefined,
-  setStatus: () => undefined,
-  end: () => undefined,
-};
-
-function getTelemetry(): { tracer: { startActiveSpan: <T>(name: string, fn: (span: SpanLike) => Promise<T>) => Promise<T> }; errorCode: number } {
-  const otel = (globalThis as { __otelApi?: { trace?: { getTracer: (name: string) => { startActiveSpan: <T>(n: string, fn: (s: SpanLike) => Promise<T>) => Promise<T> } }; SpanStatusCode?: { ERROR?: number } } }).__otelApi;
-  const tracer = otel?.trace?.getTracer('medfinance-backend.financials-service');
-  return {
-    tracer: tracer ?? { startActiveSpan: async (_name, fn) => fn(NOOP_SPAN) },
-    errorCode: otel?.SpanStatusCode?.ERROR ?? 2,
-  };
-}
-
 export class FinancialsService {
-  private telemetry = getTelemetry();
-
-  private async runTracedQuery<T extends Record<string, unknown>>(spanName: string, sql: string, params: unknown[]): Promise<T[]> {
-    return this.telemetry.tracer.startActiveSpan(spanName, async (span: SpanLike) => {
-      try {
-        span.setAttribute('db.system', 'postgresql');
-        span.setAttribute('db.operation', 'SELECT');
-        span.setAttribute('db.sql.table', 'transactions');
-        const result = await query<T>(sql, params);
-        span.setAttribute('db.response.row_count', result.length);
-        return result;
-      } catch (error) {
-        span.recordException(error as Error);
-        span.setStatus({ code: this.telemetry.errorCode });
-        throw error;
-      } finally {
-        span.end();
-      }
-    });
+  private async runTracedQuery<T extends Record<string, unknown>>(sql: string, params: unknown[]): Promise<T[]> {
+    return query<T>(sql, params);
   }
 
   private async withCacheInvalidation<T>(organizationId: string, operation: () => Promise<T>): Promise<T> {
@@ -76,7 +36,6 @@ export class FinancialsService {
     if (cached) return cached;
 
     const rows = await this.runTracedQuery<Record<string, unknown>>(
-      'financials.get_kpis.query',
       `SELECT *
        FROM financial_kpis
        WHERE organization_id = $1
@@ -95,7 +54,6 @@ export class FinancialsService {
     if (cached) return cached;
 
     const rows = await this.runTracedQuery<Record<string, unknown>>(
-      'financials.get_summary.query',
       `SELECT
          COALESCE(SUM(CASE WHEN transaction_type = 'revenue' THEN amount ELSE 0 END), 0) AS total_revenue,
          COALESCE(SUM(CASE WHEN transaction_type = 'expense' THEN amount ELSE 0 END), 0) AS total_expenses,
