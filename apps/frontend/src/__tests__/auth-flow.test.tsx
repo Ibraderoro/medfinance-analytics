@@ -21,9 +21,10 @@ describe('Auth flow', () => {
   it('shows login API error', async () => {
     render(<MemoryRouter><LoginPage /></MemoryRouter>);
     await userEvent.type(screen.getByLabelText('Email'), 'a@a.com');
+    await userEvent.type(screen.getByLabelText('Organization ID'), 'ff6a1c0f-6d3b-8388-6b12-4e2ad21f57c5');
     await userEvent.type(screen.getByLabelText('Password'), 'bad');
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
-    expect(await screen.findByText('Invalid email or password.')).toBeInTheDocument();
+    expect(await screen.findByText('Invalid email, password, or organization ID.')).toBeInTheDocument();
   });
 
   it('shows register API error', async () => {
