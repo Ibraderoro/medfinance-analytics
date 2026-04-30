@@ -5,6 +5,7 @@ import { validateRequest } from '../middleware/validateRequest';
 import { login, register, refresh, logout } from '../controllers/auth.controller';
 
 export const authRouter = Router();
+const UUID_LIKE_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 authRouter.post(
   '/register',
@@ -14,7 +15,9 @@ authRouter.post(
     body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
     body('firstName').notEmpty().withMessage('First name is required'),
     body('lastName').notEmpty().withMessage('Last name is required'),
-    body('organizationId').isUUID().withMessage('Valid organization ID (UUID) is required'),
+    body('organizationId')
+      .matches(UUID_LIKE_PATTERN)
+      .withMessage('Valid organization ID (UUID-like) is required'),
     body('role')
       .optional()
       .isIn(['admin', 'analyst', 'viewer'])
@@ -30,7 +33,9 @@ authRouter.post(
   [
     body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
     body('password').notEmpty().withMessage('Password is required'),
-    body('organizationId').isUUID().withMessage('Valid organization ID (UUID) is required'),
+    body('organizationId')
+      .matches(UUID_LIKE_PATTERN)
+      .withMessage('Valid organization ID (UUID-like) is required'),
   ],
   validateRequest,
   login,

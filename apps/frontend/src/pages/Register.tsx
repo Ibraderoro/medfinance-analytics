@@ -13,6 +13,25 @@ export function RegisterPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const extractTokens = (
+    payload: unknown,
+  ): { accessToken: string; refreshToken: string } | null => {
+    if (typeof payload !== 'object' || payload === null) {
+      return null;
+    }
+
+    const maybeWrapped = payload as { data?: unknown; accessToken?: unknown; refreshToken?: unknown };
+    const candidate = (typeof maybeWrapped.data === 'object' && maybeWrapped.data !== null
+      ? maybeWrapped.data
+      : maybeWrapped) as { accessToken?: unknown; refreshToken?: unknown };
+
+    if (typeof candidate.accessToken === 'string' && typeof candidate.refreshToken === 'string') {
+      return { accessToken: candidate.accessToken, refreshToken: candidate.refreshToken };
+    }
+
+    return null;
+  };
+
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setError(null);
@@ -26,12 +45,20 @@ export function RegisterPage() {
         email,
         password,
       });
-      const { accessToken, refreshToken } = response.data.data;
+      const tokens = extractTokens(response.data);
+      if (!tokens) {
+        throw new Error('Unexpected registration response payload');
+      }
+      const { accessToken, refreshToken } = tokens;
       localStorage.setItem('access_token', accessToken);
       sessionStorage.setItem('refresh_token', refreshToken);
       navigate('/dashboard', { replace: true });
-    } catch {
-      setError('Unable to register. Please check your details and try again.');
+    } catch (err: unknown) {
+      const isAxiosError = (e: unknown): e is { response?: { data?: { error?: { message?: string } | string } } } =>
+        typeof e === 'object' && e !== null && 'response' in e;
+      const serverError = isAxiosError(err) ? err.response?.data?.error : undefined;
+      const serverMessage = typeof serverError === 'string' ? serverError : serverError?.message;
+      setError(serverMessage ?? 'Unable to register. Please check your details and try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -76,8 +103,9 @@ export function RegisterPage() {
             value={organizationId}
             onChange={(e) => setOrganizationId(e.target.value)}
             required
-            maxLength={100}
+            maxLength={36}
             autoComplete="organization"
+            placeholder="UUID (e.g., ff6a1c0f-6d3b-8388-6b12-4e2ad21f57c5)"
             style={{ width: '100%', padding: '0.65rem', marginTop: 4 }}
           />
         </label>

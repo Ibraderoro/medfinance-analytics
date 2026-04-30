@@ -7,8 +7,28 @@ export function LoginPage() {
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [organizationId, setOrganizationId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const extractTokens = (
+    payload: unknown,
+  ): { accessToken: string; refreshToken: string } | null => {
+    if (typeof payload !== 'object' || payload === null) {
+      return null;
+    }
+
+    const maybeWrapped = payload as { data?: unknown; accessToken?: unknown; refreshToken?: unknown };
+    const candidate = (typeof maybeWrapped.data === 'object' && maybeWrapped.data !== null
+      ? maybeWrapped.data
+      : maybeWrapped) as { accessToken?: unknown; refreshToken?: unknown };
+
+    if (typeof candidate.accessToken === 'string' && typeof candidate.refreshToken === 'string') {
+      return { accessToken: candidate.accessToken, refreshToken: candidate.refreshToken };
+    }
+
+    return null;
+  };
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -16,8 +36,12 @@ export function LoginPage() {
     setIsSubmitting(true);
 
     try {
-      const response = await authApi.login(email, password);
-      const { accessToken, refreshToken } = response.data.data;
+      const response = await authApi.login(email, password, organizationId);
+      const tokens = extractTokens(response.data);
+      if (!tokens) {
+        throw new Error('Unexpected login response payload');
+      }
+      const { accessToken, refreshToken } = tokens;
       localStorage.setItem('access_token', accessToken);
       sessionStorage.setItem('refresh_token', refreshToken);
       // TODO: Move refresh token to httpOnly cookie when backend support lands.
@@ -25,14 +49,13 @@ export function LoginPage() {
       // The server's Set-Cookie header handles auth persistence after this point.
       navigate('/dashboard', { replace: true });
     } catch (err: unknown) {
-      const isAxiosError = (e: unknown): e is { response?: { status?: number } } =>
+      const isAxiosError = (e: unknown): e is { response?: { status?: number; data?: { error?: { message?: string } } } } =>
         typeof e === 'object' && e !== null && 'response' in e;
       const status = isAxiosError(err) ? err.response?.status : null;
-      setError(
-        status === 401
-          ? 'Invalid email or password.'
-          : 'Unable to sign in. Please check your connection and try again.'
-      );
+      const serverMessage = isAxiosError(err) ? err.response?.data?.error?.message : undefined;
+      setError(serverMessage ?? (status === 401
+        ? 'Invalid email, password, or organization ID.'
+        : 'Unable to sign in. Please check your connection and try again.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -53,6 +76,20 @@ export function LoginPage() {
             required
             maxLength={254}
             autoComplete="email"
+            style={{ width: '100%', padding: '0.65rem', marginTop: 4 }}
+          />
+        </label>
+
+        <label>
+          <span>Organization ID</span>
+          <input
+            type="text"
+            value={organizationId}
+            onChange={(e) => setOrganizationId(e.target.value)}
+            required
+            maxLength={36}
+            autoComplete="organization"
+            placeholder="UUID (e.g., ff6a1c0f-6d3b-8388-6b12-4e2ad21f57c5)"
             style={{ width: '100%', padding: '0.65rem', marginTop: 4 }}
           />
         </label>
