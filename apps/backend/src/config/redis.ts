@@ -4,9 +4,14 @@ import { logger } from '../utils/logger';
 
 let redisClient: Redis;
 
+export const CACHE_TTL = {
+  financialDataSeconds: 300,
+  latestMetricsSeconds: 120,
+} as const;
+
 export function getRedis(): Redis {
   if (!redisClient) {
-    const managedRedisUrl = (env.REDIS_URL ?? "").trim();
+    const managedRedisUrl = (env.REDIS_URL ?? '').trim();
     const baseOptions = {
       maxRetriesPerRequest: 3,
       enableReadyCheck: true,
@@ -30,15 +35,33 @@ export function getRedis(): Redis {
   return redisClient;
 }
 
-export async function connectRedis(retries = 12, retryDelayMs = 3_000): Promise<void> {
+export async function invalidateFinancialCache(organizationId: string): Promise<number> {
+  const redis = getRedis();
+  const patterns = [
+    `medfinance:financials:*:${organizationId}:*`,
+    `medfinance:financials:latest_metrics:${organizationId}`,
+  ];
+  const keys = new Set<string>();
+
+  for (const pattern of patterns) {
+    let cursor = '0';
+    do {
+      const [nextCursor, batch] = await redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+      cursor = nextCursor;
+      batch.forEach((key) => keys.add(key));
+    } while (cursor !== '0');
+  }
+
+  if (keys.size === 0) return 0;
+  return redis.del(...Array.from(keys));
+}
+
+export async function connectRedis(retries = 12, retryDelayMs = 3_000): Promise<void> { /* unchanged */
   const client = getRedis();
   let lastError: unknown;
-
   for (let attempt = 1; attempt <= retries; attempt += 1) {
     try {
-      if (client.status === 'wait') {
-        await client.connect();
-      }
+      if (client.status === 'wait') await client.connect();
       await client.ping();
       logger.info('Redis connected', { attempt });
       return;
@@ -48,14 +71,10 @@ export async function connectRedis(retries = 12, retryDelayMs = 3_000): Promise<
       await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
     }
   }
-
   throw lastError;
 }
 
 export async function disconnectRedis(): Promise<void> {
-  if (!redisClient) {
-    return;
-  }
-
+  if (!redisClient) return;
   await redisClient.quit();
 }

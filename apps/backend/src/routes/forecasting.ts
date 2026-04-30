@@ -17,5 +17,5 @@ forecastingRouter.use(authenticate);
 forecastingRouter.use(attachTenantContext);
 forecastingRouter.use(blockTenantOverride);
 
-forecastingRouter.get('/forecast', forecastValidator, validateRequest, getForecast);
-forecastingRouter.get('/budget-variance', budgetVarianceValidator, validateRequest, getBudgetVariance);
+forecastingRouter.get('/forecast', forecastValidator, validateRequest(), getForecast);
+forecastingRouter.get('/budget-variance', budgetVarianceValidator, validateRequest(), getBudgetVariance);

@@ -1,4 +1,5 @@
 import { query } from '../config/database';
+import { CACHE_TTL, invalidateFinancialCache } from '../config/redis';
 import { CacheService } from '../utils/cache';
 
 interface TenantYearOptions {
@@ -16,7 +17,7 @@ interface DateRangeOptions {
   organizationId: string;
 }
 
-const cache = new CacheService('financials', 300);
+const cache = new CacheService('financials', CACHE_TTL?.financialDataSeconds ?? 300);
 
 export class FinancialsService {
   async getKpis(opts: TenantYearOptions) {
@@ -105,4 +106,9 @@ export class FinancialsService {
       [opts.organizationId, opts.startDate ?? null, opts.endDate ?? null],
     );
   }
+}
+
+
+export async function invalidateOrganizationFinancialCache(organizationId: string): Promise<void> {
+  await invalidateFinancialCache(organizationId);
 }

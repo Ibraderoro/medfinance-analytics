@@ -96,7 +96,7 @@ jobs:
           fail-on-severity: high
 
       - name: Run OSV-Scanner against backend and frontend manifests
-        uses: google/osv-scanner-action/osv-scanner-action@v2
+        uses: google/osv-scanner-action/osv-scanner-action@v1.7.1
         with:
           scan-args: |-
             --recursive

@@ -7,6 +7,7 @@ import { validateRequiredTables } from './db/schemaValidation';
 import { connectRedis, disconnectRedis } from './config/redis';
 import { env } from './config/env';
 import { liveFinancialsService } from './services/liveFinancials.service';
+import { startTracing, stopTracing } from './observability/tracing';
 
 const PORT = Number.parseInt(process.env.PORT ?? `${env.PORT}`, 10);
 let isShuttingDown = false;
@@ -25,6 +26,7 @@ app.use((_req, res, next) => {
 
 async function bootstrap(): Promise<void> {
   try {
+    await startTracing();
     await connectDatabase();
     await migrate();
     await validateRequiredTables();
@@ -55,7 +57,7 @@ async function bootstrap(): Promise<void> {
           return;
         }
 
-        await Promise.allSettled([disconnectDatabase(), disconnectRedis()]);
+        await Promise.allSettled([disconnectDatabase(), disconnectRedis(), stopTracing()]);
         process.exit(0);
       });
     };
