@@ -95,13 +95,12 @@ jobs:
         with:
           fail-on-severity: high
 
-      - name: Install OSV-Scanner
-        run: |
-          mkdir -p "$HOME/.local/bin"
-          curl -sSfL https://raw.githubusercontent.com/google/osv-scanner/main/install.sh | sh -s -- -b "$HOME/.local/bin"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          "$HOME/.local/bin/osv-scanner" --version
-
       - name: Run OSV-Scanner against backend and frontend manifests
-        run: |
-          osv-scanner --recursive --severity HIGH,CRITICAL --exit-code-on-vuln 1 ./apps/backend ./apps/frontend
+        uses: google/osv-scanner-action/osv-scanner-action@v2
+        with:
+          scan-args: |-
+            --recursive
+            --severity HIGH,CRITICAL
+            --exit-code-on-vuln 1
+            ./apps/backend
+            ./apps/frontend
