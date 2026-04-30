@@ -6,7 +6,7 @@ export function Header() {
 
   const logout = () => {
     localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
+    sessionStorage.removeItem('refresh_token');
     navigate('/login', { replace: true });
   };
 

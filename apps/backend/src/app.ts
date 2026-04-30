@@ -22,6 +22,12 @@ if (env.isProduction()) {
 
 const allowedOrigins: string[] = env.CORS_ALLOWED_ORIGINS;
 
+function normalizeOrigin(value: string): string {
+  return value.trim().replace(/\/$/, '').toLowerCase();
+}
+
+const normalizedAllowedOrigins = allowedOrigins.map(normalizeOrigin);
+
 const corsOptions: CorsOptions = {
   origin: (origin, callback) => {
     if (!origin) {
@@ -31,7 +37,9 @@ const corsOptions: CorsOptions = {
       return;
     }
 
-    if (allowedOrigins.includes(origin)) {
+    const normalizedOrigin = normalizeOrigin(origin);
+
+    if (normalizedAllowedOrigins.includes(normalizedOrigin)) {
       callback(null, true);
       return;
     }

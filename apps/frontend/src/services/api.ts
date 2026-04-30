@@ -8,9 +8,25 @@ export const apiClient = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
+const ACCESS_TOKEN_KEY = 'access_token';
+const REFRESH_TOKEN_KEY = 'refresh_token';
+
+const tokenStore = {
+  getAccessToken: () => localStorage.getItem(ACCESS_TOKEN_KEY),
+  setAccessToken: (value: string) => localStorage.setItem(ACCESS_TOKEN_KEY, value),
+  clearAccessToken: () => localStorage.removeItem(ACCESS_TOKEN_KEY),
+  getRefreshToken: () => sessionStorage.getItem(REFRESH_TOKEN_KEY),
+  setRefreshToken: (value: string) => sessionStorage.setItem(REFRESH_TOKEN_KEY, value),
+  clearRefreshToken: () => sessionStorage.removeItem(REFRESH_TOKEN_KEY),
+  clearAll: () => {
+    localStorage.removeItem(ACCESS_TOKEN_KEY);
+    sessionStorage.removeItem(REFRESH_TOKEN_KEY);
+  },
+};
+
 // Attach JWT from localStorage to every request
 apiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem('access_token');
+  const token = tokenStore.getAccessToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -22,7 +38,7 @@ let refreshingPromise: Promise<string | null> | null = null;
 async function refreshAccessToken(): Promise<string | null> {
   if (!refreshingPromise) {
     refreshingPromise = (async () => {
-      const refreshToken = localStorage.getItem('refresh_token');
+      const refreshToken = tokenStore.getRefreshToken();
       if (!refreshToken) return null;
 
       try {
@@ -32,12 +48,11 @@ async function refreshAccessToken(): Promise<string | null> {
           { timeout: 15_000 },
         );
 
-        localStorage.setItem('access_token', response.data.data.accessToken);
-        localStorage.setItem('refresh_token', response.data.data.refreshToken);
+        tokenStore.setAccessToken(response.data.data.accessToken);
+        tokenStore.setRefreshToken(response.data.data.refreshToken);
         return response.data.data.accessToken;
       } catch {
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
+        tokenStore.clearAll();
         return null;
       } finally {
         refreshingPromise = null;

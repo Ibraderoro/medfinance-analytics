@@ -28,7 +28,7 @@ export function RegisterPage() {
       });
       const { accessToken, refreshToken } = response.data.data;
       localStorage.setItem('access_token', accessToken);
-      localStorage.setItem('refresh_token', refreshToken);
+      sessionStorage.setItem('refresh_token', refreshToken);
       navigate('/dashboard', { replace: true });
     } catch {
       setError('Unable to register. Please check your details and try again.');
