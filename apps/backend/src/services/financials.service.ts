@@ -1,8 +1,6 @@
 import { query } from '../config/database';
 import { CACHE_TTL, invalidateFinancialCache } from '../config/redis';
 import { CacheService } from '../utils/cache';
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const { trace, SpanStatusCode } = require('@opentelemetry/api');
 
 interface TenantYearOptions {
   year: number;
@@ -21,11 +19,34 @@ interface DateRangeOptions {
 
 const cache = new CacheService('financials', CACHE_TTL?.financialDataSeconds ?? 300);
 
+type SpanLike = {
+  setAttribute: (k: string, v: unknown) => void;
+  recordException: (e: Error) => void;
+  setStatus: (status: { code: number }) => void;
+  end: () => void;
+};
+
+const NOOP_SPAN: SpanLike = {
+  setAttribute: () => undefined,
+  recordException: () => undefined,
+  setStatus: () => undefined,
+  end: () => undefined,
+};
+
+function getTelemetry(): { tracer: { startActiveSpan: <T>(name: string, fn: (span: SpanLike) => Promise<T>) => Promise<T> }; errorCode: number } {
+  const otel = (globalThis as { __otelApi?: { trace?: { getTracer: (name: string) => { startActiveSpan: <T>(n: string, fn: (s: SpanLike) => Promise<T>) => Promise<T> } }; SpanStatusCode?: { ERROR?: number } } }).__otelApi;
+  const tracer = otel?.trace?.getTracer('medfinance-backend.financials-service');
+  return {
+    tracer: tracer ?? { startActiveSpan: async (_name, fn) => fn(NOOP_SPAN) },
+    errorCode: otel?.SpanStatusCode?.ERROR ?? 2,
+  };
+}
+
 export class FinancialsService {
-  private tracer = trace.getTracer('medfinance-backend.financials-service');
+  private telemetry = getTelemetry();
 
   private async runTracedQuery<T extends Record<string, unknown>>(spanName: string, sql: string, params: unknown[]): Promise<T[]> {
-    return this.tracer.startActiveSpan(spanName, async (span: { setAttribute: (k: string, v: unknown) => void; recordException: (e: Error) => void; setStatus: (status: { code: number }) => void; end: () => void }) => {
+    return this.telemetry.tracer.startActiveSpan(spanName, async (span: SpanLike) => {
       try {
         span.setAttribute('db.system', 'postgresql');
         span.setAttribute('db.operation', 'SELECT');
@@ -35,7 +56,7 @@ export class FinancialsService {
         return result;
       } catch (error) {
         span.recordException(error as Error);
-        span.setStatus({ code: SpanStatusCode.ERROR });
+        span.setStatus({ code: this.telemetry.errorCode });
         throw error;
       } finally {
         span.end();
