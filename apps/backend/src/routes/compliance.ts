@@ -15,6 +15,6 @@ complianceRouter.use(authenticate);
 complianceRouter.use(attachTenantContext);
 complianceRouter.use(blockTenantOverride);
 
-complianceRouter.get('/status', complianceStatusValidator, validateRequest, getComplianceStatus);
-complianceRouter.get('/audit-log', auditLogValidator, validateRequest, getAuditLog);
-complianceRouter.get('/alerts', alertsValidator, validateRequest, getRegulatoryAlerts);
+complianceRouter.get('/status', complianceStatusValidator, validateRequest(), getComplianceStatus);
+complianceRouter.get('/audit-log', auditLogValidator, validateRequest(), getAuditLog);
+complianceRouter.get('/alerts', alertsValidator, validateRequest(), getRegulatoryAlerts);

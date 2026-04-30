@@ -1,7 +1,6 @@
 import { Response, NextFunction } from 'express';
 import { ForecastingService } from '../services/forecasting.service';
-import { ForecastMetric } from '../services/forecasting/forecastingMath';
-import { parseIntegerQuery } from '../utils/validation';
+import { forecastingQuerySchemas, parseWithSchema } from '../utils/validation';
 import { AuthenticatedRequest, requireAuthenticatedUser } from '../middleware/auth';
 
 const service = new ForecastingService();
@@ -13,16 +12,11 @@ export async function getForecast(
 ): Promise<void> {
   try {
     const user = requireAuthenticatedUser(req);
-    const { months, metric } = req.query;
+    const query = parseWithSchema(forecastingQuerySchemas.forecast, req.query);
     const data = await service.getForecast({
       organizationId: user.organization_id,
-      months:
-        parseIntegerQuery(months as string | undefined, {
-          label: 'months',
-          min: 1,
-          max: 36,
-        }) ?? 12,
-      metric: ((metric as string | undefined) ?? 'revenue') as ForecastMetric,
+      months: query.months,
+      metric: query.metric,
     });
     res.json({ data });
   } catch (err) {
@@ -37,15 +31,10 @@ export async function getBudgetVariance(
 ): Promise<void> {
   try {
     const user = requireAuthenticatedUser(req);
-    const { year } = req.query;
+    const query = parseWithSchema(forecastingQuerySchemas.budgetVariance, req.query);
     const data = await service.getBudgetVariance({
       organizationId: user.organization_id,
-      year:
-        parseIntegerQuery(year as string | undefined, {
-          label: 'year',
-          min: 2000,
-          max: 2100,
-        }) ?? new Date().getFullYear(),
+      year: query.year,
     });
     res.json({ data });
   } catch (err) {

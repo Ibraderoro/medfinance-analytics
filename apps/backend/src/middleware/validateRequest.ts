@@ -1,28 +1,25 @@
-import { Request, Response, NextFunction } from 'express';
+import { NextFunction, Request, Response } from 'express';
 import { validationResult } from 'express-validator';
+import { QuerySchema, createBadRequestError, parseWithSchema } from '../utils/validation';
 
-export function validateRequest(
-  req: Request,
-  res: Response,
-  next: NextFunction,
-): void {
-  const result = validationResult(req);
-  if (result.isEmpty()) {
-    next();
-    return;
-  }
-
-  res.status(400).json({
-    success: false,
-    error: {
-      message: 'Invalid request parameters',
-      code: 'VALIDATION_ERROR',
-    },
-    data: {
-      details: result.array().map((item) => ({
-        field: item.type === 'field' ? item.path : 'request',
-        message: item.msg,
-      })),
-    },
-  });
+export function validateRequest<T>(schema?: QuerySchema<T>) {
+  return (req: Request, _res: Response, next: NextFunction): void => {
+    try {
+      if (schema) {
+        const parsed = parseWithSchema(schema, req.query);
+        req.query = parsed as Request['query'];
+      } else {
+        const result = validationResult(req);
+        if (!result.isEmpty()) {
+          throw createBadRequestError('Invalid request parameters', result.array().map((item) => ({
+            field: item.type === 'field' ? item.path : 'request',
+            message: item.msg,
+          })));
+        }
+      }
+      next();
+    } catch (error) {
+      next(error);
+    }
+  };
 }

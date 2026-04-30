@@ -1,7 +1,7 @@
 import Redis from 'ioredis';
 import { Response } from 'express';
 import { query } from '../config/database';
-import { getRedis } from '../config/redis';
+import { CACHE_TTL, getRedis, invalidateFinancialCache } from '../config/redis';
 import { CacheService } from '../utils/cache';
 import { logger } from '../utils/logger';
 
@@ -27,7 +27,7 @@ interface LiveBroadcastEvent {
   updatedAt: string;
 }
 
-const FINANCIALS_SUMMARY_CACHE_TTL_SECONDS = 300;
+const FINANCIALS_SUMMARY_CACHE_TTL_SECONDS = CACHE_TTL?.latestMetricsSeconds ?? 120;
 const LIVE_EVENT_CHANNEL = 'medfinance:financials:live-events';
 
 function tenantRedisKey(organizationId: string): string {
@@ -117,6 +117,7 @@ export class LiveFinancialsService {
       updatedAt: new Date().toISOString(),
     };
 
+    await invalidateFinancialCache(organizationId);
     await getRedis().publish(LIVE_EVENT_CHANNEL, JSON.stringify(event));
   }
 
