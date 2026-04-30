@@ -17,5 +17,13 @@
   "collectCoverageFrom": [
     "src/**/*.{ts,tsx}",
     "!src/**/*.d.ts"
-  ]
+  ],
+  "coverageThreshold": {
+    "global": {
+      "branches": 20,
+      "functions": 20,
+      "lines": 20,
+      "statements": 20
+    }
+  }
 }

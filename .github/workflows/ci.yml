@@ -76,7 +76,7 @@ jobs:
         run: npm ci
 
       - name: Run frontend component tests (RTL)
-        run: npm run test --workspace=apps/frontend -- --coverage --passWithNoTests
+        run: npm run test --workspace=apps/frontend -- --coverage
 
   security-scan:
     name: Security Scan
@@ -95,10 +95,12 @@ jobs:
         with:
           fail-on-severity: high
 
-      - name: Install OSV-Scanner
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/google/osv-scanner/main/install.sh | sh -s -- -b /usr/local/bin
-
       - name: Run OSV-Scanner against backend and frontend manifests
-        run: |
-          osv-scanner --recursive --severity HIGH,CRITICAL --exit-code-on-vuln 1 ./apps/backend ./apps/frontend
+        uses: google/osv-scanner-action/osv-scanner-action@v2
+        with:
+          scan-args: |-
+            --recursive
+            --severity HIGH,CRITICAL
+            --exit-code-on-vuln 1
+            ./apps/backend
+            ./apps/frontend
