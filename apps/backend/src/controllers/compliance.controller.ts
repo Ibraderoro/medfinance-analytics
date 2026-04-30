@@ -1,6 +1,6 @@
 import { Response, NextFunction } from 'express';
 import { ComplianceService } from '../services/compliance.service';
-import { createBadRequestError, parseIntegerQuery } from '../utils/validation';
+import { complianceQuerySchemas, parseWithSchema } from '../utils/validation';
 import { AuthenticatedRequest, requireAuthenticatedUser } from '../middleware/auth';
 
 const service = new ComplianceService();
@@ -26,18 +26,10 @@ export async function getAuditLog(
 ): Promise<void> {
   try {
     const user = requireAuthenticatedUser(req);
-    const { page, limit } = req.query;
+    const query = parseWithSchema(complianceQuerySchemas.auditLog, req.query);
     const data = await service.getAuditLog({
-      page: parseIntegerQuery(page as string | undefined, {
-        label: 'page',
-        min: 1,
-      }) ?? 1,
-      limit:
-        parseIntegerQuery(limit as string | undefined, {
-          label: 'limit',
-          min: 1,
-          max: 100,
-        }) ?? 50,
+      page: query.page,
+      limit: query.limit,
       organizationId: user.organization_id,
     });
     res.json({ data });
@@ -53,10 +45,7 @@ export async function getRegulatoryAlerts(
 ): Promise<void> {
   try {
     const user = requireAuthenticatedUser(req);
-    const { severity } = req.query;
-    if (severity !== undefined && !['low', 'medium', 'high', 'critical'].includes(severity as string)) {
-      throw createBadRequestError('severity must be one of: low, medium, high, critical');
-    }
+    const severity = typeof req.query.severity === 'string' ? req.query.severity : undefined;
     const data = await service.getRegulatoryAlerts({
       severity: severity as 'low' | 'medium' | 'high' | 'critical' | undefined,
       organizationId: user.organization_id,

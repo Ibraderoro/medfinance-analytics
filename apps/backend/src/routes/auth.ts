@@ -23,7 +23,7 @@ authRouter.post(
       .isIn(['admin', 'analyst', 'viewer'])
       .withMessage('role must be one of admin, analyst, viewer'),
   ],
-  validateRequest,
+  validateRequest(),
   register,
 );
 
@@ -37,7 +37,7 @@ authRouter.post(
       .matches(UUID_LIKE_PATTERN)
       .withMessage('Valid organization ID (UUID-like) is required'),
   ],
-  validateRequest,
+  validateRequest(),
   login,
 );
 
@@ -45,7 +45,7 @@ authRouter.post(
   '/refresh',
   authRateLimiter,
   [body('refreshToken').notEmpty().withMessage('refreshToken is required')],
-  validateRequest,
+  validateRequest(),
   refresh,
 );
 

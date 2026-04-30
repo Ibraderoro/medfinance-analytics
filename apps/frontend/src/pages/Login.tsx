@@ -37,11 +37,7 @@ export function LoginPage() {
 
     try {
       const response = await authApi.login(email, password, organizationId);
-      const tokens = extractTokens(response.data);
-      if (!tokens) {
-        throw new Error('Unexpected login response payload');
-      }
-      const { accessToken, refreshToken } = tokens;
+      const { accessToken, refreshToken } = response.data.data;
       localStorage.setItem('access_token', accessToken);
       sessionStorage.setItem('refresh_token', refreshToken);
       // TODO: Move refresh token to httpOnly cookie when backend support lands.

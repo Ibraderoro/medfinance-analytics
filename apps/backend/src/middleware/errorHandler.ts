@@ -5,24 +5,28 @@ export interface AppError extends Error {
   statusCode?: number;
   isOperational?: boolean;
   code?: string;
+  details?: unknown;
+}
+
+function toErrorEnvelope(statusCode: number, message: string, code: string, details?: unknown) {
+  return {
+    success: false,
+    error: {
+      message,
+      code,
+      details,
+    },
+    data: null,
+  };
 }
 
 export function notFoundHandler(req: Request, res: Response): void {
-  res.status(404).json({
-    success: false,
-    error: {
-      message: `Route not found: ${req.method} ${req.originalUrl}`,
-      code: 'ROUTE_NOT_FOUND',
-    },
-  });
+  res.status(404).json(
+    toErrorEnvelope(404, `Route not found: ${req.method} ${req.originalUrl}`, 'ROUTE_NOT_FOUND'),
+  );
 }
 
-export function errorHandler(
-  err: AppError,
-  req: Request,
-  res: Response,
-  _next: NextFunction,
-): void {
+export function errorHandler(err: AppError, req: Request, res: Response, _next: NextFunction): void {
   void _next;
   const statusCode = err.statusCode ?? ((err.message.includes('CORS blocked') || err.message.includes('Origin not allowed by CORS')) ? 403 : 500);
   const code = err.code ?? (statusCode >= 500 ? 'INTERNAL_ERROR' : 'REQUEST_ERROR');
@@ -35,13 +39,9 @@ export function errorHandler(
     code,
     message: err.message,
     stack: err.stack,
+    details: err.details,
   });
 
-  res.status(statusCode).json({
-    success: false,
-    error: {
-      message: statusCode >= 500 ? 'Internal server error' : err.message,
-      code,
-    },
-  });
+  const message = statusCode >= 500 ? 'Internal server error' : err.message;
+  res.status(statusCode).json(toErrorEnvelope(statusCode, message, code, err.details));
 }
