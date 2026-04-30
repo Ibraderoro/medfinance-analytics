@@ -1,14 +1,11 @@
 name: OSV-Scanner
 
+# Change "main" to your default branch if you use a different name, i.e. "master"
 on:
   pull_request:
-    branches: [ "main" ]
+    branches: [main]
   merge_group:
-    branches: [ "main" ]
-  schedule:
-    - cron: '44 1 * * 0'
-  push:
-    branches: [ "main" ]
+    branches: [main]
 
 permissions:
   security-events: write
