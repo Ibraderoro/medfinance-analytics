@@ -1,6 +1,8 @@
 import { query } from '../config/database';
 import { CACHE_TTL, invalidateFinancialCache } from '../config/redis';
 import { CacheService } from '../utils/cache';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { trace, SpanStatusCode } = require('@opentelemetry/api');
 
 interface TenantYearOptions {
   year: number;
@@ -20,12 +22,40 @@ interface DateRangeOptions {
 const cache = new CacheService('financials', CACHE_TTL?.financialDataSeconds ?? 300);
 
 export class FinancialsService {
+  private tracer = trace.getTracer('medfinance-backend.financials-service');
+
+  private async runTracedQuery<T extends Record<string, unknown>>(spanName: string, sql: string, params: unknown[]): Promise<T[]> {
+    return this.tracer.startActiveSpan(spanName, async (span: { setAttribute: (k: string, v: unknown) => void; recordException: (e: Error) => void; setStatus: (status: { code: number }) => void; end: () => void }) => {
+      try {
+        span.setAttribute('db.system', 'postgresql');
+        span.setAttribute('db.operation', 'SELECT');
+        span.setAttribute('db.sql.table', 'transactions');
+        const result = await query<T>(sql, params);
+        span.setAttribute('db.response.row_count', result.length);
+        return result;
+      } catch (error) {
+        span.recordException(error as Error);
+        span.setStatus({ code: SpanStatusCode.ERROR });
+        throw error;
+      } finally {
+        span.end();
+      }
+    });
+  }
+
+  private async withCacheInvalidation<T>(organizationId: string, operation: () => Promise<T>): Promise<T> {
+    const result = await operation();
+    await invalidateOrganizationFinancialCache(organizationId);
+    return result;
+  }
+
   async getKpis(opts: TenantYearOptions) {
     const cacheKey = `kpis:${opts.organizationId}:${opts.year}`;
     const cached = await cache.get(cacheKey);
     if (cached) return cached;
 
-    const rows = await query<Record<string, unknown>>(
+    const rows = await this.runTracedQuery<Record<string, unknown>>(
+      'financials.get_kpis.query',
       `SELECT *
        FROM financial_kpis
        WHERE organization_id = $1
@@ -43,7 +73,8 @@ export class FinancialsService {
     const cached = await cache.get(cacheKey);
     if (cached) return cached;
 
-    const rows = await query<Record<string, unknown>>(
+    const rows = await this.runTracedQuery<Record<string, unknown>>(
+      'financials.get_summary.query',
       `SELECT
          COALESCE(SUM(CASE WHEN transaction_type = 'revenue' THEN amount ELSE 0 END), 0) AS total_revenue,
          COALESCE(SUM(CASE WHEN transaction_type = 'expense' THEN amount ELSE 0 END), 0) AS total_expenses,
