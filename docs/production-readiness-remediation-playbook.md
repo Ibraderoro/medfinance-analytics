@@ -45,6 +45,8 @@ Low/uneven frontend coverage means key regressions can ship undetected.
 ### Redis analytics stream warning path
 1. Validate Redis client/server support for stream operations used by analytics.
 2. Add startup capability check and fail-fast (or graceful degraded mode) with explicit health signal.
+   - Decision criteria: prefer fail-fast when analytics affects billing, compliance, or core customer workflows; prefer graceful degraded mode when analytics is observational/non-blocking and can be rebuilt later.
+   - Add an env-driven policy flag at startup (e.g., `ANALYTICS_STREAM_POLICY=fail-fast|degraded`) to enforce the chosen mode.
 3. Add integration test that exercises stream write path.
 
 ## 4) Add release-go/no-go checklist (must pass)
@@ -57,6 +59,16 @@ Low/uneven frontend coverage means key regressions can ship undetected.
 6. Rollback drill completed (app + DB schema compatibility).
 7. Synthetic health + critical user journey monitors green.
 8. On-call runbook includes incident triage for auth, billing, analytics ingestion.
+9. Security audit gate passed:
+   - dependency vulnerability scan clean (e.g., `npm audit` with no critical/high unapproved findings),
+   - OWASP/compliance review completed,
+   - secrets management validation completed (rotation, storage, least privilege),
+   - auth/authz test suite and privilege-boundary checks passed.
+10. Performance/load gate passed:
+   - API response-time SLOs verified under expected load,
+   - database query performance validated for critical endpoints,
+   - CPU/memory/IO utilization within acceptable limits,
+   - load/performance test report published and approved.
 
 ## 5) Suggested execution order (fastest risk reduction)
 1. Warning/deprecation cleanup (toolchain + test noise).
@@ -69,5 +81,7 @@ Low/uneven frontend coverage means key regressions can ship undetected.
 You can credibly state "production-ready" when:
 - CI is green with enforced coverage thresholds,
 - builds/tests are free from untriaged warnings/deprecations,
+- security audit is clean (no critical CVEs; high findings formally triaged/approved),
+- performance baselines and load-test thresholds are met for critical user journeys,
 - operational drills (backup/restore/rollback) are completed and documented,
 - high-risk integrations (Stripe/Redis) have tested fallback behavior and clear observability.
