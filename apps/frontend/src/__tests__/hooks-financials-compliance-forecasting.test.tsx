@@ -23,9 +23,11 @@ describe('data hooks', () => {
     const { result } = renderHook(() => useCompliance());
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.items[0].regulation_code).toBe('HIPAA');
+    expect(complianceApi.getStatus).toHaveBeenCalledTimes(1);
 
     act(() => result.current.refetch());
     await waitFor(() => expect(result.current.items[0].regulation_code).toBe('SOX'));
+    expect(complianceApi.getStatus).toHaveBeenCalledTimes(2);
   });
 
   it('maps financial summary and revenue', async () => {
@@ -42,6 +44,9 @@ describe('data hooks', () => {
     expect(result.current.summary?.net_income).toBe('60');
     expect(result.current.prevSummary?.net_income).toBe('55');
     expect(result.current.revenue[0].total).toBe(1000);
+    expect(financialsApi.getSummary).toHaveBeenNthCalledWith(1, 2026);
+    expect(financialsApi.getSummary).toHaveBeenNthCalledWith(2, 2025);
+    expect(financialsApi.getRevenue).toHaveBeenCalledWith('2026-01-01', '2026-12-31');
   });
 
   it('returns error when critical financial data fails', async () => {
