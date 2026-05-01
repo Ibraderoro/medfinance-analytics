@@ -27,7 +27,12 @@ function parseCookies(raw: string | undefined): Record<string, string> {
   if (!raw) return {};
   return Object.fromEntries(raw.split(';').map((part) => {
     const [k, ...rest] = part.trim().split('=');
-    return [k, decodeURIComponent(rest.join('='))];
+    const rawValue = rest.join('=');
+    try {
+      return [k, decodeURIComponent(rawValue)];
+    } catch {
+      return [k, rawValue];
+    }
   }).filter(([k]) => Boolean(k)));
 }
 
@@ -42,7 +47,7 @@ const corsOptions: CorsOptions = {
 
 const csrfProtection = (req: Request, res: Response, next: NextFunction): void => {
   const isWebhook = req.path === '/api/v1/billing/webhook' && req.method === 'POST';
-  const isAuthBootstrapRoute = req.path.startsWith('/api/v1/auth/') && ['POST'].includes(req.method);
+  const isAuthBootstrapRoute = req.method === 'POST' && (req.path === '/api/v1/auth/login' || req.path === '/api/v1/auth/register');
 
   const cookies = parseCookies(req.headers.cookie);
   const hadCsrfCookie = Boolean(cookies[csrfCookieName]);
@@ -52,8 +57,8 @@ const csrfProtection = (req: Request, res: Response, next: NextFunction): void =
     res.cookie(csrfCookieName, csrfToken, { httpOnly: false, secure: env.isProduction(), sameSite: 'strict', path: '/' });
   }
 
-  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method) || isWebhook || isAuthBootstrapRoute) return next();
-  if (!hadCsrfCookie) return next();
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method) || isWebhook) return next();
+  if (!hadCsrfCookie && isAuthBootstrapRoute) return next();
 
   const headerToken = req.header(csrfHeaderName);
   if (!headerToken || headerToken !== csrfToken) {

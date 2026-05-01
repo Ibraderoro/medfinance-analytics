@@ -19,7 +19,7 @@ class DashboardErrorBoundary extends Component<{ children: ReactNode }, { hasErr
   render() { return this.state.hasError ? <EmptyState message="Dashboard temporarily unavailable. Please refresh." /> : this.props.children; }
 }
 
-export function Dashboard() {
+function DashboardContent() {
   const { revenue, isLoading: finLoading } = useFinancials();
   const { latest: kpiRow } = useFinancialKpis();
   const { forecast, isLoading: forecastLoading } = useForecasting();
@@ -35,21 +35,27 @@ export function Dashboard() {
     return Number.isFinite(value) ? `$${value.toLocaleString()}` : 'No Data Available';
   };
 
+  const operatingMarginNumber = Number(kpiRow?.operating_margin);
+  const hasFiniteOperatingMargin = Number.isFinite(operatingMarginNumber);
 
-  return <DashboardErrorBoundary><div className={styles.dashboard}>
+  return <div className={styles.dashboard}>
     <h1 className={styles.title}>Financial Overview</h1>
     <div className={styles.kpiRow}>
       <KpiCard label="Total Revenue" value={fmt(kpiRow?.total_revenue)} trend={formatGrowth(kpiRow?.revenue_yoy_growth)} positive={Number(kpiRow?.revenue_yoy_growth ?? 0) >= 0} />
       <KpiCard label="Total Expenses" value={fmt(kpiRow?.total_expenses)} trend="—" positive={false} />
       <KpiCard label="Net Income" value={fmt(kpiRow?.net_income)} trend={formatGrowth(kpiRow?.net_income_yoy_growth)} positive={Number(kpiRow?.net_income_yoy_growth ?? 0) >= 0} />
-      <KpiCard label="Operating Margin" value={kpiRow ? `${Number(kpiRow.operating_margin).toFixed(1)}%` : 'No Data Available'} trend="—" positive={Number(kpiRow?.operating_margin ?? 0) >= 0} />
+      <KpiCard label="Operating Margin" value={hasFiniteOperatingMargin ? `${operatingMarginNumber.toFixed(1)}%` : 'No Data Available'} trend="—" positive={hasFiniteOperatingMargin && operatingMarginNumber >= 0} />
     </div>
     <div className={styles.chartsRow}>
       <Card title="Monthly Revenue" className={styles.chartCard}>{finLoading ? <Loading /> : revenue.length > 0 ? <RevenueChart data={revenue} width={560} height={260} /> : <EmptyState message="No Data Available: revenue" />}</Card>
       <Card title="Compliance Status" className={styles.complianceCard}>{complianceLoading ? <Loading /> : complianceData.length > 0 ? <ComplianceChart data={complianceData} width={280} height={260} /> : <EmptyState message="No Data Available: compliance" />}</Card>
     </div>
     <Card title="Revenue Forecast (12 months)" className={styles.forecastCard}>{forecastLoading ? <Loading /> : forecast.length > 0 ? <ForecastChart data={forecast} width={760} height={260} /> : <EmptyState message="No Data Available: forecast" />}</Card>
-  </div></DashboardErrorBoundary>;
+  </div>;
+}
+
+export function Dashboard() {
+  return <DashboardErrorBoundary><DashboardContent /></DashboardErrorBoundary>;
 }
 
 interface KpiCardProps { label: string; value: string; trend: string; positive: boolean; }
