@@ -9,5 +9,4 @@ export const adminRouter = Router();
 adminRouter.use(authenticate);
 adminRouter.use(attachTenantContext);
 adminRouter.use(blockTenantOverride);
-adminRouter.use(auditAdminAccess);
-adminRouter.get('/metrics', authorize('admin'), getAdminMetrics);
+adminRouter.get('/metrics', authorize('admin'), auditAdminAccess, getAdminMetrics);

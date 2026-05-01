@@ -11,6 +11,7 @@ declare module 'express-serve-static-core' {
 }
 
 const TENANT_ORG_FIELDS = ['organization_id', 'organizationId', 'organisationId'] as const;
+const BLOCKED_OBJECT_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
 function stripTenantFields(value: unknown): unknown {
   if (Array.isArray(value)) {
@@ -23,7 +24,10 @@ function stripTenantFields(value: unknown): unknown {
 
   const output: Record<string, unknown> = {};
   for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
-    if (TENANT_ORG_FIELDS.includes(key as typeof TENANT_ORG_FIELDS[number])) {
+    if (
+      TENANT_ORG_FIELDS.includes(key as typeof TENANT_ORG_FIELDS[number])
+      || BLOCKED_OBJECT_KEYS.has(key)
+    ) {
       continue;
     }
     output[key] = stripTenantFields(nested);

@@ -62,7 +62,7 @@ export async function refresh(
 ): Promise<void> {
   try {
     const { refreshToken } = req.body as { refreshToken: string };
-    if (!refreshToken || refreshToken.trim().length === 0) {
+    if (typeof refreshToken !== 'string' || refreshToken.trim().length === 0) {
       res.status(400).json({
         success: false,
         error: { message: 'refreshToken is required', code: 'AUTH_REFRESH_TOKEN_REQUIRED' },

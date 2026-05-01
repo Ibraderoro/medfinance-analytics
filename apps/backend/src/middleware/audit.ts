@@ -28,26 +28,33 @@ export function auditFinancialAccess(
   next();
 }
 
-export function auditAdminAccess(
+/**
+ * Audits authorized admin endpoint access and propagates failures.
+ */
+export async function auditAdminAccess(
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction,
-): void {
+): Promise<void> {
   const user = req.user;
 
-  if (user) {
-    void auditService.log({
-      action: 'admin_endpoint_access',
-      entityType: 'admin_endpoint',
-      organizationId: user.organization_id,
-      performedBy: user.id,
-      metadata: {
-        method: req.method,
-        path: req.originalUrl,
-        ip: req.ip,
-      },
-    });
-  }
+  try {
+    if (user) {
+      await auditService.log({
+        action: 'admin_endpoint_access',
+        entityType: 'admin_endpoint',
+        organizationId: user.organization_id,
+        performedBy: user.id,
+        metadata: {
+          method: req.method,
+          path: req.originalUrl,
+          ip: req.ip,
+        },
+      });
+    }
 
-  next();
+    next();
+  } catch (error) {
+    next(error);
+  }
 }

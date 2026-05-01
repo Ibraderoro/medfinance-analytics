@@ -12,7 +12,7 @@ export const apiClient = axios.create({
 // Global error handling
 apiClient.interceptors.response.use(
   (response) => {
-    const data = response.data as { refreshToken?: string } | undefined;
+    const data = response.data?.data as { refreshToken?: string } | undefined;
     if (data?.refreshToken) {
       sessionStorage.setItem('refresh_token', data.refreshToken);
       sessionStorage.setItem('auth_session_active', 'true');

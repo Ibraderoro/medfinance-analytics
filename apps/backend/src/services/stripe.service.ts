@@ -87,12 +87,15 @@ export class StripeService {
     });
   }
 
-  private parseSignatureHeader(signatureHeader: string): { timestamp: number; signature: string } | null {
+  private parseSignatureHeader(signatureHeader: string): { timestamp: number; signatures: string[] } | null {
     const elements = signatureHeader.split(',').map((item) => item.trim());
     const timestampRaw = elements.find((item) => item.startsWith('t='))?.slice(2);
-    const signature = elements.find((item) => item.startsWith('v1='))?.slice(3);
+    const signatures = elements
+      .filter((item) => item.startsWith('v1='))
+      .map((item) => item.slice(3))
+      .filter((value) => value.length > 0);
 
-    if (!timestampRaw || !signature) {
+    if (!timestampRaw || signatures.length === 0) {
       return null;
     }
 
@@ -101,7 +104,7 @@ export class StripeService {
       return null;
     }
 
-    return { timestamp, signature };
+    return { timestamp, signatures };
   }
 
   verifyWebhookSignature(payload: Buffer, signatureHeader: string): boolean {
@@ -126,7 +129,7 @@ export class StripeService {
       .digest('hex');
 
     try {
-      return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(parsed.signature));
+      return parsed.signatures.some((signature) => crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature)));
     } catch {
       return false;
     }
