@@ -1,13 +1,17 @@
 import { useNavigate } from 'react-router-dom';
+import { authApi } from '../../services/api';
 import styles from './Header.module.css';
 
 export function Header() {
   const navigate = useNavigate();
 
-  const logout = () => {
-    localStorage.removeItem('access_token');
-    sessionStorage.removeItem('refresh_token');
-    navigate('/login', { replace: true });
+  const logout = async () => {
+    try {
+      await authApi.logout();
+    } finally {
+      sessionStorage.removeItem('auth_session_active');
+      navigate('/login', { replace: true });
+    }
   };
 
   return (
@@ -18,7 +22,7 @@ export function Header() {
       </div>
       <nav className={styles.nav}>
         <span className={styles.badge}>CFO Dashboard</span>
-        <button type="button" onClick={logout} style={{ marginLeft: 12, padding: '0.4rem 0.65rem' }}>
+        <button type="button" onClick={() => void logout()} aria-label="Log out of your secure session" style={{ marginLeft: 12, padding: '0.4rem 0.65rem' }}>
           Logout
         </button>
       </nav>

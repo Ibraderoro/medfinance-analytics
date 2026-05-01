@@ -1,7 +1,10 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { authApi } from '../services/api';
 import styles from './Page.module.css';
+
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -11,42 +14,28 @@ export function LoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const extractTokens = (
-    payload: unknown,
-  ): { accessToken: string; refreshToken: string } | null => {
-    if (typeof payload !== 'object' || payload === null) {
-      return null;
-    }
+  const fieldErrors = useMemo(() => ({
+    email: emailPattern.test(email.trim()) ? null : 'Enter a valid email address.',
+    organizationId: uuidPattern.test(organizationId.trim()) ? null : 'Organization ID must be a valid UUID.',
+    password: password.length >= 8 ? null : 'Password must be at least 8 characters.',
+  }), [email, organizationId, password]);
 
-    const maybeWrapped = payload as { data?: unknown; accessToken?: unknown; refreshToken?: unknown };
-    const candidate = (typeof maybeWrapped.data === 'object' && maybeWrapped.data !== null
-      ? maybeWrapped.data
-      : maybeWrapped) as { accessToken?: unknown; refreshToken?: unknown };
-
-    if (typeof candidate.accessToken === 'string' && typeof candidate.refreshToken === 'string') {
-      return { accessToken: candidate.accessToken, refreshToken: candidate.refreshToken };
-    }
-
-    return null;
-  };
+  const hasValidationErrors = Object.values(fieldErrors).some(Boolean);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setError(null);
+
+    if (hasValidationErrors) {
+      setError('Please correct the highlighted fields before signing in.');
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
-      const response = await authApi.login(email, password, organizationId);
-      const tokens = extractTokens(response.data);
-      if (!tokens) {
-        throw new Error('Unexpected login response payload');
-      }
-      const { accessToken, refreshToken } = tokens;
-      localStorage.setItem('access_token', accessToken);
-      sessionStorage.setItem('refresh_token', refreshToken);
-      // TODO: Move refresh token to httpOnly cookie when backend support lands.
-      // Tokens should never be stored in localStorage in a healthcare application.
-      // The server's Set-Cookie header handles auth persistence after this point.
+      await authApi.login(email.trim(), password, organizationId.trim());
+      sessionStorage.setItem('auth_session_active', 'true');
       navigate('/dashboard', { replace: true });
     } catch (err: unknown) {
       const isAxiosError = (e: unknown): e is { response?: { status?: number; data?: { error?: { message?: string } } } } =>
@@ -64,52 +53,30 @@ export function LoginPage() {
   return (
     <div className={styles.page} style={{ maxWidth: 420, margin: '4rem auto' }}>
       <h1 className={styles.title}>Sign in</h1>
-      <p style={{ marginTop: 0, color: '#6b7280' }}>Use your MedFinance credentials to access dashboards.</p>
+      <p style={{ marginTop: 0, color: '#4b5563' }}>Use your MedFinance credentials to access dashboards.</p>
 
-      <form onSubmit={submit} style={{ display: 'grid', gap: 12 }}>
+      <form onSubmit={submit} style={{ display: 'grid', gap: 12 }} noValidate>
         <label>
           <span>Email</span>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            maxLength={254}
-            autoComplete="email"
-            style={{ width: '100%', padding: '0.65rem', marginTop: 4 }}
-          />
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required maxLength={254} autoComplete="email" style={{ width: '100%', padding: '0.65rem', marginTop: 4 }} />
+          {email && fieldErrors.email && <small className={styles.error}>{fieldErrors.email}</small>}
         </label>
 
         <label>
           <span>Organization ID</span>
-          <input
-            type="text"
-            value={organizationId}
-            onChange={(e) => setOrganizationId(e.target.value)}
-            required
-            maxLength={36}
-            autoComplete="organization"
-            placeholder="UUID (e.g., ff6a1c0f-6d3b-8388-6b12-4e2ad21f57c5)"
-            style={{ width: '100%', padding: '0.65rem', marginTop: 4 }}
-          />
+          <input type="text" value={organizationId} onChange={(e) => setOrganizationId(e.target.value)} required maxLength={36} autoComplete="organization" placeholder="UUID (e.g., ff6a1c0f-6d3b-8388-6b12-4e2ad21f57c5)" style={{ width: '100%', padding: '0.65rem', marginTop: 4 }} />
+          {organizationId && fieldErrors.organizationId && <small className={styles.error}>{fieldErrors.organizationId}</small>}
         </label>
 
         <label>
           <span>Password</span>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            maxLength={128}
-            autoComplete="current-password"
-            style={{ width: '100%', padding: '0.65rem', marginTop: 4 }}
-          />
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required maxLength={128} autoComplete="current-password" style={{ width: '100%', padding: '0.65rem', marginTop: 4 }} />
+          {password && fieldErrors.password && <small className={styles.error}>{fieldErrors.password}</small>}
         </label>
 
         {error && <p className={styles.error}>{error}</p>}
 
-        <button type="submit" disabled={isSubmitting} style={{ padding: '0.7rem', fontWeight: 600 }}>
+        <button type="submit" disabled={isSubmitting || hasValidationErrors} style={{ padding: '0.7rem', fontWeight: 600 }}>
           {isSubmitting ? 'Signing in…' : 'Sign in'}
         </button>
 
