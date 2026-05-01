@@ -2,6 +2,12 @@ import axios from 'axios';
 
 const BASE_URL = import.meta.env.VITE_API_URL ?? '/api/v1';
 
+/**
+ * Retrieve the value of a named cookie from document.cookie.
+ *
+ * @param name - The cookie name to read
+ * @returns The decoded cookie value if found, `null` otherwise
+ */
 function readCookie(name: string): string | null {
   const pair = document.cookie.split(';').map((cookie) => cookie.trim()).find((cookie) => cookie.startsWith(`${name}=`));
   if (!pair) return null;

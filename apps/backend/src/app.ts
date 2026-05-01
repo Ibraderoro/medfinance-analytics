@@ -22,7 +22,21 @@ const allowedOrigins: string[] = env.CORS_ALLOWED_ORIGINS;
 const csrfHeaderName = 'x-csrf-token';
 const csrfCookieName = 'csrf_token';
 
+/**
+ * Normalize an origin string for reliable origin comparisons.
+ *
+ * Trims surrounding whitespace, removes a single trailing slash if present, and converts the value to lowercase.
+ *
+ * @param value - The origin string to normalize (for example, `"https://Example.COM/"`)
+ * @returns The normalized origin string (trimmed, without a trailing slash, and lowercased)
+ */
 function normalizeOrigin(value: string): string { return value.trim().replace(/\/$/, '').toLowerCase(); }
+/**
+ * Parse an HTTP Cookie header value into a mapping of cookie names to values.
+ *
+ * @param raw - The raw `Cookie` header string (for example `req.headers.cookie`); may be `undefined`.
+ * @returns An object whose keys are cookie names and values are cookie values. Percent-encoded values are decoded when possible; entries with empty names are omitted. 
+ */
 function parseCookies(raw: string | undefined): Record<string, string> {
   if (!raw) return {};
   return Object.fromEntries(raw.split(';').map((part) => {

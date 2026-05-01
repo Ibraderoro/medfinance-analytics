@@ -30,12 +30,18 @@ interface UseLiveFinancialsOptions {
 }
 
 /**
- * Example usage:
- * useLiveFinancials({
- *  *   onSnapshot: setDashboardData,
- *   onTransactionAdded: setDashboardData,
- *   onForecastChanged: setDashboardData,
- * });
+ * Establishes a Server-Sent Events connection to the live financials stream and dispatches incoming payloads to the provided handlers.
+ *
+ * The hook opens a persistent SSE connection to the live financials endpoint and invokes:
+ * - `onSnapshot` for `snapshot` events,
+ * - `onTransactionAdded` for `transaction-added` events,
+ * - `onForecastChanged` for `forecast-changed` events.
+ * The connection is aborted when the component using the hook unmounts or the handlers change. Non-abort errors are forwarded to `onError`.
+ *
+ * @param onSnapshot - Called with the latest `LiveFinancialPayload` when a `snapshot` event is received.
+ * @param onTransactionAdded - Called with the `LiveFinancialPayload` when a `transaction-added` event is received.
+ * @param onForecastChanged - Called with the `LiveFinancialPayload` when a `forecast-changed` event is received.
+ * @param onError - Called with any connection or parsing error except abort-related errors.
  */
 export function useLiveFinancials({
   onSnapshot,

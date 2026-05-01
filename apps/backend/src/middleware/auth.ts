@@ -44,6 +44,11 @@ function isRole(role: string): role is RbacRole {
   return role === 'admin' || role === 'analyst' || role === 'viewer';
 }
 
+/**
+ * Authenticates an incoming Express request using a JWT from the `Authorization: Bearer <token>` header or the `medfinance_access_token` cookie and attaches the validated user to `req.user`.
+ *
+ * If no token is present, the token is invalid/expired, the decoded payload fails validation, or the payload lacks an organization identifier, the middleware responds with HTTP 401 and a JSON error body containing one of the error codes: `AUTH_MISSING_HEADER`, `AUTH_INVALID_TOKEN`, or `AUTH_INVALID_PAYLOAD`. On successful validation, `req.user` is populated with `id`, `email`, `role`, and `organization_id`, and the middleware calls `next()`.
+ */
 export function authenticate(
   req: AuthenticatedRequest,
   res: Response,
