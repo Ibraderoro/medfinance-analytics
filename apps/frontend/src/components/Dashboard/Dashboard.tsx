@@ -1,4 +1,4 @@
-import { Component, ErrorInfo, ReactNode } from 'react';
+import { Component, ReactNode } from 'react';
 import { Card } from '../common/Card';
 import { RevenueChart } from '../Charts/RevenueChart';
 import { ForecastChart } from '../Charts/ForecastChart';
@@ -16,7 +16,7 @@ function EmptyState({ message }: { message: string }) { return <div style={{ min
 class DashboardErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
   state = { hasError: false };
   static getDerivedStateFromError() { return { hasError: true }; }
-  componentDidCatch(_error: Error, _errorInfo: ErrorInfo): void {}
+  componentDidCatch(): void {}
   render() { return this.state.hasError ? <EmptyState message="Dashboard temporarily unavailable. Please refresh." /> : this.props.children; }
 }
 
