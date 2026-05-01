@@ -21,8 +21,6 @@ export function LoginPage() {
   }), [email, organizationId, password]);
 
 
-  const hasValidationErrors = Object.values(fieldErrors).some(Boolean);
-
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setError(null);
