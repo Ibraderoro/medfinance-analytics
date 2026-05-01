@@ -11,17 +11,18 @@ const navItems = [
 export function Sidebar() {
   return (
     <aside className={styles.sidebar}>
-      <nav>
+      <nav aria-label="Primary application navigation">
         <ul className={styles.list}>
           {navItems.map(({ to, label, icon }) => (
             <li key={to}>
               <NavLink
                 to={to}
+                aria-label={label}
                 className={({ isActive }) =>
                   `${styles.link} ${isActive ? styles.active : ''}`
                 }
               >
-                <span className={styles.icon}>{icon}</span>
+                <span className={styles.icon} aria-hidden="true">{icon}</span>
                 <span>{label}</span>
               </NavLink>
             </li>
