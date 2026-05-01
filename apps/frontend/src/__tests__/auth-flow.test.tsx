@@ -21,8 +21,8 @@ describe('Auth flow', () => {
   it('shows login API error', async () => {
     render(<MemoryRouter><LoginPage /></MemoryRouter>);
     await userEvent.type(screen.getByLabelText('Email'), 'a@a.com');
-    await userEvent.type(screen.getByLabelText('Organization ID'), 'ff6a1c0f-6d3b-8388-6b12-4e2ad21f57c5');
-    await userEvent.type(screen.getByLabelText('Password'), 'bad');
+    await userEvent.type(screen.getByLabelText('Organization ID'), '550e8400-e29b-41d4-a716-446655440000');
+    await userEvent.type(screen.getByLabelText('Password'), 'strongpass1');
     await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
     expect(await screen.findByText('Invalid email, password, or organization ID.')).toBeInTheDocument();
   });
@@ -31,9 +31,9 @@ describe('Auth flow', () => {
     render(<MemoryRouter><RegisterPage /></MemoryRouter>);
     await userEvent.type(screen.getByLabelText('First Name'), 'Jane');
     await userEvent.type(screen.getByLabelText('Last Name'), 'Doe');
-    await userEvent.type(screen.getByLabelText('Organization ID'), 'org-1');
+    await userEvent.type(screen.getByLabelText('Organization ID'), '123e4567-e89b-42d3-a456-426614174000');
     await userEvent.type(screen.getByLabelText('Email'), 'jane@example.com');
-    await userEvent.type(screen.getByLabelText('Password'), 'x');
+    await userEvent.type(screen.getByLabelText('Password'), 'verysecurepass123');
     await userEvent.click(screen.getByRole('button', { name: 'Register' }));
     expect(await screen.findByText(/Unable to register/)).toBeInTheDocument();
   });

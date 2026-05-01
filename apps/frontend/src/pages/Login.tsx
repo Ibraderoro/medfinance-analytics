@@ -71,7 +71,7 @@ export function LoginPage() {
 
         {error && <p className={styles.error}>{error}</p>}
 
-        <button type="submit" disabled={isSubmitting} style={{ padding: '0.7rem', fontWeight: 600 }}>
+        <button type="submit" disabled={hasValidationErrors || isSubmitting} style={{ padding: '0.7rem', fontWeight: 600 }}>
           {isSubmitting ? 'Signing in…' : 'Sign in'}
         </button>
 
