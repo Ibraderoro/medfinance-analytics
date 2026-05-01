@@ -260,13 +260,47 @@ export class AuthService {
     }
 
     await query('DELETE FROM refresh_tokens WHERE token_hash = $1', [tokenHash]);
+    await this.auditService.log({
+      action: 'refresh_success',
+      entityType: 'user',
+      entityId: user.id,
+      performedBy: user.id,
+      organizationId: user.organization_id,
+      metadata: { email: user.email },
+    });
 
     return this.generateTokenPair(user);
   }
 
   async logout(refreshToken: string) {
     const tokenHash = hashRefreshToken(refreshToken);
+    const [row] = await query<{ user_id: string }>(
+      'SELECT user_id FROM refresh_tokens WHERE token_hash = $1',
+      [tokenHash],
+    );
     await query('DELETE FROM refresh_tokens WHERE token_hash = $1', [tokenHash]);
+
+    if (!row?.user_id) {
+      return;
+    }
+
+    const [user] = await query<UserIdentity>(
+      'SELECT id, email, role, organization_id FROM users WHERE id = $1',
+      [row.user_id],
+    );
+
+    if (!user) {
+      return;
+    }
+
+    await this.auditService.log({
+      action: 'logout_success',
+      entityType: 'user',
+      entityId: user.id,
+      performedBy: user.id,
+      organizationId: user.organization_id,
+      metadata: { email: user.email },
+    });
   }
 
   private generateMfaCode(): string {

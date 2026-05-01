@@ -11,10 +11,20 @@ export const apiClient = axios.create({
 
 // Global error handling
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    const data = response.data?.data as { refreshToken?: string } | undefined;
+    if (data?.refreshToken) {
+      sessionStorage.setItem('refresh_token', data.refreshToken);
+      sessionStorage.setItem('auth_session_active', 'true');
+      window.dispatchEvent(new Event('auth-session-changed'));
+    }
+
+    return response;
+  },
   (error) => {
     if (error.response?.status === 401) {
       sessionStorage.removeItem('auth_session_active');
+      sessionStorage.removeItem('refresh_token');
       window.dispatchEvent(new Event('auth-session-changed'));
       if (window.location.pathname !== '/login') {
         window.location.href = '/login';
@@ -36,8 +46,14 @@ export const authApi = {
     organizationId: string;
     role?: string;
   }) => apiClient.post('/auth/register', data),
-  refresh: () => apiClient.post('/auth/refresh'),
-  logout: () => apiClient.post('/auth/logout'),
+  refresh: () => {
+    const refreshToken = sessionStorage.getItem('refresh_token');
+    return apiClient.post('/auth/refresh', { refreshToken });
+  },
+  logout: () => {
+    const refreshToken = sessionStorage.getItem('refresh_token');
+    return apiClient.post('/auth/logout', { refreshToken });
+  },
 };
 
 export const financialsApi = {

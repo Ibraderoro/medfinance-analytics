@@ -2,9 +2,12 @@ import { Request, Response, NextFunction } from 'express';
 import { AuthenticatedRequest, requireAuthenticatedUser } from '../middleware/auth';
 import { BillingService } from '../services/billing.service';
 import { StripeService } from '../services/stripe.service';
+import { getRedis } from '../config/redis';
 
 const billingService = new BillingService();
 const stripeService = new StripeService();
+const redis = getRedis();
+const WEBHOOK_EVENT_DEDUP_TTL_SECONDS = 60 * 60 * 24;
 
 export async function createSubscription(
   req: AuthenticatedRequest,
@@ -55,10 +58,19 @@ export async function handleStripeWebhook(
       return;
     }
 
-    const event = JSON.parse(payload.toString('utf8')) as { type: string; data?: { object?: unknown } };
+    const event = JSON.parse(payload.toString('utf8')) as { id?: string; type: string; data?: { object?: unknown } };
     await billingService.handleWebhookEvent(event);
 
-    res.status(200).json({ received: true });
+    if (event.id) {
+      const dedupKey = `billing:webhook:event:${event.id}`;
+      const accepted = await redis.set(dedupKey, '1', 'EX', WEBHOOK_EVENT_DEDUP_TTL_SECONDS, 'NX');
+      if (accepted === null) {
+        res.success({ received: true, duplicate: true });
+        return;
+      }
+    }
+
+    res.success({ received: true });
   } catch (err) {
     next(err);
   }

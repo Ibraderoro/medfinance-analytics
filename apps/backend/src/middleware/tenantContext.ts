@@ -10,7 +10,31 @@ declare module 'express-serve-static-core' {
   }
 }
 
-const TENANT_ORG_FIELDS = ['organization_id', 'organizationId', 'organization_id', 'organisationId'];
+const TENANT_ORG_FIELDS = ['organization_id', 'organizationId', 'organisationId'] as const;
+const BLOCKED_OBJECT_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+function stripTenantFields(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => stripTenantFields(item));
+  }
+
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+
+  const output: Record<string, unknown> = {};
+  for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+    if (
+      TENANT_ORG_FIELDS.includes(key as typeof TENANT_ORG_FIELDS[number])
+      || BLOCKED_OBJECT_KEYS.has(key)
+    ) {
+      continue;
+    }
+    output[key] = stripTenantFields(nested);
+  }
+
+  return output;
+}
 
 export function attachTenantContext(
   req: AuthenticatedRequest,
@@ -49,11 +73,7 @@ export function blockTenantOverride(
   }
 
   if (req.body && typeof req.body === 'object') {
-    for (const field of TENANT_ORG_FIELDS) {
-      if (Object.prototype.hasOwnProperty.call(req.body as object, field)) {
-        delete (req.body as Record<string, unknown>)[field];
-      }
-    }
+    req.body = stripTenantFields(req.body) as AuthenticatedRequest['body'];
   }
 
   next();

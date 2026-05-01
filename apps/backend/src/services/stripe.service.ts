@@ -39,6 +39,7 @@ function integrationError(message: string): AppError {
 
 export class StripeService {
   private readonly apiBase = 'https://api.stripe.com/v1';
+  private readonly webhookToleranceSeconds = 300;
 
   private ensureConfigured(): void {
     if (!env.STRIPE_SECRET_KEY) {
@@ -86,27 +87,49 @@ export class StripeService {
     });
   }
 
+  private parseSignatureHeader(signatureHeader: string): { timestamp: number; signatures: string[] } | null {
+    const elements = signatureHeader.split(',').map((item) => item.trim());
+    const timestampRaw = elements.find((item) => item.startsWith('t='))?.slice(2);
+    const signatures = elements
+      .filter((item) => item.startsWith('v1='))
+      .map((item) => item.slice(3))
+      .filter((value) => value.length > 0);
+
+    if (!timestampRaw || signatures.length === 0) {
+      return null;
+    }
+
+    const timestamp = Number.parseInt(timestampRaw, 10);
+    if (!Number.isFinite(timestamp)) {
+      return null;
+    }
+
+    return { timestamp, signatures };
+  }
+
   verifyWebhookSignature(payload: Buffer, signatureHeader: string): boolean {
     if (!env.STRIPE_WEBHOOK_SECRET) {
       throw configError('Stripe is not configured: STRIPE_WEBHOOK_SECRET is missing');
     }
 
-    const elements = signatureHeader.split(',').map((item) => item.trim());
-    const timestamp = elements.find((item) => item.startsWith('t='))?.slice(2);
-    const signature = elements.find((item) => item.startsWith('v1='))?.slice(3);
-
-    if (!timestamp || !signature) {
+    const parsed = this.parseSignatureHeader(signatureHeader);
+    if (!parsed) {
       return false;
     }
 
-    const signedPayload = `${timestamp}.${payload.toString('utf8')}`;
+    const ageSeconds = Math.abs(Math.floor(Date.now() / 1000) - parsed.timestamp);
+    if (ageSeconds > this.webhookToleranceSeconds) {
+      return false;
+    }
+
+    const signedPayload = `${parsed.timestamp}.${payload.toString('utf8')}`;
     const expected = crypto
       .createHmac('sha256', env.STRIPE_WEBHOOK_SECRET)
       .update(signedPayload)
       .digest('hex');
 
     try {
-      return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+      return parsed.signatures.some((signature) => crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature)));
     } catch {
       return false;
     }
