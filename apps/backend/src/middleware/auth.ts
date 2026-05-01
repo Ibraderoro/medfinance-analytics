@@ -50,16 +50,16 @@ export function authenticate(
   next: NextFunction,
 ): void {
   const authHeader = req.headers.authorization;
+  const cookieToken = req.headers.cookie?.split(';').map((part) => part.trim()).find((part) => part.startsWith('medfinance_access_token='))?.split('=').slice(1).join('=');
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : cookieToken;
 
-  if (!authHeader?.startsWith('Bearer ')) {
+  if (!token) {
     res.status(401).json({
       success: false,
       error: { message: 'Missing or invalid authorization header', code: 'AUTH_MISSING_HEADER' },
     });
     return;
   }
-
-  const token = authHeader.slice(7);
 
   try {
     const payload = jwt.verify(token, env.JWT_SECRET, {
