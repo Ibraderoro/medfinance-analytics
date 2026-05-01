@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { PoolClient } from 'pg';
 import { getPool } from '../config/database';
 import { getRedis } from '../config/redis';
 import { metricsService } from '../services/metrics.service';
@@ -16,13 +17,15 @@ healthRouter.get('/ready', async (req: Request, res: Response) => {
   const checks: Record<string, string> = {};
   const isShuttingDown = Boolean(req.app.locals.isShuttingDown);
 
+  let client: PoolClient | undefined;
   try {
-    const client = await getPool().connect();
+    client = await getPool().connect();
     await client.query('SELECT 1');
-    client.release();
     checks.postgres = 'ok';
   } catch {
     checks.postgres = 'error';
+  } finally {
+    client?.release();
   }
 
   try {

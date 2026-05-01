@@ -16,7 +16,6 @@ function EmptyState({ message }: { message: string }) { return <div style={{ min
 class DashboardErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
   state = { hasError: false };
   static getDerivedStateFromError() { return { hasError: true }; }
-  componentDidCatch(): void {}
   render() { return this.state.hasError ? <EmptyState message="Dashboard temporarily unavailable. Please refresh." /> : this.props.children; }
 }
 
@@ -30,7 +29,12 @@ export function Dashboard() {
     { label: 'Review', value: complianceItems.filter((i) => i.status === 'under_review').length, color: '#c27803' },
     { label: 'Non-compliant', value: complianceItems.filter((i) => i.status === 'non_compliant').length, color: '#c81e1e' },
   ].filter((item) => item.value > 0);
-  const fmt = (v: string | number | null | undefined) => (v !== null && v !== undefined ? `$${Number(v).toLocaleString()}` : 'No Data Available');
+  const fmt = (v: string | number | null | undefined) => {
+    if (v === null || v === undefined) return 'No Data Available';
+    const value = Number(v);
+    return Number.isFinite(value) ? `$${value.toLocaleString()}` : 'No Data Available';
+  };
+
 
   return <DashboardErrorBoundary><div className={styles.dashboard}>
     <h1 className={styles.title}>Financial Overview</h1>

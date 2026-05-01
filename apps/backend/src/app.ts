@@ -16,17 +16,13 @@ import { observabilityMiddleware } from './middleware/observability';
 
 export const app: Application = express();
 app.locals.isShuttingDown = false;
-
 if (env.isProduction()) app.set('trust proxy', 1);
 
 const allowedOrigins: string[] = env.CORS_ALLOWED_ORIGINS;
 const csrfHeaderName = 'x-csrf-token';
 const csrfCookieName = 'csrf_token';
 
-function normalizeOrigin(value: string): string {
-  return value.trim().replace(/\/$/, '').toLowerCase();
-}
-
+function normalizeOrigin(value: string): string { return value.trim().replace(/\/$/, '').toLowerCase(); }
 function parseCookies(raw: string | undefined): Record<string, string> {
   if (!raw) return {};
   return Object.fromEntries(raw.split(';').map((part) => {
@@ -45,19 +41,20 @@ const corsOptions: CorsOptions = {
 };
 
 const csrfProtection = (req: Request, res: Response, next: NextFunction): void => {
+  const isWebhook = req.path === '/api/v1/billing/webhook' && req.method === 'POST';
+  const isAuthBootstrapRoute = req.path.startsWith('/api/v1/auth/') && ['POST'].includes(req.method);
+
   const cookies = parseCookies(req.headers.cookie);
+  const hadCsrfCookie = Boolean(cookies[csrfCookieName]);
   let csrfToken = cookies[csrfCookieName];
   if (!csrfToken) {
     csrfToken = crypto.randomBytes(32).toString('hex');
-    res.cookie(csrfCookieName, csrfToken, {
-      httpOnly: false,
-      secure: env.isProduction(),
-      sameSite: 'strict',
-      path: '/',
-    });
+    res.cookie(csrfCookieName, csrfToken, { httpOnly: false, secure: env.isProduction(), sameSite: 'strict', path: '/' });
   }
 
-  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method) || isWebhook || isAuthBootstrapRoute) return next();
+  if (!hadCsrfCookie) return next();
+
   const headerToken = req.header(csrfHeaderName);
   if (!headerToken || headerToken !== csrfToken) {
     res.status(403).json({ success: false, error: { message: 'CSRF token validation failed', code: 'SECURITY_CSRF' }, data: null });
@@ -74,15 +71,8 @@ app.use(helmet({
   contentSecurityPolicy: {
     useDefaults: true,
     directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", 'data:'],
-      connectSrc: ["'self'"].concat(normalizedAllowedOrigins),
-      objectSrc: ["'none'"],
-      frameAncestors: ["'none'"],
-      baseUri: ["'self'"],
-      formAction: ["'self'"],
+      defaultSrc: ["'self'"], scriptSrc: ["'self'"], styleSrc: ["'self'", "'unsafe-inline'"], imgSrc: ["'self'", 'data:'],
+      connectSrc: ["'self'"].concat(normalizedAllowedOrigins), objectSrc: ["'none'"], frameAncestors: ["'none'"], baseUri: ["'self'"], formAction: ["'self'"],
       upgradeInsecureRequests: env.isProduction() ? [] : null,
     },
   },
