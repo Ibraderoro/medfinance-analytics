@@ -27,3 +27,27 @@ export function auditFinancialAccess(
 
   next();
 }
+
+export function auditAdminAccess(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): void {
+  const user = req.user;
+
+  if (user) {
+    void auditService.log({
+      action: 'admin_endpoint_access',
+      entityType: 'admin_endpoint',
+      organizationId: user.organization_id,
+      performedBy: user.id,
+      metadata: {
+        method: req.method,
+        path: req.originalUrl,
+        ip: req.ip,
+      },
+    });
+  }
+
+  next();
+}
