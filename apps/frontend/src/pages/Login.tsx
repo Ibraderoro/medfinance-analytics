@@ -19,7 +19,7 @@ export function LoginPage() {
     organizationId: uuidPattern.test(organizationId.trim()) ? null : 'Organization ID must be a valid UUID.',
     password: password.length >= 8 ? null : 'Password must be at least 8 characters.',
   }), [email, organizationId, password]);
-
+  const hasValidationErrors = Object.values(fieldErrors).some(Boolean);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
