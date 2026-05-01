@@ -23,7 +23,6 @@ export interface LiveFinancialPayload {
 }
 
 interface UseLiveFinancialsOptions {
-  token: string;
   onSnapshot?: (payload: LiveFinancialPayload) => void;
   onTransactionAdded?: (payload: LiveFinancialPayload) => void;
   onForecastChanged?: (payload: LiveFinancialPayload) => void;
@@ -33,31 +32,25 @@ interface UseLiveFinancialsOptions {
 /**
  * Example usage:
  * useLiveFinancials({
- *   token,
- *   onSnapshot: setDashboardData,
+ *  *   onSnapshot: setDashboardData,
  *   onTransactionAdded: setDashboardData,
  *   onForecastChanged: setDashboardData,
  * });
  */
 export function useLiveFinancials({
-  token,
   onSnapshot,
   onTransactionAdded,
   onForecastChanged,
   onError,
 }: UseLiveFinancialsOptions): void {
   useEffect(() => {
-    if (!token) return;
-
     const controller = new AbortController();
 
     const consumeStream = async (): Promise<void> => {
       const response = await fetch(buildLiveFinancialsUrl(), {
         method: 'GET',
-        headers: {
-          Accept: 'text/event-stream',
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Accept: 'text/event-stream' },
+        credentials: 'include',
         signal: controller.signal,
       });
 
@@ -101,5 +94,5 @@ export function useLiveFinancials({
     return () => {
       controller.abort();
     };
-  }, [token, onSnapshot, onTransactionAdded, onForecastChanged, onError]);
+  }, [onSnapshot, onTransactionAdded, onForecastChanged, onError]);
 }

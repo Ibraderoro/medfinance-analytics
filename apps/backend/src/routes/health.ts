@@ -18,6 +18,7 @@ healthRouter.get('/ready', async (req: Request, res: Response) => {
 
   try {
     const client = await getPool().connect();
+    await client.query('SELECT 1');
     client.release();
     checks.postgres = 'ok';
   } catch {
