@@ -10,6 +10,7 @@ export function Header() {
       await authApi.logout();
     } finally {
       sessionStorage.removeItem('auth_session_active');
+      window.dispatchEvent(new Event('auth-session-changed'));
       navigate('/login', { replace: true });
     }
   };

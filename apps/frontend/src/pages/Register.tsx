@@ -24,7 +24,6 @@ export function RegisterPage() {
     password: password.length >= 12 ? null : 'Password must be at least 12 characters.',
   }), [email, firstName, lastName, organizationId, password]);
 
-  const hasValidationErrors = Object.values(fieldErrors).some(Boolean);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -34,6 +33,7 @@ export function RegisterPage() {
     try {
       await authApi.register({ firstName: firstName.trim(), lastName: lastName.trim(), organizationId: organizationId.trim(), email: email.trim(), password });
       sessionStorage.setItem('auth_session_active', 'true');
+      window.dispatchEvent(new Event('auth-session-changed'));
       navigate('/dashboard', { replace: true });
     } catch (err: unknown) {
       const isAxiosError = (e: unknown): e is { response?: { data?: { error?: { message?: string } | string } } } =>
@@ -53,7 +53,7 @@ export function RegisterPage() {
       <form onSubmit={submit} style={{ display: 'grid', gap: 12 }} noValidate>
         <label><span>First Name</span><input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} required maxLength={100} autoComplete="given-name" style={{ width: '100%', padding: '0.65rem', marginTop: 4 }} />{firstName && fieldErrors.firstName && <small className={styles.error}>{fieldErrors.firstName}</small>}</label>
         <label><span>Last Name</span><input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} required maxLength={100} autoComplete="family-name" style={{ width: '100%', padding: '0.65rem', marginTop: 4 }} />{lastName && fieldErrors.lastName && <small className={styles.error}>{fieldErrors.lastName}</small>}</label>
-        <label><span>Organization ID</span><input type="text" value={organizationId} onChange={(e) => setOrganizationId(e.target.value)} required maxLength={36} autoComplete="organization" placeholder="UUID (e.g., ff6a1c0f-6d3b-8388-6b12-4e2ad21f57c5)" style={{ width: '100%', padding: '0.65rem', marginTop: 4 }} />{organizationId && fieldErrors.organizationId && <small className={styles.error}>{fieldErrors.organizationId}</small>}</label>
+        <label><span>Organization ID</span><input type="text" value={organizationId} onChange={(e) => setOrganizationId(e.target.value)} required maxLength={36} autoComplete="organization" placeholder="UUID (e.g., 550e8400-e29b-41d4-a716-446655440000)" style={{ width: '100%', padding: '0.65rem', marginTop: 4 }} />{organizationId && fieldErrors.organizationId && <small className={styles.error}>{fieldErrors.organizationId}</small>}</label>
         <label><span>Email</span><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required maxLength={254} autoComplete="email" style={{ width: '100%', padding: '0.65rem', marginTop: 4 }} />{email && fieldErrors.email && <small className={styles.error}>{fieldErrors.email}</small>}</label>
         <label><span>Password</span><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required maxLength={128} autoComplete="new-password" style={{ width: '100%', padding: '0.65rem', marginTop: 4 }} />{password && fieldErrors.password && <small className={styles.error}>{fieldErrors.password}</small>}</label>
         {error && <p className={styles.error}>{error}</p>}

@@ -20,7 +20,6 @@ export function LoginPage() {
     password: password.length >= 8 ? null : 'Password must be at least 8 characters.',
   }), [email, organizationId, password]);
 
-  const hasValidationErrors = Object.values(fieldErrors).some(Boolean);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -31,6 +30,7 @@ export function LoginPage() {
     try {
       await authApi.login(email.trim(), password, organizationId.trim());
       sessionStorage.setItem('auth_session_active', 'true');
+      window.dispatchEvent(new Event('auth-session-changed'));
       navigate('/dashboard', { replace: true });
     } catch (err: unknown) {
       const isAxiosError = (e: unknown): e is { response?: { status?: number; data?: { error?: { message?: string } } } } =>
@@ -59,7 +59,7 @@ export function LoginPage() {
 
         <label>
           <span>Organization ID</span>
-          <input type="text" value={organizationId} onChange={(e) => setOrganizationId(e.target.value)} required maxLength={36} autoComplete="organization" placeholder="UUID (e.g., ff6a1c0f-6d3b-8388-6b12-4e2ad21f57c5)" style={{ width: '100%', padding: '0.65rem', marginTop: 4 }} />
+          <input type="text" value={organizationId} onChange={(e) => setOrganizationId(e.target.value)} required maxLength={36} autoComplete="organization" placeholder="UUID (e.g., 550e8400-e29b-41d4-a716-446655440000)" style={{ width: '100%', padding: '0.65rem', marginTop: 4 }} />
           {organizationId && fieldErrors.organizationId && <small className={styles.error}>{fieldErrors.organizationId}</small>}
         </label>
 

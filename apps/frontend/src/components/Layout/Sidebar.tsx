@@ -17,7 +17,7 @@ export function Sidebar() {
             <li key={to}>
               <NavLink
                 to={to}
-                aria-label={`Navigate to ${label}`}
+                aria-label={label}
                 className={({ isActive }) =>
                   `${styles.link} ${isActive ? styles.active : ''}`
                 }

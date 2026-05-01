@@ -15,6 +15,7 @@ apiClient.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       sessionStorage.removeItem('auth_session_active');
+      window.dispatchEvent(new Event('auth-session-changed'));
       if (window.location.pathname !== '/login') {
         window.location.href = '/login';
       }

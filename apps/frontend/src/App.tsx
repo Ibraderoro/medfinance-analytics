@@ -29,7 +29,26 @@ function useAuthSession() {
       }
     };
 
+
+    const handleAuthSessionChanged = () => {
+      void validateSession();
+    };
+
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === 'auth_session_active') {
+        void validateSession();
+      }
+    };
+
+    window.addEventListener('auth-session-changed', handleAuthSessionChanged);
+    window.addEventListener('storage', handleStorage);
+
     void validateSession();
+
+    return () => {
+      window.removeEventListener('auth-session-changed', handleAuthSessionChanged);
+      window.removeEventListener('storage', handleStorage);
+    };
   }, []);
 
   return isAuthenticated;
