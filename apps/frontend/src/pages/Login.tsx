@@ -26,11 +26,6 @@ export function LoginPage() {
     event.preventDefault();
     setError(null);
 
-    if (hasValidationErrors) {
-      setError('Please correct the highlighted fields before signing in.');
-      return;
-    }
-
     setIsSubmitting(true);
 
     try {
@@ -76,7 +71,7 @@ export function LoginPage() {
 
         {error && <p className={styles.error}>{error}</p>}
 
-        <button type="submit" disabled={isSubmitting || hasValidationErrors} style={{ padding: '0.7rem', fontWeight: 600 }}>
+        <button type="submit" disabled={isSubmitting} style={{ padding: '0.7rem', fontWeight: 600 }}>
           {isSubmitting ? 'Signing in…' : 'Sign in'}
         </button>
 

@@ -30,11 +30,6 @@ export function RegisterPage() {
     event.preventDefault();
     setError(null);
 
-    if (hasValidationErrors) {
-      setError('Please correct the highlighted fields before registering.');
-      return;
-    }
-
     setIsSubmitting(true);
     try {
       await authApi.register({ firstName: firstName.trim(), lastName: lastName.trim(), organizationId: organizationId.trim(), email: email.trim(), password });
@@ -62,7 +57,7 @@ export function RegisterPage() {
         <label><span>Email</span><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required maxLength={254} autoComplete="email" style={{ width: '100%', padding: '0.65rem', marginTop: 4 }} />{email && fieldErrors.email && <small className={styles.error}>{fieldErrors.email}</small>}</label>
         <label><span>Password</span><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required maxLength={128} autoComplete="new-password" style={{ width: '100%', padding: '0.65rem', marginTop: 4 }} />{password && fieldErrors.password && <small className={styles.error}>{fieldErrors.password}</small>}</label>
         {error && <p className={styles.error}>{error}</p>}
-        <button type="submit" disabled={isSubmitting || hasValidationErrors} style={{ padding: '0.7rem', fontWeight: 600 }}>{isSubmitting ? 'Creating account…' : 'Register'}</button>
+        <button type="submit" disabled={isSubmitting} style={{ padding: '0.7rem', fontWeight: 600 }}>{isSubmitting ? 'Creating account…' : 'Register'}</button>
         <p style={{ margin: 0, fontSize: '0.95rem' }}>Already have an account? <Link to="/login">Sign in</Link></p>
       </form>
     </div>
