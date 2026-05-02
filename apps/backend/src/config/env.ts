@@ -93,6 +93,7 @@ export const env = {
   JWT_EXPIRES_IN: optionalEnv('JWT_EXPIRES_IN', '1d'),
   REFRESH_TOKEN_SECRET: refreshTokenSecret,
   REFRESH_TOKEN_EXPIRES_IN: optionalEnv('REFRESH_TOKEN_EXPIRES_IN', '7d'),
+  AUDIT_EXPORT_SIGNING_SECRET: requireMinLength(optionalEnv('AUDIT_EXPORT_SIGNING_SECRET', refreshTokenSecret), 'AUDIT_EXPORT_SIGNING_SECRET', 32),
 
   CORS_ALLOWED_ORIGINS: parseCorsOrigins(
     optionalEnv('CORS_ALLOWED_ORIGINS', 'http://localhost:3000'),

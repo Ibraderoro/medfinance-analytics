@@ -102,7 +102,7 @@ export class AuditService {
       )
       .join('\n');
 
-    const signature = crypto.createHmac('sha256', env.REFRESH_TOKEN_SECRET).update(jsonl).digest('hex');
+    const signature = crypto.createHmac('sha256', env.AUDIT_EXPORT_SIGNING_SECRET).update(jsonl).digest('hex');
     return `${jsonl}\n${JSON.stringify({ signature, algorithm: 'hmac-sha256' })}`;
   }
 }
