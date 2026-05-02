@@ -53,7 +53,7 @@ async function bootstrap(): Promise<void> {
 
       logger.info('Received shutdown signal', { signal });
       await liveFinancialsService.stop();
-      analyticsService.stopWorker();
+      await analyticsService.stopWorker();
       clearInterval(retentionTimer);
       server.close(async (error) => {
         if (error) {

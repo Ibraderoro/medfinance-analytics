@@ -2,10 +2,11 @@ import { query } from '../config/database';
 import { env } from '../config/env';
 import { getRedis } from '../config/redis';
 import { logger } from '../utils/logger';
+import os from 'node:os';
 
 const STREAM_KEY = 'api_telemetry_stream';
 const GROUP = 'analytics_workers';
-const CONSUMER = `analytics-${process.pid}`;
+const CONSUMER = `analytics-${process.pid}-${process.env.HOSTNAME || os.hostname()}`;
 
 type TelemetryEvent = {
   endpoint: string;
@@ -20,6 +21,7 @@ type TelemetryEvent = {
 export class AnalyticsService {
   private readonly redis = getRedis();
   private workerRunning = false;
+  private inflight: Promise<void> | null = null;
 
   async enqueueApiTelemetry(input: TelemetryEvent): Promise<void> {
     if (Math.random() > env.ANALYTICS_SAMPLE_RATE) return;
@@ -33,10 +35,40 @@ export class AnalyticsService {
     if (this.workerRunning) return;
     this.workerRunning = true;
     await this.redis.call('XGROUP', 'CREATE', STREAM_KEY, GROUP, '0', 'MKSTREAM').catch(() => undefined);
+    await this.reclaimPending();
     void this.runLoop();
   }
 
-  stopWorker(): void { this.workerRunning = false; }
+  async stopWorker(): Promise<void> {
+    this.workerRunning = false;
+    if (this.inflight) {
+      await this.inflight.catch(() => undefined);
+    }
+  }
+
+  private async reclaimPending(): Promise<void> {
+    let startId = '0-0';
+    while (this.workerRunning) {
+      const reclaimed = await this.redis.call(
+        'XAUTOCLAIM',
+        STREAM_KEY,
+        GROUP,
+        CONSUMER,
+        '60000',
+        startId,
+        'COUNT',
+        String(env.ANALYTICS_BATCH_SIZE),
+      ) as [string, Array<[string, string[]]>];
+      const [nextStartId, entries] = reclaimed;
+      if (!entries || entries.length === 0) {
+        return;
+      }
+      this.inflight = this.persistBatch(entries);
+      await this.inflight;
+      this.inflight = null;
+      startId = nextStartId;
+    }
+  }
 
   private async runLoop(): Promise<void> {
     while (this.workerRunning) {
@@ -44,7 +76,9 @@ export class AnalyticsService {
         const rows = await this.redis.call('XREADGROUP', 'GROUP', GROUP, CONSUMER, 'COUNT', String(env.ANALYTICS_BATCH_SIZE), 'BLOCK', '2000', 'STREAMS', STREAM_KEY, '>') as unknown[];
         if (!rows?.length) continue;
         const entries = (rows[0] as [string, Array<[string, string[]]>])[1];
-        await this.persistBatch(entries);
+        this.inflight = this.persistBatch(entries);
+        await this.inflight;
+        this.inflight = null;
       } catch (error) {
         logger.warn('Analytics worker loop failure', { error: error instanceof Error ? error.message : 'unknown' });
       }
