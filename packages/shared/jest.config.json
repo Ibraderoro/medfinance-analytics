@@ -4,5 +4,8 @@
   "roots": ["<rootDir>/src"],
   "testMatch": ["**/__tests__/**/*.test.ts"],
   "coverageDirectory": "coverage",
-  "collectCoverageFrom": ["src/**/*.ts", "!src/**/*.d.ts"]
+  "collectCoverageFrom": ["src/**/*.ts", "!src/**/*.d.ts"],
+  "transform": {
+    "^.+\\.tsx?$": "ts-jest"
+  }
 }

@@ -25,5 +25,8 @@
       "lines": 20,
       "statements": 20
     }
+  },
+  "transform": {
+    "^.+\\.tsx?$": "ts-jest"
   }
 }
