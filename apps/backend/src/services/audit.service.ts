@@ -58,7 +58,7 @@ export class AuditService {
     startDate: Date,
     endDate: Date,
     format: 'jsonl' | 'csv' = 'jsonl',
-  ): Promise<string> {
+  ): Promise<string | { payload: string; signature: string; algorithm: 'hmac-sha256' }> {
     const rows = await query<AuditExportRow>(
       `SELECT id, action, entity_type, entity_id, performed_by, organization_id, metadata, created_at
        FROM audit_log

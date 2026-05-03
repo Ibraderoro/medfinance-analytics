@@ -6,6 +6,14 @@ import { getCurrentTenantContext } from '../middleware/tenantContext';
 
 let pool: Pool;
 
+const TENANT_ENFORCED_TABLES = ['transactions', 'forecasts', 'compliance_items'];
+
+function requiresTenantContext(queryText: string): boolean {
+  const lower = queryText.toLowerCase();
+  return TENANT_ENFORCED_TABLES.some((table) => new RegExp(`\\b${table}\\b`).test(lower));
+}
+
+
 function sqlInjectionError(message: string): AppError {
   const err = new Error(message) as AppError;
   err.statusCode = 400;

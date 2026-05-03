@@ -27,8 +27,12 @@ describe('AuditService', () => {
   it('exports csv and jsonl', async () => {
     mockQuery.mockResolvedValue([{ id: '1', action: 'A', entity_type: 't', entity_id: null, performed_by: null, organization_id: 'org', metadata: {}, created_at: '2026-01-01' }]);
     const svc = new AuditService();
-    expect((await svc.exportSiemLogs('org', new Date('2026-01-01'), new Date('2026-02-01'), 'csv')).includes('id,action')).toBe(true);
-    expect((await svc.exportSiemLogs('org', new Date('2026-01-01'), new Date('2026-02-01'), 'jsonl')).includes('entityType')).toBe(true);
+    const csvOut = await svc.exportSiemLogs('org', new Date('2026-01-01'), new Date('2026-02-01'), 'csv');
+    expect(typeof csvOut).toBe('string');
+    expect((csvOut as string).includes('id,action')).toBe(true);
+    const out = await svc.exportSiemLogs('org', new Date('2026-01-01'), new Date('2026-02-01'), 'jsonl');
+    expect(typeof out).toBe('object');
+    expect((out as { payload: string }).payload.includes('entityType')).toBe(true);
   });
 });
 
