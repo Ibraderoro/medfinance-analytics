@@ -23,6 +23,10 @@ export class AnalyticsService {
   private workerRunning = false;
   private inflight: Promise<void> | null = null;
 
+  /**
+   * Enqueues API telemetry into a durable Redis stream.
+   * The write is sampled using ANALYTICS_SAMPLE_RATE.
+   */
   async enqueueApiTelemetry(input: TelemetryEvent): Promise<void> {
     if (Math.random() > env.ANALYTICS_SAMPLE_RATE) return;
     const args = [STREAM_KEY, 'MAXLEN', '~', String(env.ANALYTICS_MAX_QUEUE_SIZE), '*', 'endpoint', input.endpoint, 'method', input.method, 'status_code', String(input.statusCode), 'latency_ms', String(Math.round(input.latencyMs)), 'user_id', input.userId ?? '', 'organization_id', input.organizationId ?? '', 'captured_at', input.capturedAt] as const;
@@ -31,6 +35,9 @@ export class AnalyticsService {
     else await this.redis.call('XADD', ...args);
   }
 
+  /**
+   * Starts the analytics consumer-group worker and performs pending-entry reclamation.
+   */
   async startWorker(): Promise<void> {
     if (this.workerRunning) return;
     this.workerRunning = true;
@@ -39,6 +46,9 @@ export class AnalyticsService {
     void this.runLoop();
   }
 
+  /**
+   * Stops the worker and waits for any in-flight persistence operation to finish.
+   */
   async stopWorker(): Promise<void> {
     this.workerRunning = false;
     if (this.inflight) {
@@ -46,6 +56,9 @@ export class AnalyticsService {
     }
   }
 
+  /**
+   * Reclaims and reprocesses pending entries that were previously delivered but not acknowledged.
+   */
   private async reclaimPending(): Promise<void> {
     let startId = '0-0';
     while (this.workerRunning) {
@@ -70,6 +83,9 @@ export class AnalyticsService {
     }
   }
 
+  /**
+   * Worker loop that reads newly-delivered stream entries for this consumer.
+   */
   private async runLoop(): Promise<void> {
     while (this.workerRunning) {
       try {
@@ -85,6 +101,9 @@ export class AnalyticsService {
     }
   }
 
+  /**
+   * Persists a batch to PostgreSQL and acknowledges entries only after successful insert.
+   */
   private async persistBatch(entries: Array<[string, string[]]>): Promise<void> {
     if (entries.length === 0) return;
     const values: string[] = [];
@@ -102,11 +121,17 @@ export class AnalyticsService {
     await this.redis.call('XACK', STREAM_KEY, GROUP, ...ackIds);
   }
 
+  /**
+   * Archives and removes metrics older than 90 days.
+   */
   async enforceRetention(): Promise<void> {
     await query('INSERT INTO api_request_metrics_archive SELECT * FROM api_request_metrics WHERE created_at < NOW() - INTERVAL \"90 days\" ON CONFLICT DO NOTHING');
     await query('DELETE FROM api_request_metrics WHERE created_at < NOW() - INTERVAL \"90 days\"');
   }
 
+  /**
+   * Returns aggregate admin analytics for a given time window.
+   */
   async getAdminMetrics(windowMinutes = 60, activeWindowMinutes = 5) {
     const safeWindowMinutes = Number.isFinite(windowMinutes) ? Math.max(1, Math.floor(windowMinutes)) : 60;
     const safeActiveWindowMinutes = Number.isFinite(activeWindowMinutes) ? Math.max(1, Math.floor(activeWindowMinutes)) : 5;

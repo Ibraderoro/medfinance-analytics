@@ -100,6 +100,9 @@ export async function query<T extends QueryResultRow>(
   text: string,
   params?: unknown[],
 ): Promise<T[]> {
+  /**
+   * Executes a sanitized SQL query and applies tenant session context when available.
+   */
   ensureSafeQuery(text, params);
 
   const start = Date.now();
