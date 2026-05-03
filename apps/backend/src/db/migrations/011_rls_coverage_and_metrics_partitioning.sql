@@ -30,10 +30,10 @@ BEGIN
   ) INTO is_partitioned;
 
   IF NOT archive_exists THEN
-    EXECUTE 'CREATE TABLE api_request_metrics_archive (LIKE api_request_metrics INCLUDING ALL) PARTITION BY RANGE (created_at)';
+    EXECUTE 'CREATE TABLE api_request_metrics_archive (LIKE api_request_metrics INCLUDING DEFAULTS) PARTITION BY RANGE (created_at)';
   ELSIF NOT is_partitioned THEN
     EXECUTE 'ALTER TABLE api_request_metrics_archive RENAME TO api_request_metrics_archive_legacy';
-    EXECUTE 'CREATE TABLE api_request_metrics_archive (LIKE api_request_metrics INCLUDING ALL) PARTITION BY RANGE (created_at)';
+    EXECUTE 'CREATE TABLE api_request_metrics_archive (LIKE api_request_metrics INCLUDING DEFAULTS) PARTITION BY RANGE (created_at)';
     EXECUTE 'CREATE TABLE api_request_metrics_archive_default PARTITION OF api_request_metrics_archive DEFAULT';
     EXECUTE 'INSERT INTO api_request_metrics_archive SELECT * FROM api_request_metrics_archive_legacy';
     EXECUTE 'DROP TABLE api_request_metrics_archive_legacy';

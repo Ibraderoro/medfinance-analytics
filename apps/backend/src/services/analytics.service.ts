@@ -112,12 +112,12 @@ export class AnalyticsService {
     entries.forEach(([id, vals], i) => {
       const map: Record<string, string> = {};
       for (let j = 0; j < vals.length; j += 2) map[vals[j]] = vals[j + 1];
-      const base = i * 8;
-      values.push(`($${base + 1},$${base + 2},$${base + 3},$${base + 4},NULLIF($${base + 5},'')::uuid,NULLIF($${base + 6},'')::uuid,$${base + 7},$${base + 8})`);
-      params.push(map.endpoint, map.method, Number.parseInt(map.status_code ?? '0', 10), Number.parseFloat(map.latency_ms ?? '0'), map.user_id ?? '', map.organization_id ?? '', map.captured_at, id);
+      const base = i * 7;
+      values.push(`($${base + 1},$${base + 2},$${base + 3},$${base + 4},NULLIF($${base + 5},'')::uuid,NULLIF($${base + 6},'')::uuid,$${base + 7})`);
+      params.push(map.endpoint, map.method, Number.parseInt(map.status_code ?? '0', 10), Number.parseFloat(map.latency_ms ?? '0'), map.user_id ?? '', map.organization_id ?? '', map.captured_at);
       ackIds.push(id);
     });
-    await query(`INSERT INTO api_request_metrics (endpoint, method, status_code, latency_ms, user_id, organization_id, created_at, redis_entry_id) VALUES ${values.join(',')} ON CONFLICT (redis_entry_id) DO NOTHING`, params);
+    await query(`INSERT INTO api_request_metrics (endpoint, method, status_code, latency_ms, user_id, organization_id, created_at) VALUES ${values.join(',')}`, params);
     await this.redis.call('XACK', STREAM_KEY, GROUP, ...ackIds);
   }
 
@@ -125,8 +125,8 @@ export class AnalyticsService {
    * Archives and removes metrics older than 90 days.
    */
   async enforceRetention(): Promise<void> {
-    await query("INSERT INTO api_request_metrics_archive SELECT * FROM api_request_metrics WHERE created_at < NOW() - INTERVAL '90 days' ON CONFLICT DO NOTHING");
-    await query("DELETE FROM api_request_metrics WHERE created_at < NOW() - INTERVAL '90 days'");
+    await query('INSERT INTO api_request_metrics_archive SELECT * FROM api_request_metrics WHERE created_at < NOW() - INTERVAL \"90 days\" ON CONFLICT DO NOTHING');
+    await query('DELETE FROM api_request_metrics WHERE created_at < NOW() - INTERVAL \"90 days\"');
   }
 
   /**
