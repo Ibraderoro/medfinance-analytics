@@ -10,4 +10,3 @@ BEGIN
   END LOOP;
 END $$;
 DROP TABLE IF EXISTS api_request_metrics_archive CASCADE;
-DROP FUNCTION IF EXISTS ensure_api_metrics_archive_partition(date);

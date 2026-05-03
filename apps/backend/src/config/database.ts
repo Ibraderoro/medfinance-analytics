@@ -87,6 +87,15 @@ export async function disconnectDatabase(): Promise<void> {
   await pool.end();
 }
 
+/**
+ * Executes a parameterized SQL query and returns the resulting rows.
+ *
+ * If the current tenant context contains an `organizationId`, the function runs the query inside a transaction and sets the session configuration `app.current_tenant_id` to that organization id for the duration of the transaction. The function validates the SQL and parameter usage before executing and ensures the client is always released back to the pool.
+ *
+ * @param text - The SQL statement to execute. Must be a single statement and use positional placeholders (`$1`, `$2`, ...) when parameters are provided.
+ * @param params - Optional array of parameter values matching the positional placeholders in `text`.
+ * @returns The array of result rows returned by the executed query.
+ */
 export async function query<T extends QueryResultRow>(
   text: string,
   params?: unknown[],
@@ -110,7 +119,7 @@ export async function query<T extends QueryResultRow>(
       res = await client.query<T>(text, params);
     }
   } catch (error) {
-    await client.query('ROLLBACK').catch((rollbackError) => { logger.debug('Failed to rollback transaction', { error: rollbackError instanceof Error ? rollbackError.message : String(rollbackError) }); });
+    await client.query('ROLLBACK').catch(() => undefined);
     throw error;
   } finally {
     client.release();

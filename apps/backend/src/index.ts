@@ -25,6 +25,11 @@ app.use((_req, res, next) => {
   next();
 });
 
+/**
+ * Bootstraps and starts the HTTP server, observability, data stores, and background workers, and registers coordinated graceful shutdown handlers.
+ *
+ * Initializes tracing, database and Redis connections, runs migrations and schema validation, starts background services (including analytics and live financials), configures server timeouts, and schedules periodic analytics retention enforcement. Installs signal handlers that run an ordered shutdown sequence which stops workers, clears the retention timer, closes the HTTP server, disconnects resources, and exits the process on completion or on fatal errors during startup/shutdown.
+ */
 async function bootstrap(): Promise<void> {
   try {
     await startTracing();
@@ -34,7 +39,7 @@ async function bootstrap(): Promise<void> {
     await connectRedis();
 
     await liveFinancialsService.start();
-    void analyticsService.startWorker();
+    await analyticsService.startWorker();
     const retentionTimer = setInterval(() => { void analyticsService.enforceRetention(); }, 6 * 60 * 60 * 1000);
 
     const server = app.listen(PORT, () => {
