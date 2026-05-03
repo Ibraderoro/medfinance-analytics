@@ -51,5 +51,5 @@ authRouter.post(
 
 authRouter.post('/logout', logout);
 
-authRouter.post('/mfa/verify', authRateLimiter, [body('tempToken').matches(UUID_LIKE_PATTERN), body('code').isLength({ min: 6, max: 6 }).matches(/^\d{6}$/)], validateRequest(), verifyMfa);
-authRouter.post('/oidc/initiate', authRateLimiter, [body('email').isEmail().normalizeEmail(), body('organizationId').matches(UUID_LIKE_PATTERN)], validateRequest(), initiateOidc);
+authRouter.post('/mfa/verify', authRateLimiter, [body('tempToken').notEmpty(), body('code').isLength({ min: 6, max: 6 })], validateRequest(), verifyMfa);
+authRouter.post('/oidc/initiate', authRateLimiter, [body('email').isEmail().normalizeEmail()], validateRequest(), initiateOidc);
