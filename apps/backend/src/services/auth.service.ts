@@ -118,10 +118,10 @@ export class AuthService {
     return this.generateTokenPair(user);
   }
 
-  async initiateSsoLogin(provider: 'saml' | 'oidc', email: string) {
+  async initiateSsoLogin(provider: 'saml' | 'oidc', email: string, organizationId: string) {
     const [user] = await query<UserIdentity & { is_active: boolean }>(
-      'SELECT id, email, role, organization_id, is_active FROM users WHERE email = $1',
-      [email],
+      'SELECT id, email, role, organization_id, is_active FROM users WHERE email = $1 AND organization_id = $2',
+      [email, organizationId],
     );
 
     if (!user || !user.is_active) {
