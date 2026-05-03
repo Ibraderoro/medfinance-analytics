@@ -93,6 +93,7 @@ export const env = {
   JWT_EXPIRES_IN: optionalEnv('JWT_EXPIRES_IN', '1d'),
   REFRESH_TOKEN_SECRET: refreshTokenSecret,
   REFRESH_TOKEN_EXPIRES_IN: optionalEnv('REFRESH_TOKEN_EXPIRES_IN', '7d'),
+  AUDIT_EXPORT_SIGNING_SECRET: requireMinLength(requireEnv('AUDIT_EXPORT_SIGNING_SECRET'), 'AUDIT_EXPORT_SIGNING_SECRET', 32),
 
   CORS_ALLOWED_ORIGINS: parseCorsOrigins(
     optionalEnv('CORS_ALLOWED_ORIGINS', 'http://localhost:3000'),
@@ -134,4 +135,8 @@ if (env.REQUIRE_SECURE_TRANSPORT && env.isProduction()) {
 
 if (env.ERROR_RATE_ALERT_THRESHOLD < 0 || env.ERROR_RATE_ALERT_THRESHOLD > 1) {
   throw new Error('ERROR_RATE_ALERT_THRESHOLD must be between 0 and 1');
+}
+
+if (env.AUDIT_EXPORT_SIGNING_SECRET === refreshTokenSecret || env.AUDIT_EXPORT_SIGNING_SECRET === jwtSecret) {
+  throw new Error('AUDIT_EXPORT_SIGNING_SECRET must be different from REFRESH_TOKEN_SECRET and JWT_SECRET');
 }

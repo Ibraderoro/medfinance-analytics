@@ -1,4 +1,5 @@
 import { NextFunction, Response } from 'express';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { AuthenticatedRequest } from './auth';
 
 declare module 'express-serve-static-core' {
@@ -12,6 +13,12 @@ declare module 'express-serve-static-core' {
 
 const TENANT_ORG_FIELDS = ['organization_id', 'organizationId', 'organisationId'] as const;
 const BLOCKED_OBJECT_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+const tenantStorage = new AsyncLocalStorage<{ organizationId: string; userId: string }>();
+
+export function getCurrentTenantContext(): { organizationId: string; userId: string } | undefined {
+  return tenantStorage.getStore();
+}
 
 function stripTenantFields(value: unknown): unknown {
   if (Array.isArray(value)) {
@@ -36,6 +43,9 @@ function stripTenantFields(value: unknown): unknown {
   return output;
 }
 
+/**
+ * Attaches authenticated tenant context to request scope and async-local storage.
+ */
 export function attachTenantContext(
   req: AuthenticatedRequest,
   res: Response,
@@ -51,14 +61,13 @@ export function attachTenantContext(
     return;
   }
 
-  req.tenant = {
-    userId,
-    organizationId,
-  };
-
-  next();
+  req.tenant = { userId, organizationId };
+  tenantStorage.run({ userId, organizationId }, () => next());
 }
 
+/**
+ * Removes tenant-overridable payload fields from request bodies.
+ */
 export function blockTenantOverride(
   req: AuthenticatedRequest,
   res: Response,
