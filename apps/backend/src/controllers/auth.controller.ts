@@ -53,6 +53,7 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
     const { email, password, organizationId } = req.body as { email: string; password: string; organizationId: string };
     const result = await service.login(email, password, organizationId);
     if (result.status === 'mfa_required') {
+      clearAuthCookies(res);
       res.success({ session: 'pending_mfa', tempToken: result.tempToken });
       return;
     }
