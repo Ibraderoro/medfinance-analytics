@@ -27,5 +27,8 @@
         "tsconfig": "<rootDir>/tsconfig.test.json"
       }
     ]
-  }
+  },
+  "setupFiles": [
+    "<rootDir>/src/__tests__/setup-env.ts"
+  ]
 }

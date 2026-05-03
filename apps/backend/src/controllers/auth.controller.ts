@@ -43,8 +43,13 @@ export async function register(req: Request, res: Response, next: NextFunction):
 export async function login(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const { email, password, organizationId } = req.body as { email: string; password: string; organizationId: string };
-    const tokens = await service.login(email, password, organizationId);
-    setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
+    const result = await service.login(email, password, organizationId);
+    if (result.status === 'mfa_required') {
+      clearAuthCookies(res);
+      res.success({ session: 'pending_mfa', tempToken: result.tempToken });
+      return;
+    }
+    setAuthCookies(res, result.accessToken, result.refreshToken);
     res.success({ session: 'created' });
   } catch (err) { next(err); }
 }
@@ -72,5 +77,22 @@ export async function logout(req: Request, res: Response, next: NextFunction): P
     if (refreshToken) await service.logout(refreshToken);
     clearAuthCookies(res);
     res.success({ loggedOut: true });
+  } catch (err) { next(err); }
+}
+
+export async function verifyMfa(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { tempToken, code } = req.body as { tempToken: string; code: string };
+    const tokens = await service.verifyMfa(tempToken, code);
+    setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
+    res.success({ session: 'created' });
+  } catch (err) { next(err); }
+}
+
+export async function initiateOidc(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { email } = req.body as { email: string };
+    const data = await service.initiateSsoLogin('oidc', email);
+    res.success(data);
   } catch (err) { next(err); }
 }

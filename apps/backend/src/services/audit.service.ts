@@ -1,4 +1,6 @@
+import crypto from 'crypto';
 import { query } from '../config/database';
+import { env } from '../config/env';
 import { AppError } from '../middleware/errorHandler';
 
 interface AuditEvent {
@@ -85,19 +87,22 @@ export class AuditService {
       return `${header}\n${body}`;
     }
 
-    return rows
-      .map((row) =>
-        JSON.stringify({
-          id: row.id,
-          action: row.action,
-          entityType: row.entity_type,
-          entityId: row.entity_id,
-          performedBy: row.performed_by,
-          organizationId: row.organization_id,
-          metadata: row.metadata ?? {},
-          createdAt: row.created_at,
-        }),
-      )
-      .join('\n');
+    const rowsLines = rows.map((row) =>
+      JSON.stringify({
+        id: row.id,
+        action: row.action,
+        entityType: row.entity_type,
+        entityId: row.entity_id,
+        performedBy: row.performed_by,
+        organizationId: row.organization_id,
+        metadata: row.metadata ?? {},
+        createdAt: row.created_at,
+      }),
+    );
+    const jsonl = rowsLines.join('\n');
+
+    const signature = crypto.createHmac('sha256', env.AUDIT_EXPORT_SIGNING_SECRET).update(jsonl).digest('hex');
+    const outputLines = [...(jsonl ? [jsonl] : []), JSON.stringify({ signature, algorithm: 'hmac-sha256' })];
+    return outputLines.join('\n');
   }
 }
