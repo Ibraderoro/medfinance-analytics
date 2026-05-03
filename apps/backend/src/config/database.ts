@@ -6,20 +6,13 @@ import { getCurrentTenantContext } from '../middleware/tenantContext';
 
 let pool: Pool;
 
-export const TENANT_ENFORCED_TABLES = ['financial_transactions', 'budgets', 'compliance_records', 'transactions', 'forecasts', 'compliance_items'];
-const TENANT_TABLE_REGEXES = TENANT_ENFORCED_TABLES.map((table) => new RegExp(`\\b${table}\\b`, 'i'));
+const TENANT_ENFORCED_TABLES = ['transactions', 'forecasts', 'compliance_items'];
 
-function tenantContextError(message: string): AppError {
-  const err = new Error(message) as AppError;
-  err.statusCode = 403;
-  err.isOperational = true;
-  err.code = 'TENANT_CONTEXT_REQUIRED';
-  return err;
+function requiresTenantContext(queryText: string): boolean {
+  const lower = queryText.toLowerCase();
+  return TENANT_ENFORCED_TABLES.some((table) => new RegExp(`\\b${table}\\b`).test(lower));
 }
 
-export function requiresTenantContext(queryText: string): boolean {
-  return TENANT_TABLE_REGEXES.some((pattern) => pattern.test(queryText));
-}
 
 function sqlInjectionError(message: string): AppError {
   const err = new Error(message) as AppError;
@@ -102,6 +95,15 @@ export async function disconnectDatabase(): Promise<void> {
   await pool.end();
 }
 
+/**
+ * Executes a parameterized SQL query and returns the resulting rows.
+ *
+ * If the current tenant context contains an `organizationId`, the function runs the query inside a transaction and sets the session configuration `app.current_tenant_id` to that organization id for the duration of the transaction. The function validates the SQL and parameter usage before executing and ensures the client is always released back to the pool.
+ *
+ * @param text - The SQL statement to execute. Must be a single statement and use positional placeholders (`$1`, `$2`, ...) when parameters are provided.
+ * @param params - Optional array of parameter values matching the positional placeholders in `text`.
+ * @returns The array of result rows returned by the executed query.
+ */
 export async function query<T extends QueryResultRow>(
   text: string,
   params?: unknown[],
@@ -113,32 +115,19 @@ export async function query<T extends QueryResultRow>(
 
   const start = Date.now();
   const tenant = getCurrentTenantContext();
-  if (!tenant?.organizationId && requiresTenantContext(text)) {
-    logger.error('Tenant context missing for tenant-scoped query', { query: text.slice(0, 120) });
-    throw tenantContextError('Tenant context is required for tenant-scoped queries');
-  }
-
-  if (!tenant?.organizationId) {
-    const res = await getPool().query<T>(text, params);
-    const duration = Date.now() - start;
-    logger.debug('Query executed', { duration, rows: res.rowCount, hasParams: Boolean(params?.length) });
-    return res.rows;
-  }
-
   const client = await getPool().connect();
   let res;
-  let inTransaction = false;
   try {
-    await client.query('BEGIN');
-    inTransaction = true;
-    await client.query(`SELECT set_config('app.current_tenant_id', $1, true)`, [tenant.organizationId]);
-    res = await client.query<T>(text, params);
-    await client.query('COMMIT');
-    inTransaction = false;
-  } catch (error) {
-    if (inTransaction) {
-      await client.query('ROLLBACK').catch((rollbackError) => { logger.debug('Failed to rollback transaction', { error: rollbackError instanceof Error ? rollbackError.message : String(rollbackError) }); });
+    if (tenant?.organizationId) {
+      await client.query('BEGIN');
+      await client.query(`SELECT set_config('app.current_tenant_id', $1, true)`, [tenant.organizationId]);
+      res = await client.query<T>(text, params);
+      await client.query('COMMIT');
+    } else {
+      res = await client.query<T>(text, params);
     }
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
     throw error;
   } finally {
     client.release();

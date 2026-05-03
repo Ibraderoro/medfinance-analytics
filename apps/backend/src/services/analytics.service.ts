@@ -22,12 +22,6 @@ export class AnalyticsService {
   private readonly redis = getRedis();
   private workerRunning = false;
   private inflight: Promise<void> | null = null;
-  private consecutiveFailures = 0;
-  private retentionRunning = false;
-
-  private async sleep(ms: number): Promise<void> {
-    await new Promise((resolve) => setTimeout(resolve, ms));
-  }
 
   /**
    * Enqueues API telemetry into a durable Redis stream.
@@ -47,11 +41,7 @@ export class AnalyticsService {
   async startWorker(): Promise<void> {
     if (this.workerRunning) return;
     this.workerRunning = true;
-    await this.redis.call('XGROUP', 'CREATE', STREAM_KEY, GROUP, '0', 'MKSTREAM').catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      if (message.includes('BUSYGROUP')) return undefined;
-      throw error;
-    });
+    await this.redis.call('XGROUP', 'CREATE', STREAM_KEY, GROUP, '0', 'MKSTREAM').catch(() => undefined);
     await this.reclaimPending();
     void this.runLoop();
   }
@@ -105,13 +95,8 @@ export class AnalyticsService {
         this.inflight = this.persistBatch(entries);
         await this.inflight;
         this.inflight = null;
-        this.consecutiveFailures = 0;
       } catch (error) {
-        logger.warn('Analytics worker loop failure', { error: error instanceof Error ? error.message : 'unknown', consecutiveFailures: this.consecutiveFailures + 1 });
-        this.consecutiveFailures += 1;
-        const delayMs = Math.min(250 * (2 ** this.consecutiveFailures), 10000);
-        await this.sleep(delayMs);
-        await this.reclaimPending();
+        logger.warn('Analytics worker loop failure', { error: error instanceof Error ? error.message : 'unknown' });
       }
     }
   }
@@ -127,61 +112,32 @@ export class AnalyticsService {
     entries.forEach(([id, vals], i) => {
       const map: Record<string, string> = {};
       for (let j = 0; j < vals.length; j += 2) map[vals[j]] = vals[j + 1];
-      const base = i * 8;
-      values.push(`($${base + 1},$${base + 2},$${base + 3},$${base + 4},NULLIF($${base + 5},'')::uuid,NULLIF($${base + 6},'')::uuid,$${base + 7},$${base + 8})`);
-      params.push(map.endpoint, map.method, Number.parseInt(map.status_code ?? '0', 10), Number.parseFloat(map.latency_ms ?? '0'), map.user_id ?? '', map.organization_id ?? '', map.captured_at, id);
+      const base = i * 7;
+      values.push(`($${base + 1},$${base + 2},$${base + 3},$${base + 4},NULLIF($${base + 5},'')::uuid,NULLIF($${base + 6},'')::uuid,$${base + 7})`);
+      params.push(map.endpoint, map.method, Number.parseInt(map.status_code ?? '0', 10), Number.parseFloat(map.latency_ms ?? '0'), map.user_id ?? '', map.organization_id ?? '', map.captured_at);
       ackIds.push(id);
     });
-    await query(`INSERT INTO api_request_metrics (endpoint, method, status_code, latency_ms, user_id, organization_id, created_at, redis_entry_id) VALUES ${values.join(',')} ON CONFLICT (redis_entry_id) DO NOTHING`, params);
+    await query(`INSERT INTO api_request_metrics (endpoint, method, status_code, latency_ms, user_id, organization_id, created_at) VALUES ${values.join(',')}`, params);
     await this.redis.call('XACK', STREAM_KEY, GROUP, ...ackIds);
   }
 
   /**
    * Archives and removes metrics older than 90 days.
    */
-  async enforceRetention(organizationId?: string): Promise<void> {
-    if (this.retentionRunning) {
-      return;
-    }
-    this.retentionRunning = true;
-    try {
-      if (!organizationId) {
-        const orgRows = await query<{ organization_id: string }>('SELECT DISTINCT organization_id FROM api_request_metrics WHERE organization_id IS NOT NULL');
-        for (const row of orgRows) {
-          await this.enforceRetention(row.organization_id);
-        }
-        return;
-      }
-
-      const client = await getPool().connect();
-      try {
-        await client.query('BEGIN');
-        await client.query("SELECT set_config('app.current_tenant_id', $1, true)", [organizationId]);
-        await client.query("SELECT ensure_api_metrics_archive_partition(date_trunc('month', NOW() - INTERVAL '90 days')::date)");
-        await client.query("INSERT INTO api_request_metrics_archive SELECT * FROM api_request_metrics WHERE organization_id = $1 AND created_at < NOW() - INTERVAL '90 days' ON CONFLICT (redis_entry_id, created_at) DO NOTHING", [organizationId]);
-        await client.query("DELETE FROM api_request_metrics WHERE organization_id = $1 AND created_at < NOW() - INTERVAL '90 days'", [organizationId]);
-        await client.query('COMMIT');
-      } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
-      } finally {
-        client.release();
-      }
-    } finally {
-      this.retentionRunning = false;
-    }
+  async enforceRetention(): Promise<void> {
+    await query('INSERT INTO api_request_metrics_archive SELECT * FROM api_request_metrics WHERE created_at < NOW() - INTERVAL \"90 days\" ON CONFLICT DO NOTHING');
+    await query('DELETE FROM api_request_metrics WHERE created_at < NOW() - INTERVAL \"90 days\"');
   }
-
 
   /**
    * Returns aggregate admin analytics for a given time window.
    */
-  async getAdminMetrics(windowMinutes = 60, activeWindowMinutes = 5, organizationId?: string) {
+  async getAdminMetrics(windowMinutes = 60, activeWindowMinutes = 5) {
     const safeWindowMinutes = Number.isFinite(windowMinutes) ? Math.max(1, Math.floor(windowMinutes)) : 60;
     const safeActiveWindowMinutes = Number.isFinite(activeWindowMinutes) ? Math.max(1, Math.floor(activeWindowMinutes)) : 5;
-    const [totalsRow] = await query<{ request_count: string; unique_users: string; average_latency_ms: string }>(`SELECT COUNT(*)::text AS request_count, COUNT(DISTINCT user_id)::text AS unique_users, COALESCE(ROUND(AVG(latency_ms)::numeric, 2), 0)::text AS average_latency_ms FROM api_request_metrics WHERE created_at >= NOW() - ($1::text || ' minutes')::interval AND ($2::uuid IS NULL OR organization_id = $2::uuid)`, [safeWindowMinutes, organizationId ?? null]);
-    const [activeUsersRow] = await query<{ active_users: string }>(`SELECT COUNT(DISTINCT user_id)::text AS active_users FROM api_request_metrics WHERE user_id IS NOT NULL AND created_at >= NOW() - ($1::text || ' minutes')::interval AND ($2::uuid IS NULL OR organization_id = $2::uuid)`, [safeActiveWindowMinutes, organizationId ?? null]);
-    const endpointRows = await query<{ endpoint: string; request_count: string; average_latency_ms: string; p95_latency_ms: string; error_rate_percent: string }>(`SELECT endpoint, COUNT(*)::text AS request_count, COALESCE(ROUND(AVG(latency_ms)::numeric, 2), 0)::text AS average_latency_ms, COALESCE(ROUND((percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms))::numeric, 2), 0)::text AS p95_latency_ms, COALESCE(ROUND((SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END)::numeric / NULLIF(COUNT(*), 0)) * 100, 2), 0)::text AS error_rate_percent FROM api_request_metrics WHERE created_at >= NOW() - ($1::text || ' minutes')::interval AND ($2::uuid IS NULL OR organization_id = $2::uuid) GROUP BY endpoint ORDER BY COUNT(*) DESC, endpoint ASC`, [safeWindowMinutes, organizationId ?? null]);
+    const [totalsRow] = await query<{ request_count: string; unique_users: string; average_latency_ms: string }>(`SELECT COUNT(*)::text AS request_count, COUNT(DISTINCT user_id)::text AS unique_users, COALESCE(ROUND(AVG(latency_ms)::numeric, 2), 0)::text AS average_latency_ms FROM api_request_metrics WHERE created_at >= NOW() - ($1::text || ' minutes')::interval`, [safeWindowMinutes]);
+    const [activeUsersRow] = await query<{ active_users: string }>(`SELECT COUNT(DISTINCT user_id)::text AS active_users FROM api_request_metrics WHERE user_id IS NOT NULL AND created_at >= NOW() - ($1::text || ' minutes')::interval`, [safeActiveWindowMinutes]);
+    const endpointRows = await query<{ endpoint: string; request_count: string; average_latency_ms: string; p95_latency_ms: string; error_rate_percent: string }>(`SELECT endpoint, COUNT(*)::text AS request_count, COALESCE(ROUND(AVG(latency_ms)::numeric, 2), 0)::text AS average_latency_ms, COALESCE(ROUND((percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms))::numeric, 2), 0)::text AS p95_latency_ms, COALESCE(ROUND((SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END)::numeric / NULLIF(COUNT(*), 0)) * 100, 2), 0)::text AS error_rate_percent FROM api_request_metrics WHERE created_at >= NOW() - ($1::text || ' minutes')::interval GROUP BY endpoint ORDER BY COUNT(*) DESC, endpoint ASC`, [safeWindowMinutes]);
     return { generatedAt: new Date().toISOString(), windowMinutes: safeWindowMinutes, activeWindowMinutes: safeActiveWindowMinutes, totals: { requestCount: Number.parseInt(totalsRow?.request_count ?? '0', 10), uniqueUsers: Number.parseInt(totalsRow?.unique_users ?? '0', 10), activeUsers: Number.parseInt(activeUsersRow?.active_users ?? '0', 10), averageLatencyMs: Number.parseFloat(totalsRow?.average_latency_ms ?? '0') }, endpointUsage: endpointRows.map((row) => ({ endpoint: row.endpoint, requestCount: Number.parseInt(row.request_count, 10), averageLatencyMs: Number.parseFloat(row.average_latency_ms), p95LatencyMs: Number.parseFloat(row.p95_latency_ms), errorRatePercent: Number.parseFloat(row.error_rate_percent) })) };
   }
 
