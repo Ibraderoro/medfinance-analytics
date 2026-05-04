@@ -8,6 +8,7 @@ import { connectRedis, disconnectRedis } from './config/redis';
 import { env } from './config/env';
 import { liveFinancialsService } from './services/liveFinancials.service';
 import { startTracing, stopTracing } from './observability/tracing';
+import { analyticsService } from './services/analytics.service';
 
 const PORT = Number.parseInt(process.env.PORT ?? `${env.PORT}`, 10);
 let isShuttingDown = false;
@@ -33,6 +34,16 @@ async function bootstrap(): Promise<void> {
     await connectRedis();
 
     await liveFinancialsService.start();
+    await analyticsService.startWorker();
+    const retentionTimer = setInterval(() => {
+      void (async () => {
+        try {
+          await analyticsService.enforceRetention();
+        } catch (error) {
+          logger.error('Retention job failed', { message: error instanceof Error ? error.message : String(error) });
+        }
+      })();
+    }, 6 * 60 * 60 * 1000);
 
     const server = app.listen(PORT, () => {
       logger.info('MedFinance API started', { port: PORT, env: env.NODE_ENV });
@@ -50,6 +61,8 @@ async function bootstrap(): Promise<void> {
 
       logger.info('Received shutdown signal', { signal });
       await liveFinancialsService.stop();
+      await analyticsService.stopWorker();
+      clearInterval(retentionTimer);
       server.close(async (error) => {
         if (error) {
           logger.error('Error during server shutdown', { message: error.message, stack: error.stack });

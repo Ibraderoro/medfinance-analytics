@@ -2,8 +2,24 @@ import { Pool, PoolClient, QueryResultRow } from 'pg';
 import { env } from './env';
 import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
+import { getCurrentTenantContext } from '../middleware/tenantContext';
 
 let pool: Pool;
+
+export const TENANT_ENFORCED_TABLES = ['financial_transactions', 'budgets', 'compliance_records', 'transactions', 'forecasts', 'compliance_items'];
+const TENANT_TABLE_REGEXES = TENANT_ENFORCED_TABLES.map((table) => new RegExp(`\\b${table}\\b`, 'i'));
+
+function requiresTenantContext(queryText: string): boolean {
+  return TENANT_TABLE_REGEXES.some((pattern) => pattern.test(queryText));
+}
+
+function tenantContextError(message: string): AppError {
+  const err = new Error(message) as AppError;
+  err.statusCode = 403;
+  err.isOperational = true;
+  err.code = 'TENANT_CONTEXT_REQUIRED';
+  return err;
+}
 
 function sqlInjectionError(message: string): AppError {
   const err = new Error(message) as AppError;
@@ -90,10 +106,43 @@ export async function query<T extends QueryResultRow>(
   text: string,
   params?: unknown[],
 ): Promise<T[]> {
+  /**
+   * Executes a sanitized SQL query and applies tenant session context when available.
+   */
   ensureSafeQuery(text, params);
 
   const start = Date.now();
-  const res = await getPool().query<T>(text, params);
+  const tenant = getCurrentTenantContext();
+  if (!tenant?.organizationId && requiresTenantContext(text)) {
+    logger.error('Tenant context missing for tenant-scoped query', { query: text.slice(0, 120) });
+    throw tenantContextError('Tenant context is required for tenant-scoped queries');
+  }
+
+  if (!tenant?.organizationId) {
+    const res = await getPool().query<T>(text, params);
+    const duration = Date.now() - start;
+    logger.debug('Query executed', { duration, rows: res.rowCount, hasParams: Boolean(params?.length) });
+    return res.rows;
+  }
+
+  const client = await getPool().connect();
+  let res;
+  let inTransaction = false;
+  try {
+    await client.query('BEGIN');
+    inTransaction = true;
+    await client.query(`SELECT set_config('app.current_tenant_id', $1, true)`, [tenant.organizationId]);
+    res = await client.query<T>(text, params);
+    await client.query('COMMIT');
+    inTransaction = false;
+  } catch (error) {
+    if (inTransaction) {
+      await client.query('ROLLBACK').catch((rollbackError) => { logger.debug('Failed to rollback transaction', { error: rollbackError instanceof Error ? rollbackError.message : String(rollbackError) }); });
+    }
+    throw error;
+  } finally {
+    client.release();
+  }
   const duration = Date.now() - start;
   logger.debug('Query executed', {
     duration,
