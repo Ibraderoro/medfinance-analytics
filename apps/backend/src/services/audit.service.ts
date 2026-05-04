@@ -53,6 +53,8 @@ export class AuditService {
     }
   }
 
+  exportSiemLogs(organizationId: string, startDate: Date, endDate: Date, format: 'jsonl'): Promise<string>;
+  exportSiemLogs(organizationId: string, startDate: Date, endDate: Date, format: 'csv'): Promise<{ payload: string; signature: string; algorithm: 'hmac-sha256' }>;
   async exportSiemLogs(
     organizationId: string,
     startDate: Date,
@@ -84,7 +86,9 @@ export class AuditService {
         ])
         .map((fields) => fields.map((field) => `"${String(field)}"`).join(','))
         .join('\n');
-      return `${header}\n${body}`;
+      const payload = `${header}\n${body}`;
+      const signature = crypto.createHmac('sha256', env.AUDIT_EXPORT_SIGNING_SECRET).update(payload).digest('hex');
+      return { payload, signature, algorithm: 'hmac-sha256' };
     }
 
     const jsonl = rows
