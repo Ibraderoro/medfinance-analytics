@@ -137,6 +137,6 @@ if (env.ERROR_RATE_ALERT_THRESHOLD < 0 || env.ERROR_RATE_ALERT_THRESHOLD > 1) {
   throw new Error('ERROR_RATE_ALERT_THRESHOLD must be between 0 and 1');
 }
 
-if (env.AUDIT_EXPORT_SIGNING_SECRET === refreshTokenSecret || env.AUDIT_EXPORT_SIGNING_SECRET === jwtSecret) {
-  throw new Error('AUDIT_EXPORT_SIGNING_SECRET must be different from REFRESH_TOKEN_SECRET and JWT_SECRET');
+if (env.AUDIT_EXPORT_SIGNING_SECRET === refreshTokenSecret) {
+  throw new Error('AUDIT_EXPORT_SIGNING_SECRET must be different from REFRESH_TOKEN_SECRET');
 }

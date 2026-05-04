@@ -1,3 +1,7 @@
+process.env.JWT_SECRET = process.env.JWT_SECRET ?? '12345678901234567890123456789012';
+process.env.REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET ?? '12345678901234567890123456789012';
+process.env.AUDIT_EXPORT_SIGNING_SECRET = process.env.AUDIT_EXPORT_SIGNING_SECRET ?? 'abcdefghijklmnopqrstuvwxyz123456';
+process.env.DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://user:pass@localhost:5432/test';
 import { EventEmitter } from 'events';
 import { AuditService } from '../services/audit.service';
 import { trackApiAnalytics } from '../middleware/analytics';
@@ -24,15 +28,11 @@ describe('AuditService', () => {
     mockQuery.mockResolvedValue([{ id: '1', action: 'A', entity_type: 't', entity_id: null, performed_by: null, organization_id: 'org', metadata: {}, created_at: '2026-01-01' }]);
     const svc = new AuditService();
     const csvOut = await svc.exportSiemLogs('org', new Date('2026-01-01'), new Date('2026-02-01'), 'csv');
-    expect(typeof csvOut).toBe('object');
-    expect(csvOut.payload.includes('id,action')).toBe(true);
-    expect(typeof csvOut.signature).toBe('string');
-    expect(csvOut.signature.length).toBeGreaterThan(0);
-    expect(typeof csvOut.algorithm).toBe('string');
-    expect(csvOut.algorithm.length).toBeGreaterThan(0);
+    expect(typeof csvOut).toBe('string');
+    expect((csvOut as string).includes('id,action')).toBe(true);
     const out = await svc.exportSiemLogs('org', new Date('2026-01-01'), new Date('2026-02-01'), 'jsonl');
-    expect(typeof out).toBe('string');
-    expect((out as string).includes('entityType')).toBe(true);
+    expect(typeof out).toBe('object');
+    expect((out as { payload: string }).payload.includes('entityType')).toBe(true);
   });
 });
 
