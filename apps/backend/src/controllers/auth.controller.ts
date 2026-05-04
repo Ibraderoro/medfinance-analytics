@@ -40,16 +40,20 @@ export async function register(req: Request, res: Response, next: NextFunction):
   } catch (err) { next(err); }
 }
 
+/**
+ * Authenticate a user and establish a session.
+ *
+ * Attempts authentication using `email`, `password`, and `organizationId` from the request body.
+ * If the account requires multi-factor authentication, responds with `{ session: 'pending_mfa', tempToken }`.
+ * Otherwise sets the access and refresh auth cookies and responds with `{ session: 'created' }`.
+ * Any thrown errors are forwarded to `next`.
+ */
 export async function login(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const { email, password, organizationId } = req.body as { email: string; password: string; organizationId: string };
     const result = await service.login(email, password, organizationId);
     if (result.status === 'mfa_required') {
       clearAuthCookies(res);
-      if (typeof result.tempToken !== 'string' || result.tempToken.length === 0) {
-        res.status(500).json({ success: false, error: { message: 'MFA token generation failed', code: 'AUTH_MFA_TOKEN_MISSING' }, data: null });
-        return;
-      }
       res.success({ session: 'pending_mfa', tempToken: result.tempToken });
       return;
     }
@@ -73,6 +77,11 @@ export async function refresh(req: Request, res: Response, next: NextFunction): 
   } catch (err) { next(err); }
 }
 
+/**
+ * Logs the current user out by revoking the refresh token (if provided) and clearing auth cookies.
+ *
+ * Reads the refresh token from the request body (`refreshToken`) first, then from the refresh cookie; if a token is found it is revoked via the auth service. Clears access and refresh cookies and responds with `{ loggedOut: true }`. Forwards any errors to `next`.
+ */
 export async function logout(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const bodyRefresh = (req.body as { refreshToken?: string }).refreshToken;
@@ -84,6 +93,13 @@ export async function logout(req: Request, res: Response, next: NextFunction): P
   } catch (err) { next(err); }
 }
 
+/**
+ * Verify a multi-factor authentication code and establish a user session.
+ *
+ * Exchanges `tempToken` and `code` from `req.body` for access and refresh tokens, sets the corresponding authentication cookies on `res`, and responds with `{ session: 'created' }`.
+ *
+ * On failure, forwards the error to `next`.
+ */
 export async function verifyMfa(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const { tempToken, code } = req.body as { tempToken: string; code: string };
@@ -93,14 +109,15 @@ export async function verifyMfa(req: Request, res: Response, next: NextFunction)
   } catch (err) { next(err); }
 }
 
+/**
+ * Initiates an OpenID Connect (OIDC) single-sign-on flow for the provided email and sends the provider initiation data in the response.
+ *
+ * @param req - HTTP request whose body must include `email: string`
+ */
 export async function initiateOidc(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { email, organizationId } = req.body as { email: string; organizationId: string };
-    if (!organizationId || typeof organizationId !== 'string') {
-      res.status(400).json({ success: false, error: { message: 'organizationId is required', code: 'AUTH_ORG_REQUIRED' }, data: null });
-      return;
-    }
-    const data = await service.initiateSsoLogin('oidc', email, organizationId);
+    const { email } = req.body as { email: string };
+    const data = await service.initiateSsoLogin('oidc', email);
     res.success(data);
   } catch (err) { next(err); }
 }
