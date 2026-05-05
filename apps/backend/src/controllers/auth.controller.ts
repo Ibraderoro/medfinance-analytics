@@ -116,8 +116,8 @@ export async function verifyMfa(req: Request, res: Response, next: NextFunction)
  */
 export async function initiateOidc(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { email } = req.body as { email: string };
-    const data = await service.initiateSsoLogin('oidc', email);
+    const { email, organizationId } = req.body as { email: string; organizationId: string };
+    const data = await service.initiateSsoLogin('oidc', email, organizationId);
     res.success(data);
   } catch (err) { next(err); }
 }
