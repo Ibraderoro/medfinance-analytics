@@ -1,4 +1,5 @@
 import { parseIntegerQuery, parseIsoDateQuery, createBadRequestError } from '../utils/validation';
+import { tenantContextError } from '../middleware/errorHandler';
 
 describe('createBadRequestError', () => {
   it('creates an error with statusCode 400 and isOperational true', () => {
@@ -60,5 +61,14 @@ describe('parseIsoDateQuery', () => {
 
   it('throws 400 for an invalid calendar date', () => {
     expect(() => parseIsoDateQuery('2024-13-01', 'startDate')).toThrow();
+  });
+});
+
+describe('tenantContextError', () => {
+  it('creates an error with tenant-context specific metadata', () => {
+    const err = tenantContextError('Tenant context is required for tenant-scoped tables');
+    expect(err.statusCode).toBe(403);
+    expect(err.code).toBe('TENANT_CONTEXT_REQUIRED');
+    expect(err.isOperational).toBe(true);
   });
 });
