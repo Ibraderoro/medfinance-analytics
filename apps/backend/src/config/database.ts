@@ -116,7 +116,7 @@ export async function query<T extends QueryResultRow>(
   const start = Date.now();
   const tenant = getCurrentTenantContext();
   if (!tenant?.organizationId && requiresTenantContext(text)) {
-    throw tenantContextError('Tenant context is required for tenant-scoped tables');
+    throw sqlInjectionError('Tenant context is required for tenant-scoped tables');
   }
   const client = await getPool().connect();
   let res;
