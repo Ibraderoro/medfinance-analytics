@@ -1,7 +1,7 @@
 import { Pool, PoolClient, QueryResultRow } from 'pg';
 import { env } from './env';
 import { logger } from '../utils/logger';
-import { AppError } from '../middleware/errorHandler';
+import { AppError, tenantContextError } from '../middleware/errorHandler';
 import { getCurrentTenantContext } from '../middleware/tenantContext';
 
 let pool: Pool;
@@ -115,6 +115,9 @@ export async function query<T extends QueryResultRow>(
 
   const start = Date.now();
   const tenant = getCurrentTenantContext();
+  if (!tenant?.organizationId && requiresTenantContext(text)) {
+    throw tenantContextError('Tenant context is required for tenant-scoped tables');
+  }
   const client = await getPool().connect();
   let res;
   try {
