@@ -28,11 +28,27 @@ describe('AuditService', () => {
     mockQuery.mockResolvedValue([{ id: '1', action: 'A', entity_type: 't', entity_id: null, performed_by: null, organization_id: 'org', metadata: {}, created_at: '2026-01-01' }]);
     const svc = new AuditService();
     const csvOut = await svc.exportSiemLogs('org', new Date('2026-01-01'), new Date('2026-02-01'), 'csv');
+    const tokenPattern = /^[A-Za-z0-9._-]+$/;
     expect(typeof csvOut).toBe('object');
     expect(csvOut.payload.includes('id,action')).toBe(true);
+    expect(typeof csvOut.signature).toBe('string');
+    expect(csvOut.signature.length).toBeGreaterThan(0);
+    expect(typeof csvOut.algorithm).toBe('string');
+    expect(csvOut.algorithm.length).toBeGreaterThan(0);
+    expect(tokenPattern.test(csvOut.algorithm)).toBe(true);
     const out = await svc.exportSiemLogs('org', new Date('2026-01-01'), new Date('2026-02-01'), 'jsonl');
     expect(typeof out).toBe('string');
     expect(out.includes('entityType')).toBe(true);
+    expect(out.includes('"signature"')).toBe(true);
+    expect(out.includes('"algorithm"')).toBe(true);
+    const signatureLine = out.split('\n').find((line) => line.includes('"signature"') && line.includes('"algorithm"'));
+    expect(signatureLine).toBeDefined();
+    const parsedSignatureLine = JSON.parse(signatureLine ?? '{}') as { signature?: string; algorithm?: string };
+    expect(typeof parsedSignatureLine.signature).toBe('string');
+    expect((parsedSignatureLine.signature ?? '').length).toBeGreaterThan(0);
+    expect(typeof parsedSignatureLine.algorithm).toBe('string');
+    expect((parsedSignatureLine.algorithm ?? '').length).toBeGreaterThan(0);
+    expect(tokenPattern.test(parsedSignatureLine.algorithm ?? '')).toBe(true);
   });
 });
 
