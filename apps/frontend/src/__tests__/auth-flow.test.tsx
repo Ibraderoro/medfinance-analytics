@@ -19,7 +19,7 @@ jest.mock('../services/api', () => ({
 
 describe('Auth flow', () => {
   it('shows login API error', async () => {
-    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    render(<MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><LoginPage /></MemoryRouter>);
     await userEvent.type(screen.getByLabelText('Email'), 'a@a.com');
     await userEvent.type(screen.getByLabelText('Organization ID'), '550e8400-e29b-41d4-a716-446655440000');
     await userEvent.type(screen.getByLabelText('Password'), 'strongpass1');
@@ -28,7 +28,7 @@ describe('Auth flow', () => {
   });
 
   it('shows register API error', async () => {
-    render(<MemoryRouter><RegisterPage /></MemoryRouter>);
+    render(<MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><RegisterPage /></MemoryRouter>);
     await userEvent.type(screen.getByLabelText('First Name'), 'Jane');
     await userEvent.type(screen.getByLabelText('Last Name'), 'Doe');
     await userEvent.type(screen.getByLabelText('Organization ID'), '123e4567-e89b-42d3-a456-426614174000');
