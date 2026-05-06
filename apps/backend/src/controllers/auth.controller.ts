@@ -112,12 +112,27 @@ export async function verifyMfa(req: Request, res: Response, next: NextFunction)
 /**
  * Initiates an OpenID Connect (OIDC) single-sign-on flow for the provided email and sends the provider initiation data in the response.
  *
- * @param req - HTTP request whose body must include `email: string`
+ * @param req - HTTP request whose body must include `email: string` and `organizationId: string` so SSO initiation can be scoped to the target tenant organization.
  */
 export async function initiateOidc(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { email } = req.body as { email: string };
-    const data = await service.initiateSsoLogin('oidc', email);
+    const { email: emailRaw, organizationId: organizationIdRaw } = req.body as { email?: string; organizationId?: string };
+    const email = (typeof emailRaw === 'string' ? emailRaw : '').trim().toLowerCase();
+    const organizationId = (typeof organizationIdRaw === 'string' ? organizationIdRaw : '').trim();
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (
+      email.length === 0
+      || !emailPattern.test(email)
+      || organizationId.length === 0
+    ) {
+      res.status(400).json({
+        success: false,
+        error: { message: 'email and organizationId are required and email must be valid', code: 'AUTH_INVALID_SSO_REQUEST' },
+        data: null,
+      });
+      return;
+    }
+    const data = await service.initiateSsoLogin('oidc', email, organizationId);
     res.success(data);
   } catch (err) { next(err); }
 }
