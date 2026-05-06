@@ -96,7 +96,7 @@ export class AuthService {
 
     const fullName = `${firstName} ${lastName}`.trim();
     if (env.isProduction()) {
-      await this.billingService.ensureCustomerForOrganization(organizationId, email, fullName);
+      this.billingService.ensureProductionCustomerProvisioningConfigured();
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
@@ -107,7 +107,14 @@ export class AuthService {
       [email, passwordHash, firstName, lastName, role, organizationId],
     );
 
-    if (!env.isProduction()) {
+    if (env.isProduction()) {
+      try {
+        await this.billingService.ensureCustomerForOrganization(organizationId, email, fullName);
+      } catch (err) {
+        await this.deleteRegisteredUser(user.id, organizationId, email, err);
+        throw err;
+      }
+    } else {
       try {
         await this.billingService.ensureCustomerForOrganization(organizationId, email, fullName);
       } catch (err) {
@@ -121,6 +128,29 @@ export class AuthService {
     }
 
     return this.generateTokenPair(user);
+  }
+
+  private async deleteRegisteredUser(
+    userId: string,
+    organizationId: string,
+    email: string,
+    cause: unknown,
+  ): Promise<void> {
+    try {
+      await query(
+        'DELETE FROM users WHERE id = $1 AND organization_id = $2',
+        [userId, organizationId],
+      );
+    } catch (cleanupErr) {
+      logger.error('Failed to clean up user after production billing provisioning failure', {
+        userId,
+        organizationId,
+        email,
+        provisioningError: cause instanceof Error ? cause.message : String(cause),
+        cleanupError: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+        cleanupStack: cleanupErr instanceof Error ? cleanupErr.stack : undefined,
+      });
+    }
   }
 
   async initiateSsoLogin(provider: 'saml' | 'oidc', email: string, organizationId: string) {
