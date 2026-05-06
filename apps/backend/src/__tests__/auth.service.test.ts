@@ -45,9 +45,13 @@ import { AuthService } from '../services/auth.service';
 const mockQuery = query as jest.Mock;
 
 beforeEach(() => {
-  jest.clearAllMocks();
+  mockQuery.mockReset();
+  mockRedisSetex.mockReset();
+  mockRedisGet.mockReset();
+  mockRedisDel.mockReset();
   mockEnv.STRIPE_SECRET_KEY = '';
   mockEnv.isProduction = () => false;
+  jest.restoreAllMocks();
 });
 
 describe('AuthService.login', () => {
@@ -174,7 +178,6 @@ describe('AuthService.register', () => {
   it('fails closed before inserting a user when production Stripe customer provisioning is not configured', async () => {
     mockEnv.isProduction = () => true;
     mockQuery.mockResolvedValueOnce([]); // email not taken
-    mockQuery.mockResolvedValueOnce([]); // no existing customer for organization
 
     await expect(service.register(
       'new@example.com',
@@ -193,6 +196,78 @@ describe('AuthService.register', () => {
     );
   });
 
+  it('does not call Stripe when the production user insert fails', async () => {
+    mockEnv.isProduction = () => true;
+    mockEnv.STRIPE_SECRET_KEY = 'sk_test_123';
+    const fetchMock = jest.spyOn(global, 'fetch');
+
+    mockQuery.mockResolvedValueOnce([]); // email not taken
+    mockQuery.mockRejectedValueOnce(new Error('duplicate key value violates unique constraint'));
+
+    await expect(service.register(
+      'duplicate@example.com',
+      'password123',
+      'Dupe',
+      'User',
+      'org-uuid',
+    )).rejects.toThrow('duplicate key value violates unique constraint');
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mockQuery).not.toHaveBeenCalledWith(
+      expect.stringContaining('FROM customers'),
+      expect.any(Array),
+    );
+  });
+
+  it('provisions a production Stripe customer only after the user insert succeeds', async () => {
+    mockEnv.isProduction = () => true;
+    mockEnv.STRIPE_SECRET_KEY = 'sk_test_123';
+    const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: 'cus_prod_123', email: 'prod@example.com' }),
+    } as Response);
+
+    mockQuery.mockResolvedValueOnce([]); // email not taken
+    mockQuery.mockResolvedValueOnce([
+      {
+        id: 'prod-user-uuid',
+        email: 'prod@example.com',
+        role: 'viewer',
+        organization_id: 'org-uuid',
+      },
+    ]); // INSERT user RETURNING
+    mockQuery.mockResolvedValueOnce([]); // no existing customer for organization
+    mockQuery.mockResolvedValueOnce([
+      {
+        id: 'customer-uuid',
+        organization_id: 'org-uuid',
+        stripe_customer_id: 'cus_prod_123',
+        email: 'prod@example.com',
+      },
+    ]); // INSERT customer RETURNING
+    mockQuery.mockResolvedValueOnce([]); // INSERT refresh token
+
+    const result = await service.register(
+      'prod@example.com',
+      'password123',
+      'Prod',
+      'User',
+      'org-uuid',
+    );
+
+    expect(result).toHaveProperty('accessToken');
+    expect(result).toHaveProperty('refreshToken');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const userInsertCall = mockQuery.mock.calls.find((call) => String(call[0]).includes('INSERT INTO users'));
+    const customerLookupCall = mockQuery.mock.calls.find((call) => String(call[0]).includes('FROM customers'));
+    expect(userInsertCall).toBeDefined();
+    expect(customerLookupCall).toBeDefined();
+    expect(mockQuery.mock.invocationCallOrder[mockQuery.mock.calls.indexOf(userInsertCall!)]).toBeLessThan(
+      mockQuery.mock.invocationCallOrder[mockQuery.mock.calls.indexOf(customerLookupCall!)],
+    );
+  });
+
   it('returns tokens for a new registration', async () => {
     mockQuery.mockResolvedValueOnce([]); // email not taken
     mockQuery.mockResolvedValueOnce([
@@ -202,7 +277,16 @@ describe('AuthService.register', () => {
         role: 'viewer',
         organization_id: 'org-uuid',
       },
-    ]); // INSERT RETURNING
+    ]); // INSERT user RETURNING
+    mockQuery.mockResolvedValueOnce([]); // no existing customer for organization
+    mockQuery.mockResolvedValueOnce([
+      {
+        id: 'customer-uuid',
+        organization_id: 'org-uuid',
+        stripe_customer_id: 'cus_local_orguuid',
+        email: 'new@example.com',
+      },
+    ]); // INSERT local customer RETURNING
     mockQuery.mockResolvedValueOnce([]); // INSERT refresh token
 
     const result = await service.register(
