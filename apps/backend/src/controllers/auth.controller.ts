@@ -117,8 +117,8 @@ export async function verifyMfa(req: Request, res: Response, next: NextFunction)
 export async function initiateOidc(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const { email: emailRaw, organizationId: organizationIdRaw } = req.body as { email?: string; organizationId?: string };
-    const email = (emailRaw ?? '').trim().toLowerCase();
-    const organizationId = (organizationIdRaw ?? '').trim();
+    const email = (typeof emailRaw === 'string' ? emailRaw : '').trim().toLowerCase();
+    const organizationId = (typeof organizationIdRaw === 'string' ? organizationIdRaw : '').trim();
     const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (
       email.length === 0

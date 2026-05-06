@@ -28,14 +28,13 @@ describe('AuditService', () => {
     mockQuery.mockResolvedValue([{ id: '1', action: 'A', entity_type: 't', entity_id: null, performed_by: null, organization_id: 'org', metadata: {}, created_at: '2026-01-01' }]);
     const svc = new AuditService();
     const csvOut = await svc.exportSiemLogs('org', new Date('2026-01-01'), new Date('2026-02-01'), 'csv');
-    const tokenPattern = /^[A-Za-z0-9._-]+$/;
     expect(typeof csvOut).toBe('object');
     expect(csvOut.payload.includes('id,action')).toBe(true);
     expect(typeof csvOut.signature).toBe('string');
     expect(csvOut.signature.length).toBeGreaterThan(0);
     expect(typeof csvOut.algorithm).toBe('string');
     expect(csvOut.algorithm.length).toBeGreaterThan(0);
-    expect(tokenPattern.test(csvOut.algorithm)).toBe(true);
+    expect(csvOut.algorithm).toBe('hmac-sha256');
     const out = await svc.exportSiemLogs('org', new Date('2026-01-01'), new Date('2026-02-01'), 'jsonl');
     expect(typeof out).toBe('string');
     expect(out.includes('entityType')).toBe(true);
@@ -48,7 +47,7 @@ describe('AuditService', () => {
     expect((parsedSignatureLine.signature ?? '').length).toBeGreaterThan(0);
     expect(typeof parsedSignatureLine.algorithm).toBe('string');
     expect((parsedSignatureLine.algorithm ?? '').length).toBeGreaterThan(0);
-    expect(tokenPattern.test(parsedSignatureLine.algorithm ?? '')).toBe(true);
+    expect(parsedSignatureLine.algorithm).toBe('hmac-sha256');
   });
 });
 
