@@ -5,6 +5,7 @@ process.env.DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://user:pass@l
 
 const mockXadd = jest.fn();
 const mockCall = jest.fn();
+const mockQuery = jest.fn();
 
 jest.mock('../config/redis', () => ({
   getRedis: () => ({
@@ -13,12 +14,17 @@ jest.mock('../config/redis', () => ({
   }),
 }));
 
+jest.mock('../config/database', () => ({
+  query: (...args: unknown[]) => mockQuery(...args),
+}));
+
 import { AnalyticsService } from '../services/analytics.service';
 
 describe('AnalyticsService.enqueueApiTelemetry', () => {
   beforeEach(() => {
     mockXadd.mockReset();
     mockCall.mockReset();
+    mockQuery.mockReset();
   });
 
   it('uses xadd when available', async () => {
@@ -54,5 +60,41 @@ describe('AnalyticsService.enqueueApiTelemetry', () => {
     });
 
     expect(mockCall).toHaveBeenCalledWith('XADD', expect.any(String), expect.any(String), expect.any(String), expect.any(String), expect.any(String), expect.any(String), expect.any(String), expect.any(String), expect.any(String), expect.any(String), expect.any(String), expect.any(String), expect.any(String), expect.any(String), expect.any(String), expect.any(String), expect.any(String), expect.any(String), expect.any(String));
+  });
+});
+
+
+describe('AnalyticsService.enforceRetention', () => {
+  beforeEach(() => {
+    mockXadd.mockReset();
+    mockCall.mockReset();
+    mockQuery.mockReset();
+  });
+
+  it('archives and deletes old metrics using parameterized interval SQL', async () => {
+    mockQuery.mockResolvedValue([]);
+
+    const service = new AnalyticsService();
+    await service.enforceRetention();
+
+    expect(mockQuery).toHaveBeenNthCalledWith(
+      1,
+      expect.stringContaining("NOW() - ($1::text)::interval"),
+      ['90 days'],
+    );
+    expect(mockQuery).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining("NOW() - ($1::text)::interval"),
+      ['90 days'],
+    );
+    expect(mockQuery.mock.calls[0][0]).not.toContain('INTERVAL "90 days"');
+    expect(mockQuery.mock.calls[1][0]).not.toContain('INTERVAL "90 days"');
+  });
+
+  it('rethrows retention errors after logging them', async () => {
+    mockQuery.mockRejectedValueOnce(new Error('retention failed'));
+
+    const service = new AnalyticsService();
+    await expect(service.enforceRetention()).rejects.toThrow('retention failed');
   });
 });
