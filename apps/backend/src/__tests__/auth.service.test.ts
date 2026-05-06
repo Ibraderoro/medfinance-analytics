@@ -1,31 +1,53 @@
 import bcrypt from 'bcryptjs';
-import { AuthService } from '../services/auth.service';
+
+const mockRedisSetex = jest.fn();
+const mockRedisGet = jest.fn();
+const mockRedisDel = jest.fn();
+
+const mockEnv = {
+  JWT_SECRET: 'test_jwt_secret_at_least_32_chars_long',
+  JWT_EXPIRES_IN: '1d',
+  REFRESH_TOKEN_SECRET: 'test_refresh_secret_at_least_32_chars_long',
+  AUDIT_EXPORT_SIGNING_SECRET: 'test_audit_signing_secret_at_least_32_chars',
+  REFRESH_TOKEN_EXPIRES_IN: '7d',
+  JWT_ISSUER: 'medfinance-api',
+  JWT_AUDIENCE: 'medfinance-client',
+  LOG_LEVEL: 'error',
+  STRIPE_SECRET_KEY: '',
+  STRIPE_PRO_PRICE_ID: '',
+  STRIPE_ENTERPRISE_PRICE_ID: '',
+  isDevelopment: () => false,
+  isProduction: () => false,
+};
 
 // Mock the database module so no real PostgreSQL connection is needed.
 jest.mock('../config/database', () => ({
   query: jest.fn(),
 }));
 
+// Mock Redis so MFA/SSO paths never connect to a real Redis instance.
+jest.mock('../config/redis', () => ({
+  getRedis: () => ({
+    setex: (...args: unknown[]) => mockRedisSetex(...args),
+    get: (...args: unknown[]) => mockRedisGet(...args),
+    del: (...args: unknown[]) => mockRedisDel(...args),
+  }),
+}));
+
 // Mock env module to avoid requiring real environment variables.
 jest.mock('../config/env', () => ({
-  env: {
-    JWT_SECRET: 'test_jwt_secret_at_least_32_chars_long',
-    JWT_EXPIRES_IN: '1d',
-    REFRESH_TOKEN_SECRET: 'test_refresh_secret_at_least_32_chars_long',
-    AUDIT_EXPORT_SIGNING_SECRET: 'test_audit_signing_secret_at_least_32_chars',
-    REFRESH_TOKEN_EXPIRES_IN: '7d',
-    JWT_ISSUER: 'medfinance-api',
-    JWT_AUDIENCE: 'medfinance-client',
-    isDevelopment: () => false,
-  },
+  env: mockEnv,
 }));
 
 import { query } from '../config/database';
+import { AuthService } from '../services/auth.service';
 
 const mockQuery = query as jest.Mock;
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockEnv.STRIPE_SECRET_KEY = '';
+  mockEnv.isProduction = () => false;
 });
 
 describe('AuthService.login', () => {
@@ -88,6 +110,38 @@ describe('AuthService.login', () => {
     });
   });
 
+  it('requires MFA for admin users and stores a six-digit code', async () => {
+    const hash = await bcrypt.hash('password123', 10);
+    mockQuery
+      .mockResolvedValueOnce([
+        {
+          id: 'admin-uuid',
+          email: 'admin@example.com',
+          password_hash: hash,
+          first_name: 'Ada',
+          last_name: 'Admin',
+          role: 'admin',
+          organization_id: 'org-uuid',
+          is_active: true,
+        },
+      ])
+      .mockResolvedValueOnce([]);
+    mockRedisSetex.mockResolvedValueOnce('OK');
+
+    const result = await service.login('admin@example.com', 'password123', 'org-uuid');
+
+    expect(result.status).toBe('mfa_required');
+    expect(typeof result.tempToken).toBe('string');
+    expect(mockRedisSetex).toHaveBeenCalledWith(
+      expect.stringMatching(/^auth:mfa:pending:/),
+      300,
+      expect.any(String),
+    );
+    const [, , serializedPayload] = mockRedisSetex.mock.calls[0];
+    const payload = JSON.parse(serializedPayload as string) as { code: string };
+    expect(payload.code).toMatch(/^\d{6}$/);
+  });
+
   it('throws 401 when account is inactive', async () => {
     mockQuery.mockResolvedValueOnce([
       {
@@ -115,6 +169,31 @@ describe('AuthService.register', () => {
     await expect(
       service.register('taken@example.com', 'password123', 'Bob', 'Jones', 'org-uuid'),
     ).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  it('fails closed when production Stripe customer provisioning is not configured', async () => {
+    mockEnv.isProduction = () => true;
+    mockQuery.mockResolvedValueOnce([]);
+    mockQuery.mockResolvedValueOnce([
+      {
+        id: 'new-uuid',
+        email: 'new@example.com',
+        role: 'viewer',
+        organization_id: 'org-uuid',
+      },
+    ]);
+    mockQuery.mockResolvedValueOnce([]);
+
+    await expect(service.register(
+      'new@example.com',
+      'password123',
+      'New',
+      'User',
+      'org-uuid',
+    )).rejects.toMatchObject({
+      statusCode: 500,
+      message: 'Stripe customer provisioning requires STRIPE_SECRET_KEY in production',
+    });
   });
 
   it('returns tokens for a new registration', async () => {

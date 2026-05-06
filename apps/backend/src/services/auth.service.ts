@@ -7,6 +7,7 @@ import { getRedis } from '../config/redis';
 import { AppError } from '../middleware/errorHandler';
 import { BillingService } from './billing.service';
 import { AuditService } from './audit.service';
+import { logger } from '../utils/logger';
 
 interface UserRow {
   id: string;
@@ -108,11 +109,16 @@ export class AuthService {
         `${firstName} ${lastName}`.trim(),
       );
     } catch (err) {
-      console.warn('Stripe customer provisioning failed during signup', {
+      logger.warn('Stripe customer provisioning failed during signup', {
         organizationId,
         email,
-        error: err instanceof Error ? err.message : 'unknown',
+        message: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
       });
+
+      if (env.isProduction()) {
+        throw err;
+      }
     }
 
     return this.generateTokenPair(user);
@@ -304,7 +310,7 @@ export class AuthService {
   }
 
   private generateMfaCode(): string {
-    return `${Math.floor(100000 + Math.random() * 900000)}`;
+    return crypto.randomInt(100000, 1000000).toString();
   }
 
   private async generateTokenPair(user: UserIdentity) {
