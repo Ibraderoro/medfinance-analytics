@@ -125,8 +125,8 @@ export class AnalyticsService {
    * Archives and removes metrics older than 90 days.
    */
   async enforceRetention(): Promise<void> {
-    await query('INSERT INTO api_request_metrics_archive SELECT * FROM api_request_metrics WHERE created_at < NOW() - INTERVAL \"90 days\" ON CONFLICT DO NOTHING');
-    await query('DELETE FROM api_request_metrics WHERE created_at < NOW() - INTERVAL \"90 days\"');
+    await query(`INSERT INTO api_request_metrics_archive SELECT * FROM api_request_metrics WHERE created_at < NOW() - INTERVAL '90 days' ON CONFLICT DO NOTHING`);
+    await query(`DELETE FROM api_request_metrics WHERE created_at < NOW() - INTERVAL '90 days'`);
   }
 
   /**

@@ -35,6 +35,8 @@ services:
         generateValue: true
       - key: REFRESH_TOKEN_SECRET
         generateValue: true
+      - key: AUDIT_EXPORT_SIGNING_SECRET
+        generateValue: true
       - key: JWT_EXPIRES_IN
         value: 1d
       - key: REFRESH_TOKEN_EXPIRES_IN

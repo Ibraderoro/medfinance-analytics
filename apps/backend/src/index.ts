@@ -40,7 +40,11 @@ async function bootstrap(): Promise<void> {
 
     await liveFinancialsService.start();
     await analyticsService.startWorker();
-    const retentionTimer = setInterval(() => { void analyticsService.enforceRetention(); }, 6 * 60 * 60 * 1000);
+    const retentionTimer = setInterval(() => {
+      analyticsService.enforceRetention().catch((err: unknown) => {
+        logger.error('Analytics retention job failed', { message: err instanceof Error ? err.message : String(err) });
+      });
+    }, 6 * 60 * 60 * 1000);
 
     const server = app.listen(PORT, () => {
       logger.info('MedFinance API started', { port: PORT, env: env.NODE_ENV });
