@@ -148,12 +148,6 @@ export class BillingService {
     return 'free';
   }
 
-  ensureProductionCustomerProvisioningConfigured(): void {
-    if (!env.STRIPE_SECRET_KEY && env.isProduction()) {
-      throw configurationError('Stripe customer provisioning requires STRIPE_SECRET_KEY in production');
-    }
-  }
-
   async ensureCustomerForOrganization(
     organizationId: string,
     email: string,
@@ -170,7 +164,9 @@ export class BillingService {
       return existing;
     }
 
-    this.ensureProductionCustomerProvisioningConfigured();
+    if (!env.STRIPE_SECRET_KEY && env.isProduction()) {
+      throw configurationError('Stripe customer provisioning requires STRIPE_SECRET_KEY in production');
+    }
 
     const stripeCustomer = env.STRIPE_SECRET_KEY
       ? await this.stripe.createCustomer(email, fullName, organizationId)
