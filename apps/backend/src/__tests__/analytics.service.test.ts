@@ -6,7 +6,10 @@ process.env.DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://user:pass@l
 const mockXadd = jest.fn();
 const mockCall = jest.fn();
 const mockQuery = jest.fn();
+<<<<<<< codex/review-codebase-for-production-readiness-7hljjd
 const mockLoggerError = jest.fn();
+=======
+>>>>>>> main
 
 jest.mock('../config/redis', () => ({
   getRedis: () => ({
@@ -19,6 +22,7 @@ jest.mock('../config/database', () => ({
   query: (...args: unknown[]) => mockQuery(...args),
 }));
 
+<<<<<<< codex/review-codebase-for-production-readiness-7hljjd
 jest.mock('../utils/logger', () => ({
   logger: {
     error: (...args: unknown[]) => mockLoggerError(...args),
@@ -28,6 +32,8 @@ jest.mock('../utils/logger', () => ({
   },
 }));
 
+=======
+>>>>>>> main
 import { AnalyticsService } from '../services/analytics.service';
 
 describe('AnalyticsService.enqueueApiTelemetry', () => {
@@ -35,7 +41,10 @@ describe('AnalyticsService.enqueueApiTelemetry', () => {
     mockXadd.mockReset();
     mockCall.mockReset();
     mockQuery.mockReset();
+<<<<<<< codex/review-codebase-for-production-readiness-7hljjd
     mockLoggerError.mockReset();
+=======
+>>>>>>> main
   });
 
   it('uses xadd when available', async () => {
@@ -80,7 +89,10 @@ describe('AnalyticsService.enforceRetention', () => {
     mockXadd.mockReset();
     mockCall.mockReset();
     mockQuery.mockReset();
+<<<<<<< codex/review-codebase-for-production-readiness-7hljjd
     mockLoggerError.mockReset();
+=======
+>>>>>>> main
   });
 
   it('archives and deletes old metrics using parameterized interval SQL', async () => {
@@ -103,6 +115,7 @@ describe('AnalyticsService.enforceRetention', () => {
     expect(mockQuery.mock.calls[1][0]).not.toContain('INTERVAL "90 days"');
   });
 
+<<<<<<< codex/review-codebase-for-production-readiness-7hljjd
   it('logs and rethrows retention errors', async () => {
     const retentionError = new Error('retention failed');
     mockQuery.mockRejectedValueOnce(retentionError);
@@ -118,5 +131,12 @@ describe('AnalyticsService.enforceRetention', () => {
         error: retentionError,
       }),
     );
+=======
+  it('rethrows retention errors after logging them', async () => {
+    mockQuery.mockRejectedValueOnce(new Error('retention failed'));
+
+    const service = new AnalyticsService();
+    await expect(service.enforceRetention()).rejects.toThrow('retention failed');
+>>>>>>> main
   });
 });
