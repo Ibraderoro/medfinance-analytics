@@ -61,6 +61,13 @@ function badRequest(message: string): AppError {
   return err;
 }
 
+function configurationError(message: string): AppError {
+  const err = new Error(message) as AppError;
+  err.statusCode = 500;
+  err.isOperational = true;
+  return err;
+}
+
 
 export class BillingService {
   private async upsertStripeSubscription(input: {
@@ -155,6 +162,10 @@ export class BillingService {
 
     if (existing) {
       return existing;
+    }
+
+    if (!env.STRIPE_SECRET_KEY && env.isProduction()) {
+      throw configurationError('Stripe customer provisioning requires STRIPE_SECRET_KEY in production');
     }
 
     const stripeCustomer = env.STRIPE_SECRET_KEY
