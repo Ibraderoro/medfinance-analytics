@@ -171,18 +171,10 @@ describe('AuthService.register', () => {
     ).rejects.toMatchObject({ statusCode: 409 });
   });
 
-  it('fails closed when production Stripe customer provisioning is not configured', async () => {
+  it('fails closed before inserting a user when production Stripe customer provisioning is not configured', async () => {
     mockEnv.isProduction = () => true;
-    mockQuery.mockResolvedValueOnce([]);
-    mockQuery.mockResolvedValueOnce([
-      {
-        id: 'new-uuid',
-        email: 'new@example.com',
-        role: 'viewer',
-        organization_id: 'org-uuid',
-      },
-    ]);
-    mockQuery.mockResolvedValueOnce([]);
+    mockQuery.mockResolvedValueOnce([]); // email not taken
+    mockQuery.mockResolvedValueOnce([]); // no existing customer for organization
 
     await expect(service.register(
       'new@example.com',
@@ -194,6 +186,11 @@ describe('AuthService.register', () => {
       statusCode: 500,
       message: 'Stripe customer provisioning requires STRIPE_SECRET_KEY in production',
     });
+
+    expect(mockQuery).not.toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO users'),
+      expect.any(Array),
+    );
   });
 
   it('returns tokens for a new registration', async () => {
