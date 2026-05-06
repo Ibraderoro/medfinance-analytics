@@ -7,6 +7,7 @@ import { getRedis } from '../config/redis';
 import { AppError } from '../middleware/errorHandler';
 import { BillingService } from './billing.service';
 import { AuditService } from './audit.service';
+import { logger } from '../utils/logger';
 
 interface UserRow {
   id: string;
@@ -93,6 +94,11 @@ export class AuthService {
       throw conflictError('Email already registered');
     }
 
+    const fullName = `${firstName} ${lastName}`.trim();
+    if (env.isProduction()) {
+      await this.billingService.ensureCustomerForOrganization(organizationId, email, fullName);
+    }
+
     const passwordHash = await bcrypt.hash(password, 12);
     const [user] = await query<UserIdentity>(
       `INSERT INTO users (email, password_hash, first_name, last_name, role, organization_id)
@@ -101,18 +107,17 @@ export class AuthService {
       [email, passwordHash, firstName, lastName, role, organizationId],
     );
 
-    try {
-      await this.billingService.ensureCustomerForOrganization(
-        organizationId,
-        email,
-        `${firstName} ${lastName}`.trim(),
-      );
-    } catch (err) {
-      console.warn('Stripe customer provisioning failed during signup', {
-        organizationId,
-        email,
-        error: err instanceof Error ? err.message : 'unknown',
-      });
+    if (!env.isProduction()) {
+      try {
+        await this.billingService.ensureCustomerForOrganization(organizationId, email, fullName);
+      } catch (err) {
+        logger.warn('Stripe customer provisioning failed during signup', {
+          organizationId,
+          email,
+          message: err instanceof Error ? err.message : String(err),
+          stack: err instanceof Error ? err.stack : undefined,
+        });
+      }
     }
 
     return this.generateTokenPair(user);
@@ -304,7 +309,7 @@ export class AuthService {
   }
 
   private generateMfaCode(): string {
-    return `${Math.floor(100000 + Math.random() * 900000)}`;
+    return crypto.randomInt(100000, 1000000).toString();
   }
 
   private async generateTokenPair(user: UserIdentity) {
