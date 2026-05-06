@@ -96,7 +96,7 @@ export class AuthService {
 
     const fullName = `${firstName} ${lastName}`.trim();
     if (env.isProduction()) {
-      await this.billingService.ensureCustomerForOrganization(organizationId, email, fullName);
+      this.billingService.ensureProductionCustomerProvisioningConfigured();
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
@@ -107,7 +107,9 @@ export class AuthService {
       [email, passwordHash, firstName, lastName, role, organizationId],
     );
 
-    if (!env.isProduction()) {
+    if (env.isProduction()) {
+      await this.billingService.ensureCustomerForOrganization(organizationId, email, fullName);
+    } else {
       try {
         await this.billingService.ensureCustomerForOrganization(organizationId, email, fullName);
       } catch (err) {
