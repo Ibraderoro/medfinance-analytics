@@ -18,9 +18,6 @@ jobs:
     with:
       scan-args: |-
         -r
-        --skip-git
-        --severity HIGH,CRITICAL
-        --exit-code-on-vuln 1
         ./
 
   scan-pr:
@@ -29,7 +26,4 @@ jobs:
     with:
       scan-args: |-
         -r
-        --skip-git
-        --severity HIGH,CRITICAL
-        --exit-code-on-vuln 1
         ./
