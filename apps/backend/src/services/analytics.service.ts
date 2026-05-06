@@ -137,7 +137,9 @@ export class AnalyticsService {
       );
     } catch (error) {
       logger.error('Analytics retention enforcement failed', {
-        error: error instanceof Error ? error.message : 'unknown',
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        error,
       });
       throw error;
     }
