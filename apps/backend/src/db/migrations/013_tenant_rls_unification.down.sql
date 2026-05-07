@@ -20,7 +20,12 @@ BEGIN
         AND column_name = 'organization_id'
     ) THEN
       EXECUTE format('DROP POLICY IF EXISTS %I_tenant_rls ON %I', tenant_table, tenant_table);
-      EXECUTE format('ALTER TABLE %I DISABLE ROW LEVEL SECURITY', tenant_table);
+      EXECUTE format(
+        'CREATE POLICY %I_tenant_rls ON %I FOR ALL USING (organization_id = current_setting(''app.current_tenant_id'', true)::uuid) WITH CHECK (organization_id = current_setting(''app.current_tenant_id'', true)::uuid)',
+        tenant_table,
+        tenant_table
+      );
+      EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', tenant_table);
     END IF;
   END LOOP;
 END $$;

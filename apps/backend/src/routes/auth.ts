@@ -54,9 +54,11 @@ authRouter.post(
   [
     body('refreshToken')
       .custom((value, { req }) => {
+        if (value === undefined || value === null || value === '') {
+          return hasCookie(req as Request, 'medfinance_refresh_token');
+        }
+
         if (typeof value === 'string' && value.trim().length > 0) return true;
-        if (hasCookie(req as Request, 'medfinance_refresh_token')) return true;
-        if (value === undefined || value === null || value === '') return false;
         throw new Error('refreshToken must be a non-empty string');
       })
       .withMessage('refreshToken is required'),
