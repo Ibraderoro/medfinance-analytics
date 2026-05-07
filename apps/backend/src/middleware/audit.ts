@@ -4,28 +4,32 @@ import { AuditService } from '../services/audit.service';
 
 const auditService = new AuditService();
 
-export function auditFinancialAccess(
+export async function auditFinancialAccess(
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction,
-): void {
+): Promise<void> {
   const user = req.user;
 
-  if (user) {
-    void auditService.log({
-      action: 'financial_data_access',
-      entityType: 'financial_endpoint',
-      organizationId: user.organization_id,
-      performedBy: user.id,
-      metadata: {
-        method: req.method,
-        path: req.originalUrl,
-        ip: req.ip,
-      },
-    });
-  }
+  try {
+    if (user) {
+      await auditService.log({
+        action: 'financial_data_access',
+        entityType: 'financial_endpoint',
+        organizationId: user.organization_id,
+        performedBy: user.id,
+        metadata: {
+          method: req.method,
+          path: req.originalUrl,
+          ip: req.ip,
+        },
+      });
+    }
 
-  next();
+    next();
+  } catch (error) {
+    next(error);
+  }
 }
 
 /**

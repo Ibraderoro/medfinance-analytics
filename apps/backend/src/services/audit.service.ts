@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { query } from '../config/database';
 import { env } from '../config/env';
 import { AppError } from '../middleware/errorHandler';
+import { getCurrentTenantContext, runWithTenantContext } from '../middleware/tenantContext';
 
 interface AuditEvent {
   action: string;
@@ -31,9 +32,15 @@ function criticalAuditError(message: string): AppError {
 }
 
 export class AuditService {
+  private async runWithAuditTenant<T>(organizationId: string, operation: () => Promise<T>): Promise<T> {
+    const current = getCurrentTenantContext();
+    if (current?.organizationId === organizationId) return operation();
+    return runWithTenantContext({ organizationId, userId: current?.userId ?? 'system' }, operation);
+  }
+
   async log(event: AuditEvent): Promise<void> {
     try {
-      await query(
+      await this.runWithAuditTenant(event.organizationId, () => query(
         `INSERT INTO audit_log (action, entity_type, entity_id, performed_by, organization_id, metadata)
          VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
         [
@@ -44,7 +51,7 @@ export class AuditService {
           event.organizationId,
           JSON.stringify(event.metadata ?? {}),
         ],
-      );
+      ));
     } catch (error) {
       // Fail-closed: if audit persistence fails, the caller should abort the protected action.
       throw criticalAuditError(
@@ -61,7 +68,7 @@ export class AuditService {
     endDate: Date,
     format: 'jsonl' | 'csv' = 'jsonl',
   ): Promise<string | { payload: string; signature: string; algorithm: 'hmac-sha256' }> {
-    const rows = await query<AuditExportRow>(
+    const rows = await this.runWithAuditTenant(organizationId, () => query<AuditExportRow>(
       `SELECT id, action, entity_type, entity_id, performed_by, organization_id, metadata, created_at
        FROM audit_log
        WHERE organization_id = $1
@@ -69,7 +76,7 @@ export class AuditService {
          AND created_at <= $3
        ORDER BY created_at ASC`,
       [organizationId, startDate.toISOString(), endDate.toISOString()],
-    );
+    ));
 
     if (format === 'csv') {
       const header = 'id,action,entity_type,entity_id,performed_by,organization_id,metadata,created_at';
