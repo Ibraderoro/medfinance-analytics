@@ -2,7 +2,7 @@ import { Request, Router } from 'express';
 import { body } from 'express-validator';
 import { authRateLimiter } from '../middleware/rateLimiter';
 import { validateRequest } from '../middleware/validateRequest';
-import { login, register, refresh, logout, verifyMfa, initiateOidc } from '../controllers/auth.controller';
+import { login, register, refresh, logout, verifyMfa, initiateOidc, completeOidc } from '../controllers/auth.controller';
 
 export const authRouter = Router();
 const UUID_LIKE_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -70,4 +70,5 @@ authRouter.post(
 authRouter.post('/logout', logout);
 
 authRouter.post('/mfa/verify', authRateLimiter, [body('tempToken').notEmpty(), body('code').isLength({ min: 6, max: 6 })], validateRequest(), verifyMfa);
-authRouter.post('/oidc/initiate', authRateLimiter, [body('email').isEmail().normalizeEmail()], validateRequest(), initiateOidc);
+authRouter.post('/oidc/initiate', authRateLimiter, [body('email').isEmail().normalizeEmail(), body('organizationId').matches(UUID_LIKE_PATTERN).withMessage('Valid organization ID (UUID-like) is required')], validateRequest(), initiateOidc);
+authRouter.post('/oidc/callback', authRateLimiter, [body('state').isUUID().withMessage('Valid SSO state is required'), body('code').isString().trim().notEmpty().withMessage('Authorization code is required')], validateRequest(), completeOidc);

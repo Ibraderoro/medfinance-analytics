@@ -136,3 +136,13 @@ export async function initiateOidc(req: Request, res: Response, next: NextFuncti
     res.success(data);
   } catch (err) { next(err); }
 }
+
+
+export async function completeOidc(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { state, code } = req.body as { state: string; code: string };
+    const tokens = await service.completeOidcLogin(state, code);
+    setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
+    res.success({ session: 'created' });
+  } catch (err) { next(err); }
+}

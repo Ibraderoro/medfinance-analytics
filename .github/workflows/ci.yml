@@ -29,3 +29,9 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Install Playwright browser
+        run: npm run test:e2e:install --workspace=apps/frontend
+
+      - name: Frontend e2e smoke test
+        run: npm run test:e2e --workspace=apps/frontend

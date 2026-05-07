@@ -16,6 +16,11 @@ const mockEnv = {
   STRIPE_SECRET_KEY: '',
   STRIPE_PRO_PRICE_ID: '',
   STRIPE_ENTERPRISE_PRICE_ID: '',
+  OIDC_TOKEN_URL: '',
+  OIDC_USERINFO_URL: '',
+  OIDC_CLIENT_ID: '',
+  OIDC_CLIENT_SECRET: '',
+  OIDC_REDIRECT_URI: '',
   isDevelopment: () => false,
   isProduction: () => false,
 };
@@ -50,6 +55,11 @@ beforeEach(() => {
   mockRedisGet.mockReset();
   mockRedisDel.mockReset();
   mockEnv.STRIPE_SECRET_KEY = '';
+  mockEnv.OIDC_TOKEN_URL = '';
+  mockEnv.OIDC_USERINFO_URL = '';
+  mockEnv.OIDC_CLIENT_ID = '';
+  mockEnv.OIDC_CLIENT_SECRET = '';
+  mockEnv.OIDC_REDIRECT_URI = '';
   mockEnv.isProduction = () => false;
   jest.restoreAllMocks();
 });
@@ -297,6 +307,69 @@ describe('AuthService.register', () => {
       'org-uuid',
     );
 
+    expect(result).toHaveProperty('accessToken');
+    expect(result).toHaveProperty('refreshToken');
+  });
+});
+
+
+describe('AuthService OIDC SSO', () => {
+  const service = new AuthService();
+
+  it('stores tenant-scoped state when initiating OIDC login', async () => {
+    mockQuery.mockResolvedValueOnce([{
+      id: 'sso-user-uuid',
+      email: 'sso@example.com',
+      role: 'viewer',
+      organization_id: 'org-uuid',
+      is_active: true,
+    }]);
+    mockRedisSetex.mockResolvedValueOnce('OK');
+
+    const result = await service.initiateSsoLogin('oidc', 'sso@example.com', 'org-uuid');
+
+    expect(result.status).toBe('sso_initiated');
+    expect(result.provider).toBe('oidc');
+    expect(mockRedisSetex).toHaveBeenCalledWith(
+      expect.stringMatching(/^auth:sso:state:/),
+      300,
+      expect.stringContaining('sso@example.com'),
+    );
+  });
+
+  it('exchanges an OIDC callback code, validates userinfo, clears state, and issues tokens', async () => {
+    mockEnv.OIDC_TOKEN_URL = 'https://issuer.example.com/oauth/token';
+    mockEnv.OIDC_USERINFO_URL = 'https://issuer.example.com/userinfo';
+    mockEnv.OIDC_CLIENT_ID = 'client-id';
+    mockEnv.OIDC_CLIENT_SECRET = 'client-secret';
+    mockEnv.OIDC_REDIRECT_URI = 'https://app.example.com/auth/oidc/callback';
+
+    mockRedisGet.mockResolvedValueOnce(JSON.stringify({
+      userId: 'sso-user-uuid',
+      email: 'sso@example.com',
+      provider: 'oidc',
+      organizationId: 'org-uuid',
+    }));
+    const fetchMock = jest.spyOn(global, 'fetch')
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'oidc-access-token' }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ email: 'sso@example.com', email_verified: true }) } as Response);
+    mockQuery
+      .mockResolvedValueOnce([{
+        id: 'sso-user-uuid',
+        email: 'sso@example.com',
+        role: 'viewer',
+        organization_id: 'org-uuid',
+        is_active: true,
+      }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    mockRedisDel.mockResolvedValueOnce(1);
+
+    const result = await service.completeOidcLogin('550e8400-e29b-41d4-a716-446655440000', 'auth-code');
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(mockRedisDel).toHaveBeenCalledWith('auth:sso:state:550e8400-e29b-41d4-a716-446655440000');
     expect(result).toHaveProperty('accessToken');
     expect(result).toHaveProperty('refreshToken');
   });

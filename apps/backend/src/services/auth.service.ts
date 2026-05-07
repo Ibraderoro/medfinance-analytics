@@ -45,6 +45,13 @@ function validationError(message: string): AppError {
   return err;
 }
 
+function configurationError(message: string): AppError {
+  const err = new Error(message) as AppError;
+  err.statusCode = 500;
+  err.isOperational = true;
+  return err;
+}
+
 function hashRefreshToken(token: string): string {
   return crypto
     .createHmac('sha256', env.REFRESH_TOKEN_SECRET)
@@ -139,10 +146,75 @@ export class AuthService {
     await this.redis.setex(
       `auth:sso:state:${state}`,
       MFA_TTL_SECONDS,
-      JSON.stringify({ userId: user.id, provider, organizationId: user.organization_id }),
+      JSON.stringify({ userId: user.id, email: user.email, provider, organizationId: user.organization_id }),
     );
 
     return { provider, state, status: 'sso_initiated' as const };
+  }
+
+  async completeOidcLogin(state: string, code: string) {
+    if (!env.OIDC_TOKEN_URL || !env.OIDC_USERINFO_URL || !env.OIDC_CLIENT_ID || !env.OIDC_CLIENT_SECRET || !env.OIDC_REDIRECT_URI) {
+      throw configurationError('OIDC callback requires OIDC_TOKEN_URL, OIDC_USERINFO_URL, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, and OIDC_REDIRECT_URI');
+    }
+
+    const stateKey = `auth:sso:state:${state}`;
+    const rawState = await this.redis.get(stateKey);
+    if (!rawState) {
+      throw authError('Invalid or expired SSO state');
+    }
+
+    const pending = JSON.parse(rawState) as { userId: string; email: string; provider: string; organizationId: string };
+    if (pending.provider !== 'oidc') {
+      throw authError('Invalid SSO provider for OIDC callback');
+    }
+
+    const tokenResponse = await fetch(env.OIDC_TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        client_id: env.OIDC_CLIENT_ID,
+        client_secret: env.OIDC_CLIENT_SECRET,
+        redirect_uri: env.OIDC_REDIRECT_URI,
+      }),
+    });
+    const tokenPayload = await tokenResponse.json() as { access_token?: string; error_description?: string; error?: string };
+    if (!tokenResponse.ok || !tokenPayload.access_token) {
+      throw authError(tokenPayload.error_description ?? tokenPayload.error ?? 'OIDC token exchange failed');
+    }
+
+    const userInfoResponse = await fetch(env.OIDC_USERINFO_URL, {
+      headers: { Authorization: `Bearer ${tokenPayload.access_token}` },
+    });
+    const userInfo = await userInfoResponse.json() as { email?: string; email_verified?: boolean };
+    if (!userInfoResponse.ok || !userInfo.email || userInfo.email.toLowerCase() !== pending.email.toLowerCase()) {
+      throw authError('OIDC user identity did not match pending SSO session');
+    }
+    if (userInfo.email_verified === false) {
+      throw authError('OIDC email must be verified');
+    }
+
+    const [user] = await query<UserIdentity & { is_active: boolean }>(
+      'SELECT id, email, role, organization_id, is_active FROM users WHERE id = $1 AND organization_id = $2',
+      [pending.userId, pending.organizationId],
+    );
+    if (!user || !user.is_active) {
+      throw authError('SSO user not found or inactive');
+    }
+
+    await this.redis.del(stateKey);
+    await query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [user.id]);
+    await this.auditService.log({
+      action: 'oidc_login_success',
+      entityType: 'user',
+      entityId: user.id,
+      performedBy: user.id,
+      organizationId: user.organization_id,
+      metadata: { email: user.email },
+    });
+
+    return this.generateTokenPair(user);
   }
 
   async login(email: string, password: string, organizationId: string): Promise<{

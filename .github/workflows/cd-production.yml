@@ -110,7 +110,7 @@ jobs:
       - name: Verify production health
         run: |
           sleep 20
-          curl --fail https://app.medfinance.example.com/health
+          curl --fail https://app.medfinance.example.com/api/v1/health/ready
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

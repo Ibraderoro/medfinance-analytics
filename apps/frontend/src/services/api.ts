@@ -40,6 +40,7 @@ export const authApi = {
   register: (data: { email: string; password: string; firstName: string; lastName: string; organizationId: string; role?: string }) => apiClient.post('/auth/register', data),
   refresh: () => apiClient.post('/auth/refresh', {}),
   logout: () => apiClient.post('/auth/logout', {}),
+  verifyMfa: (tempToken: string, code: string) => apiClient.post('/auth/mfa/verify', { tempToken, code }),
 };
 
 export const financialsApi = {

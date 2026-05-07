@@ -59,7 +59,6 @@ export async function handleStripeWebhook(
     }
 
     const event = JSON.parse(payload.toString('utf8')) as { id?: string; type: string; data?: { object?: unknown } };
-    await billingService.handleWebhookEvent(event);
 
     if (event.id) {
       const dedupKey = `billing:webhook:event:${event.id}`;
@@ -70,6 +69,7 @@ export async function handleStripeWebhook(
       }
     }
 
+    await billingService.handleWebhookEvent(event);
     res.success({ received: true });
   } catch (err) {
     next(err);
