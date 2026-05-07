@@ -10,7 +10,9 @@
     "lint": "eslint 'src/**/*.{ts,tsx}'",
     "lint:fix": "eslint 'src/**/*.{ts,tsx}' --fix",
     "test": "jest --coverage",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "test:e2e": "npx --yes @playwright/test test --config=playwright.config.ts",
+    "test:e2e:install": "npx --yes @playwright/test install --with-deps chromium"
   },
   "dependencies": {
     "@medfinance/shared": "*",
