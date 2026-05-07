@@ -219,6 +219,39 @@ describe('AuthService.register', () => {
     );
   });
 
+  it('deletes the inserted production user and rethrows when Stripe provisioning fails', async () => {
+    mockEnv.isProduction = () => true;
+    mockEnv.STRIPE_SECRET_KEY = 'sk_test_123';
+    const stripeError = new Error('Stripe unavailable');
+    const fetchMock = jest.spyOn(global, 'fetch').mockRejectedValue(stripeError);
+
+    mockQuery.mockResolvedValueOnce([]); // email not taken
+    mockQuery.mockResolvedValueOnce([
+      {
+        id: 'prod-user-uuid',
+        email: 'prod@example.com',
+        role: 'viewer',
+        organization_id: 'org-uuid',
+      },
+    ]); // INSERT user RETURNING
+    mockQuery.mockResolvedValueOnce([]); // no existing customer for organization
+    mockQuery.mockResolvedValueOnce([]); // DELETE inserted user
+
+    await expect(service.register(
+      'prod@example.com',
+      'password123',
+      'Prod',
+      'User',
+      'org-uuid',
+    )).rejects.toBe(stripeError);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(mockQuery).toHaveBeenCalledWith(
+      'DELETE FROM users WHERE id = $1 AND organization_id = $2',
+      ['prod-user-uuid', 'org-uuid'],
+    );
+  });
+
   it('provisions a production Stripe customer only after the user insert succeeds', async () => {
     mockEnv.isProduction = () => true;
     mockEnv.STRIPE_SECRET_KEY = 'sk_test_123';
