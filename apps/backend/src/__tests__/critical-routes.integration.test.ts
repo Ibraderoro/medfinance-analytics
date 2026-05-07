@@ -90,6 +90,48 @@ async function request(path: string): Promise<RequestResult> {
   return { status: response.status, body: response.payload };
 }
 
+
+async function post(path: string, body: JsonObject, headers: Record<string, string> = {}): Promise<RequestResult> {
+  const server = http.createServer(app);
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  const port = typeof address === 'object' && address ? address.port : 0;
+  const payload = JSON.stringify(body);
+
+  const response = await new Promise<{ status: number; payload: JsonObject }>((resolve, reject) => {
+    const req = http.request({
+      hostname: '127.0.0.1',
+      port,
+      path,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload),
+        ...headers,
+      },
+    }, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const parsed: JsonObject = JSON.parse(data || '{}') as JsonObject;
+          resolve({ status: res.statusCode ?? 0, payload: parsed });
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
+    req.on('error', reject);
+    req.write(payload);
+    req.end();
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.close((err) => (err ? reject(err) : resolve()));
+  });
+
+  return { status: response.status, body: response.payload };
+}
+
 describe('Critical route integration', () => {
   beforeEach(() => {
     mockQuery.mockReset();
@@ -124,5 +166,44 @@ describe('Critical route integration', () => {
     expect(result.status).toBe(200);
     expect(result.body.success).toBe(true);
     expect(result.body.data).toEqual([]);
+  });
+
+
+  it('POST /auth/refresh accepts a valid refresh cookie without a body token', async () => {
+    const futureDate = new Date(Date.now() + 60_000).toISOString();
+    mockQuery
+      .mockResolvedValueOnce([{ user_id: 'user-1', expires_at: futureDate }])
+      .mockResolvedValueOnce([{ id: 'user-1', email: 'viewer@example.com', role: 'viewer', organization_id: 'org-1' }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    const result = await post(
+      '/api/v1/auth/refresh',
+      {},
+      {
+        Cookie: 'csrf_token=csrf123; medfinance_refresh_token=refresh_cookie_token',
+        'x-csrf-token': 'csrf123',
+      },
+    );
+
+    expect(result.status).toBe(200);
+    expect(result.body.success).toBe(true);
+    expect(result.body.data).toEqual({ session: 'refreshed' });
+  });
+
+  it('POST /auth/register rejects privileged public registration roles', async () => {
+    const result = await post('/api/v1/auth/register', {
+      email: 'admin@example.com',
+      password: 'password123',
+      firstName: 'Ada',
+      lastName: 'Admin',
+      organizationId: '550e8400-e29b-41d4-a716-446655440000',
+      role: 'admin',
+    });
+
+    expect(result.status).toBe(400);
+    expect(result.body.success).toBe(false);
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 });

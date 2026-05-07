@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Request, Router } from 'express';
 import { body } from 'express-validator';
 import { authRateLimiter } from '../middleware/rateLimiter';
 import { validateRequest } from '../middleware/validateRequest';
@@ -6,6 +6,13 @@ import { login, register, refresh, logout, verifyMfa, initiateOidc } from '../co
 
 export const authRouter = Router();
 const UUID_LIKE_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function hasCookie(req: Request, name: string): boolean {
+  return Boolean(req.headers.cookie
+    ?.split(';')
+    .map((part) => part.trim())
+    .some((part) => part.startsWith(`${name}=`)));
+}
 
 authRouter.post(
   '/register',
@@ -20,8 +27,8 @@ authRouter.post(
       .withMessage('Valid organization ID (UUID-like) is required'),
     body('role')
       .optional()
-      .isIn(['admin', 'analyst', 'viewer'])
-      .withMessage('role must be one of admin, analyst, viewer'),
+      .equals('viewer')
+      .withMessage('Public registration can only create viewer accounts'),
   ],
   validateRequest(),
   register,
@@ -44,7 +51,18 @@ authRouter.post(
 authRouter.post(
   '/refresh',
   authRateLimiter,
-  [body('refreshToken').notEmpty().withMessage('refreshToken is required')],
+  [
+    body('refreshToken')
+      .optional({ nullable: true, checkFalsy: true })
+      .isString()
+      .withMessage('refreshToken must be a string')
+      .bail()
+      .custom((value, { req }) => {
+        if (typeof value === 'string' && value.trim().length > 0) return true;
+        return hasCookie(req as Request, 'medfinance_refresh_token');
+      })
+      .withMessage('refreshToken is required'),
+  ],
   validateRequest(),
   refresh,
 );

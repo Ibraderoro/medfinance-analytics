@@ -49,6 +49,7 @@ jobs:
           REDIS_PASSWORD: ${{ secrets.PROD_REDIS_PASSWORD }}
           JWT_SECRET: ${{ secrets.PROD_JWT_SECRET }}
           REFRESH_TOKEN_SECRET: ${{ secrets.PROD_REFRESH_TOKEN_SECRET }}
+          AUDIT_EXPORT_SIGNING_SECRET: ${{ secrets.PROD_AUDIT_EXPORT_SIGNING_SECRET }}
 
       - name: Build all workspaces
         run: npm run build

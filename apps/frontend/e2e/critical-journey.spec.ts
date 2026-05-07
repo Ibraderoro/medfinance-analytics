@@ -2,6 +2,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 
 const TEST_EMAIL = 'demo@medfinance.com';
 const TEST_PASSWORD = 'demo123!';
+const TEST_ORGANIZATION_ID = '550e8400-e29b-41d4-a716-446655440000';
 
 const parseNumericValue = (rawValue: string): number => {
   const normalized = rawValue.trim();
@@ -24,6 +25,7 @@ test('golden path login, dashboard KPIs, compliance navigation, and session pers
   await page.goto('/login');
 
   await page.getByLabel('Email').fill(TEST_EMAIL);
+  await page.getByLabel('Organization ID').fill(TEST_ORGANIZATION_ID);
   await page.getByLabel('Password').fill(TEST_PASSWORD);
   await page.getByRole('button', { name: /sign in/i }).click();
 
@@ -47,13 +49,13 @@ test('golden path login, dashboard KPIs, compliance navigation, and session pers
   await page.getByRole('link', { name: /^compliance$/i }).click();
   await expect(page).toHaveURL(/\/compliance$/);
 
-  const tokenBeforeReload = await page.evaluate<string | null>(() => localStorage.getItem('access_token'));
-  expect(tokenBeforeReload).toBeTruthy();
+  const sessionBeforeReload = await page.evaluate<string | null>(() => sessionStorage.getItem('auth_session_active'));
+  expect(sessionBeforeReload).toBe('true');
 
   await page.reload();
   await expect(page).toHaveURL(/\/compliance$/);
 
-  const tokenAfterReload = await page.evaluate<string | null>(() => localStorage.getItem('access_token'));
-  expect(tokenAfterReload).toBeTruthy();
-  expect(tokenAfterReload).toBe(tokenBeforeReload);
+  const sessionAfterReload = await page.evaluate<string | null>(() => sessionStorage.getItem('auth_session_active'));
+  expect(sessionAfterReload).toBe('true');
+  expect(sessionAfterReload).toBe(sessionBeforeReload);
 });
