@@ -20,6 +20,19 @@ const mockEnv = {
   isProduction: () => false,
 };
 
+const mockLoggerError = jest.fn();
+const mockLoggerWarn = jest.fn();
+
+// Mock the logger to capture error/warn calls without writing to stdout.
+jest.mock('../utils/logger', () => ({
+  logger: {
+    error: (...args: unknown[]) => mockLoggerError(...args),
+    warn: (...args: unknown[]) => mockLoggerWarn(...args),
+    info: jest.fn(),
+    debug: jest.fn(),
+  },
+}));
+
 // Mock the database module so no real PostgreSQL connection is needed.
 jest.mock('../config/database', () => ({
   query: jest.fn(),
@@ -49,6 +62,8 @@ beforeEach(() => {
   mockRedisSetex.mockReset();
   mockRedisGet.mockReset();
   mockRedisDel.mockReset();
+  mockLoggerError.mockReset();
+  mockLoggerWarn.mockReset();
   mockEnv.STRIPE_SECRET_KEY = '';
   mockEnv.isProduction = () => false;
   jest.restoreAllMocks();
@@ -219,6 +234,39 @@ describe('AuthService.register', () => {
     );
   });
 
+  it('deletes the inserted production user and rethrows when Stripe provisioning fails', async () => {
+    mockEnv.isProduction = () => true;
+    mockEnv.STRIPE_SECRET_KEY = 'sk_test_123';
+    const stripeError = new Error('Stripe unavailable');
+    const fetchMock = jest.spyOn(global, 'fetch').mockRejectedValue(stripeError);
+
+    mockQuery.mockResolvedValueOnce([]); // email not taken
+    mockQuery.mockResolvedValueOnce([
+      {
+        id: 'prod-user-uuid',
+        email: 'prod@example.com',
+        role: 'viewer',
+        organization_id: 'org-uuid',
+      },
+    ]); // INSERT user RETURNING
+    mockQuery.mockResolvedValueOnce([]); // no existing customer for organization
+    mockQuery.mockResolvedValueOnce([]); // DELETE inserted user
+
+    await expect(service.register(
+      'prod@example.com',
+      'password123',
+      'Prod',
+      'User',
+      'org-uuid',
+    )).rejects.toBe(stripeError);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(mockQuery).toHaveBeenCalledWith(
+      'DELETE FROM users WHERE id = $1 AND organization_id = $2',
+      ['prod-user-uuid', 'org-uuid'],
+    );
+  });
+
   it('provisions a production Stripe customer only after the user insert succeeds', async () => {
     mockEnv.isProduction = () => true;
     mockEnv.STRIPE_SECRET_KEY = 'sk_test_123';
@@ -300,10 +348,163 @@ describe('AuthService.register', () => {
     expect(result).toHaveProperty('accessToken');
     expect(result).toHaveProperty('refreshToken');
   });
+
+  it('logs an error and still rethrows the billing error when the cleanup DELETE itself fails in production', async () => {
+    mockEnv.isProduction = () => true;
+    mockEnv.STRIPE_SECRET_KEY = 'sk_test_123';
+    const stripeError = new Error('Stripe network timeout');
+    const cleanupError = new Error('DB connection lost');
+    jest.spyOn(global, 'fetch').mockRejectedValue(stripeError);
+
+    mockQuery.mockResolvedValueOnce([]); // email not taken
+    mockQuery.mockResolvedValueOnce([
+      {
+        id: 'cleanup-fail-uuid',
+        email: 'failclean@example.com',
+        role: 'viewer',
+        organization_id: 'org-uuid',
+      },
+    ]); // INSERT user RETURNING
+    mockQuery.mockResolvedValueOnce([]); // no existing customer for organization (billing check)
+    mockQuery.mockRejectedValueOnce(cleanupError); // DELETE inserted user fails
+
+    await expect(service.register(
+      'failclean@example.com',
+      'password123',
+      'Fail',
+      'Clean',
+      'org-uuid',
+    )).rejects.toBe(stripeError);
+
+    expect(mockLoggerError).toHaveBeenCalledTimes(1);
+    expect(mockLoggerError).toHaveBeenCalledWith(
+      'Failed to clean up user after production billing provisioning failure',
+      expect.objectContaining({
+        userId: 'cleanup-fail-uuid',
+        organizationId: 'org-uuid',
+        email: 'failclean@example.com',
+        provisioningError: stripeError.message,
+        cleanupError: cleanupError.message,
+      }),
+    );
+  });
+
+  it('does not delete the user when Stripe provisioning fails in non-production', async () => {
+    mockEnv.isProduction = () => false;
+    const stripeError = new Error('Stripe dev error');
+    jest.spyOn(global, 'fetch').mockRejectedValue(stripeError);
+
+    mockQuery.mockResolvedValueOnce([]); // email not taken
+    mockQuery.mockResolvedValueOnce([
+      {
+        id: 'nonprod-user-uuid',
+        email: 'nonprod@example.com',
+        role: 'viewer',
+        organization_id: 'org-uuid',
+      },
+    ]); // INSERT user RETURNING
+    mockQuery.mockResolvedValueOnce([]); // no existing customer for organization (billing check)
+    // Stripe call fails, but we stay in non-production path
+    mockQuery.mockResolvedValueOnce([]); // INSERT refresh token
+
+    const result = await service.register(
+      'nonprod@example.com',
+      'password123',
+      'Non',
+      'Prod',
+      'org-uuid',
+    );
+
+    // Registration still succeeds in non-production despite Stripe failure
+    expect(result).toHaveProperty('accessToken');
+    expect(result).toHaveProperty('refreshToken');
+
+    // No DELETE query should have been issued
+    expect(mockQuery).not.toHaveBeenCalledWith(
+      'DELETE FROM users WHERE id = $1 AND organization_id = $2',
+      expect.any(Array),
+    );
+
+    // A warning should have been logged instead
+    expect(mockLoggerWarn).toHaveBeenCalledWith(
+      'Stripe customer provisioning failed during signup',
+      expect.objectContaining({
+        organizationId: 'org-uuid',
+        email: 'nonprod@example.com',
+      }),
+    );
+  });
+
+  it('rethrows the original billing error even when cleanup DELETE succeeds', async () => {
+    // Regression: ensure the original error identity is preserved after a successful cleanup
+    mockEnv.isProduction = () => true;
+    mockEnv.STRIPE_SECRET_KEY = 'sk_test_123';
+    const originalError = new Error('original billing error');
+    jest.spyOn(global, 'fetch').mockRejectedValue(originalError);
+
+    mockQuery.mockResolvedValueOnce([]); // email not taken
+    mockQuery.mockResolvedValueOnce([
+      {
+        id: 'reg-user-uuid',
+        email: 'reg@example.com',
+        role: 'viewer',
+        organization_id: 'org-uuid',
+      },
+    ]); // INSERT user RETURNING
+    mockQuery.mockResolvedValueOnce([]); // no existing customer for organization
+    mockQuery.mockResolvedValueOnce([]); // DELETE inserted user (succeeds)
+
+    const thrown = await service.register(
+      'reg@example.com',
+      'password123',
+      'Reg',
+      'User',
+      'org-uuid',
+    ).catch((e: unknown) => e);
+
+    expect(thrown).toBe(originalError);
+    // No logger.error because cleanup succeeded
+    expect(mockLoggerError).not.toHaveBeenCalled();
+  });
+
+  it('logs provisioningError as a plain string when the billing failure is not an Error instance', async () => {
+    mockEnv.isProduction = () => true;
+    mockEnv.STRIPE_SECRET_KEY = 'sk_test_123';
+    const nonErrorCause = 'plain string billing error';
+    jest.spyOn(global, 'fetch').mockRejectedValue(nonErrorCause);
+
+    mockQuery.mockResolvedValueOnce([]); // email not taken
+    mockQuery.mockResolvedValueOnce([
+      {
+        id: 'str-err-uuid',
+        email: 'strerr@example.com',
+        role: 'viewer',
+        organization_id: 'org-uuid',
+      },
+    ]); // INSERT user RETURNING
+    mockQuery.mockResolvedValueOnce([]); // no existing customer for organization
+    const deleteCleanupError = new Error('delete failed');
+    mockQuery.mockRejectedValueOnce(deleteCleanupError); // DELETE fails to trigger logger path
+
+    await expect(service.register(
+      'strerr@example.com',
+      'password123',
+      'Str',
+      'Err',
+      'org-uuid',
+    )).rejects.toBe(nonErrorCause);
+
+    expect(mockLoggerError).toHaveBeenCalledWith(
+      'Failed to clean up user after production billing provisioning failure',
+      expect.objectContaining({
+        provisioningError: nonErrorCause,
+      }),
+    );
+  });
 });
 
 describe('AuthService.refresh', () => {
-  const service = new AuthService();
+
 
   it('throws 401 for an unknown token', async () => {
     mockQuery.mockResolvedValueOnce([]); // token not found
