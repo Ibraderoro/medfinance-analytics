@@ -25,6 +25,13 @@ export function getCurrentTenantContext(): { organizationId: string; userId: str
   return tenantStorage.getStore();
 }
 
+export function runWithTenantContext<T>(
+  context: { organizationId: string; userId: string },
+  operation: () => Promise<T>,
+): Promise<T> {
+  return tenantStorage.run(context, operation);
+}
+
 /**
  * Recursively removes tenant organization identifier properties and unsafe object keys from the provided value.
  *

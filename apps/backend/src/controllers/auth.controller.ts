@@ -33,8 +33,8 @@ export async function register(req: Request, res: Response, next: NextFunction):
       res.status(403).json({ success: false, error: { message: 'Self-service registration is disabled', code: 'AUTH_REGISTRATION_DISABLED' }, data: null });
       return;
     }
-    const { email, password, firstName, lastName, role, organizationId } = req.body as { email: string; password: string; firstName: string; lastName: string; role?: string; organizationId: string };
-    const tokens = await service.register(email, password, firstName, lastName, organizationId, role);
+    const { email, password, firstName, lastName, organizationId } = req.body as { email: string; password: string; firstName: string; lastName: string; role?: string; organizationId: string };
+    const tokens = await service.register(email, password, firstName, lastName, organizationId, 'viewer');
     setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
     res.success({ session: 'created' }, 201);
   } catch (err) { next(err); }
