@@ -45,7 +45,6 @@ export async function handleStripeWebhook(
   next: NextFunction,
 ): Promise<void> {
   let dedupKey: string | undefined;
-  let reservedDedupMarker = false;
 
   try {
     const signature = req.headers['stripe-signature'];
@@ -65,24 +64,25 @@ export async function handleStripeWebhook(
 
     if (event.id) {
       dedupKey = `billing:webhook:event:${event.id}`;
+      const existing = await redis.get(dedupKey);
+      if (existing) {
+        res.success({ received: true, duplicate: true });
+        return;
+      }
+    }
+
+    await billingService.handleWebhookEvent(event);
+
+    if (dedupKey) {
       const accepted = await redis.set(dedupKey, '1', 'EX', WEBHOOK_EVENT_DEDUP_TTL_SECONDS, 'NX');
       if (accepted === null) {
         res.success({ received: true, duplicate: true });
         return;
       }
-      reservedDedupMarker = true;
     }
 
-    await billingService.handleWebhookEvent(event);
     res.success({ received: true });
   } catch (err) {
-    if (reservedDedupMarker && dedupKey) {
-      try {
-        await redis.del(dedupKey);
-      } catch {
-        // Preserve the original webhook processing error so Stripe can retry the event.
-      }
-    }
     next(err);
   }
 }

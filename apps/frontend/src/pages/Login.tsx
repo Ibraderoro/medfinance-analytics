@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { authApi } from '../services/api';
 import styles from './Page.module.css';
@@ -15,6 +15,13 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [pendingMfaToken, setPendingMfaToken] = useState<string | null>(null);
   const [mfaCode, setMfaCode] = useState('');
+  const mfaInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (pendingMfaToken) {
+      mfaInputRef.current?.focus();
+    }
+  }, [pendingMfaToken]);
 
   const fieldErrors = useMemo(() => ({
     email: emailPattern.test(email.trim()) ? null : 'Enter a valid email address.',
@@ -90,7 +97,7 @@ export function LoginPage() {
         {pendingMfaToken && (
           <label>
             <span>Verification code</span>
-            <input type="text" inputMode="numeric" pattern="[0-9]{6}" value={mfaCode} onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))} required maxLength={6} autoComplete="one-time-code" style={{ width: '100%', padding: '0.65rem', marginTop: 4 }} />
+            <input ref={mfaInputRef} type="text" inputMode="numeric" pattern="[0-9]{6}" value={mfaCode} onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))} required maxLength={6} autoComplete="one-time-code" style={{ width: '100%', padding: '0.65rem', marginTop: 4 }} />
             {mfaCode && fieldErrors.mfaCode && <small className={styles.error}>{fieldErrors.mfaCode}</small>}
           </label>
         )}

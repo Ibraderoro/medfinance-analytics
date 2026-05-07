@@ -16,6 +16,7 @@ const mockEnv = {
   STRIPE_SECRET_KEY: '',
   STRIPE_PRO_PRICE_ID: '',
   STRIPE_ENTERPRISE_PRICE_ID: '',
+  OIDC_ISSUER: '',
   OIDC_TOKEN_URL: '',
   OIDC_USERINFO_URL: '',
   OIDC_CLIENT_ID: '',
@@ -55,6 +56,7 @@ beforeEach(() => {
   mockRedisGet.mockReset();
   mockRedisDel.mockReset();
   mockEnv.STRIPE_SECRET_KEY = '';
+  mockEnv.OIDC_ISSUER = '';
   mockEnv.OIDC_TOKEN_URL = '';
   mockEnv.OIDC_USERINFO_URL = '';
   mockEnv.OIDC_CLIENT_ID = '';
@@ -338,6 +340,7 @@ describe('AuthService OIDC SSO', () => {
   });
 
   it('exchanges an OIDC callback code, validates userinfo, clears state, and issues tokens', async () => {
+    mockEnv.OIDC_ISSUER = 'https://issuer.example.com';
     mockEnv.OIDC_TOKEN_URL = 'https://issuer.example.com/oauth/token';
     mockEnv.OIDC_USERINFO_URL = 'https://issuer.example.com/userinfo';
     mockEnv.OIDC_CLIENT_ID = 'client-id';
@@ -352,7 +355,7 @@ describe('AuthService OIDC SSO', () => {
     }));
     const fetchMock = jest.spyOn(global, 'fetch')
       .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'oidc-access-token' }) } as Response)
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ email: 'sso@example.com', email_verified: true }) } as Response);
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ sub: 'provider-subject', email: 'sso@example.com', email_verified: true }) } as Response);
     mockQuery
       .mockResolvedValueOnce([{
         id: 'sso-user-uuid',
@@ -369,9 +372,39 @@ describe('AuthService OIDC SSO', () => {
     const result = await service.completeOidcLogin('550e8400-e29b-41d4-a716-446655440000', 'auth-code');
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(mockQuery).toHaveBeenCalledWith(
+      expect.stringContaining('AND idp_issuer = $3'),
+      ['sso-user-uuid', 'org-uuid', 'https://issuer.example.com', 'provider-subject'],
+    );
     expect(mockRedisDel).toHaveBeenCalledWith('auth:sso:state:550e8400-e29b-41d4-a716-446655440000');
     expect(result).toHaveProperty('accessToken');
     expect(result).toHaveProperty('refreshToken');
+  });
+
+  it('rejects an OIDC callback when the provider email is not verified', async () => {
+    mockEnv.OIDC_ISSUER = 'https://issuer.example.com';
+    mockEnv.OIDC_TOKEN_URL = 'https://issuer.example.com/oauth/token';
+    mockEnv.OIDC_USERINFO_URL = 'https://issuer.example.com/userinfo';
+    mockEnv.OIDC_CLIENT_ID = 'client-id';
+    mockEnv.OIDC_CLIENT_SECRET = 'client-secret';
+    mockEnv.OIDC_REDIRECT_URI = 'https://app.example.com/auth/oidc/callback';
+
+    mockRedisGet.mockResolvedValueOnce(JSON.stringify({
+      userId: 'sso-user-uuid',
+      email: 'sso@example.com',
+      provider: 'oidc',
+      organizationId: 'org-uuid',
+    }));
+    jest.spyOn(global, 'fetch')
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'oidc-access-token' }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ sub: 'provider-subject', email: 'sso@example.com', email_verified: false }) } as Response);
+
+    await expect(service.completeOidcLogin('550e8400-e29b-41d4-a716-446655440000', 'auth-code')).rejects.toMatchObject({
+      statusCode: 401,
+      message: 'OIDC email must be verified',
+    });
+    expect(mockRedisDel).not.toHaveBeenCalledWith('auth:sso:state:550e8400-e29b-41d4-a716-446655440000');
+    expect(mockQuery).not.toHaveBeenCalledWith('INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)', expect.any(Array));
   });
 });
 
