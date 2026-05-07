@@ -21,7 +21,7 @@ BEGIN
     ) THEN
       EXECUTE format('DROP POLICY IF EXISTS %I_tenant_rls ON %I', tenant_table, tenant_table);
       EXECUTE format(
-        'CREATE POLICY %I_tenant_rls ON %I FOR ALL USING (organization_id = current_setting(''current_user.organization_id'', true)::uuid) WITH CHECK (organization_id = current_setting(''current_user.organization_id'', true)::uuid)',
+        'CREATE POLICY %I_tenant_rls ON %I FOR ALL USING (organization_id = current_setting(''app.current_tenant_id'', true)::uuid) WITH CHECK (organization_id = current_setting(''app.current_tenant_id'', true)::uuid)',
         tenant_table,
         tenant_table
       );
