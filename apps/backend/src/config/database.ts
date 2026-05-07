@@ -6,7 +6,15 @@ import { getCurrentTenantContext } from '../middleware/tenantContext';
 
 let pool: Pool;
 
-const TENANT_ENFORCED_TABLES = ['transactions', 'forecasts', 'compliance_items'];
+const TENANT_ENFORCED_TABLES = [
+  'departments',
+  'forecasts',
+  'transactions',
+  'financial_cash_reserves',
+  'compliance_items',
+  'regulatory_alerts',
+  'audit_log',
+];
 
 function requiresTenantContext(queryText: string): boolean {
   const lower = queryText.toLowerCase();
