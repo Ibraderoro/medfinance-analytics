@@ -11,6 +11,7 @@ import { AuthenticatedRequest } from '../middleware/auth';
 
 const mockQuery = jest.fn();
 const mockRedisSet = jest.fn(async (): Promise<string | null> => 'OK') as jest.Mock<Promise<string | null>, unknown[]>;
+const mockRedisDel = jest.fn(async (): Promise<number> => 1) as jest.Mock<Promise<number>, unknown[]>;
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
@@ -51,7 +52,7 @@ jest.mock('../config/redis', () => ({
   getRedis: () => ({
     get: async () => null,
     setex: async () => 'OK',
-    del: async () => 1,
+    del: (...args: unknown[]) => mockRedisDel(...args),
     set: (...args: unknown[]) => mockRedisSet(...args),
     scan: async () => ['0', []],
     ping: async () => 'PONG',
@@ -210,6 +211,8 @@ describe('Critical route integration', () => {
     mockQuery.mockReset();
     mockRedisSet.mockReset();
     mockRedisSet.mockResolvedValue('OK');
+    mockRedisDel.mockReset();
+    mockRedisDel.mockResolvedValue(1);
   });
 
   it('GET /financials/summary returns safe defaults with empty db', async () => {
@@ -291,6 +294,36 @@ describe('Critical route integration', () => {
     expect(result.body.success).toBe(true);
     expect(result.body.data).toEqual({ received: true, duplicate: true });
     expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it('POST /billing/webhook clears the dedupe marker when event handling fails', async () => {
+    const payload = Buffer.from(JSON.stringify({
+      id: 'evt_retryable_failure',
+      type: 'invoice.paid',
+      data: {
+        object: {
+          customer: 'cus_retry',
+          subscription: 'sub_retry',
+          lines: { data: [{ price: { id: 'price_pro' } }] },
+        },
+      },
+    }));
+    mockQuery.mockRejectedValueOnce(new Error('database unavailable'));
+
+    const result = await rawPost('/api/v1/billing/webhook', payload, {
+      'stripe-signature': stripeSignature(payload),
+    });
+
+    expect(result.status).toBe(500);
+    expect(result.body.success).toBe(false);
+    expect(mockRedisSet).toHaveBeenCalledWith(
+      'billing:webhook:event:evt_retryable_failure',
+      '1',
+      'EX',
+      60 * 60 * 24,
+      'NX',
+    );
+    expect(mockRedisDel).toHaveBeenCalledWith('billing:webhook:event:evt_retryable_failure');
   });
 
   it('POST /auth/register rejects privileged public registration roles', async () => {
