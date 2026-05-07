@@ -2,7 +2,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 
 const TEST_EMAIL = 'demo@medfinance.com';
 const TEST_PASSWORD = 'demo123!';
-const TEST_ORGANIZATION_ID = '550e8400-e29b-41d4-a716-446655440000';
+const TEST_ORGANIZATION_ID = process.env.TEST_ORGANIZATION_ID ?? '550e8400-e29b-41d4-a716-446655440000';
 
 const parseNumericValue = (rawValue: string): number => {
   const normalized = rawValue.trim();

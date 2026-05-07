@@ -91,45 +91,60 @@ async function request(path: string): Promise<RequestResult> {
 }
 
 
+async function closeServer(server: http.Server, requestError?: unknown): Promise<void> {
+  try {
+    await new Promise<void>((resolve, reject) => {
+      server.close((err) => (err ? reject(err) : resolve()));
+    });
+  } catch (error) {
+    if (!requestError) throw error;
+  }
+}
+
 async function post(path: string, body: JsonObject, headers: Record<string, string> = {}): Promise<RequestResult> {
   const server = http.createServer(app);
   await new Promise<void>((resolve) => server.listen(0, resolve));
   const address = server.address();
   const port = typeof address === 'object' && address ? address.port : 0;
   const payload = JSON.stringify(body);
+  let requestError: unknown;
 
-  const response = await new Promise<{ status: number; payload: JsonObject }>((resolve, reject) => {
-    const req = http.request({
-      hostname: '127.0.0.1',
-      port,
-      path,
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(payload),
-        ...headers,
-      },
-    }, (res) => {
-      let data = '';
-      res.on('data', (chunk) => { data += chunk; });
-      res.on('end', () => {
-        try {
-          const parsed: JsonObject = JSON.parse(data || '{}') as JsonObject;
-          resolve({ status: res.statusCode ?? 0, payload: parsed });
-        } catch (error) {
-          reject(error);
-        }
+  try {
+    const response = await new Promise<{ status: number; payload: JsonObject }>((resolve, reject) => {
+      const req = http.request({
+        hostname: '127.0.0.1',
+        port,
+        path,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload),
+          ...headers,
+        },
+      }, (res) => {
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => {
+          try {
+            const parsed: JsonObject = JSON.parse(data || '{}') as JsonObject;
+            resolve({ status: res.statusCode ?? 0, payload: parsed });
+          } catch (error) {
+            reject(error);
+          }
+        });
       });
+      req.on('error', reject);
+      req.write(payload);
+      req.end();
     });
-    req.on('error', reject);
-    req.write(payload);
-    req.end();
-  });
-  await new Promise<void>((resolve, reject) => {
-    server.close((err) => (err ? reject(err) : resolve()));
-  });
 
-  return { status: response.status, body: response.payload };
+    return { status: response.status, body: response.payload };
+  } catch (error) {
+    requestError = error;
+    throw error;
+  } finally {
+    await closeServer(server, requestError);
+  }
 }
 
 describe('Critical route integration', () => {

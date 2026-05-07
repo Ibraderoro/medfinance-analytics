@@ -20,6 +20,7 @@ BEGIN
         AND column_name = 'organization_id'
     ) THEN
       EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', tenant_table);
+      EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', tenant_table);
       EXECUTE format('DROP POLICY IF EXISTS %I_tenant_isolation ON %I', tenant_table, tenant_table);
       EXECUTE format('DROP POLICY IF EXISTS %I_tenant_rls ON %I', tenant_table, tenant_table);
       EXECUTE format(

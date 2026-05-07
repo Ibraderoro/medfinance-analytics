@@ -53,13 +53,11 @@ authRouter.post(
   authRateLimiter,
   [
     body('refreshToken')
-      .optional({ nullable: true, checkFalsy: true })
-      .isString()
-      .withMessage('refreshToken must be a string')
-      .bail()
       .custom((value, { req }) => {
         if (typeof value === 'string' && value.trim().length > 0) return true;
-        return hasCookie(req as Request, 'medfinance_refresh_token');
+        if (hasCookie(req as Request, 'medfinance_refresh_token')) return true;
+        if (value === undefined || value === null || value === '') return false;
+        throw new Error('refreshToken must be a non-empty string');
       })
       .withMessage('refreshToken is required'),
   ],
