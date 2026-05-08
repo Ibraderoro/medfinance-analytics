@@ -108,8 +108,18 @@ jobs:
             docker compose up -d --remove-orphans
 
       - name: Verify production readiness with retries
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
         run: |
-          url="https://app.medfinance.example.com/api/v1/health/ready"
+          if [ -z "$PROD_HOST" ]; then
+            echo "PROD_HOST is required for readiness checks" >&2
+            exit 1
+          fi
+
+          host="${PROD_HOST#https://}"
+          host="${host#http://}"
+          host="${host%/}"
+          url="https://${host}/api/v1/health/ready"
           max_attempts=8
           delay=5
 
@@ -126,7 +136,7 @@ jobs:
             fi
 
             sleep "$delay"
-            delay=$((delay * 2))
+            delay=$((delay * 2 > 60 ? 60 : delay * 2))
           done
 
       - name: Create GitHub Release

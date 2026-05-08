@@ -305,7 +305,7 @@ describe('Critical route integration', () => {
     );
   });
 
-  it('POST /billing/webhook does not record dedupe when event handling fails', async () => {
+  it('POST /billing/webhook clears reserved dedupe when event handling fails', async () => {
     const payload = Buffer.from(JSON.stringify({
       id: 'evt_retryable_failure',
       type: 'invoice.paid',
@@ -325,12 +325,18 @@ describe('Critical route integration', () => {
 
     expect(result.status).toBe(500);
     expect(result.body.success).toBe(false);
-    expect(mockRedisSet).not.toHaveBeenCalled();
-    expect(mockRedisDel).not.toHaveBeenCalled();
+    expect(mockRedisSet).toHaveBeenCalledWith(
+      'billing:webhook:event:evt_retryable_failure',
+      '1',
+      'EX',
+      60 * 60 * 24,
+      'NX',
+    );
+    expect(mockRedisDel).toHaveBeenCalledWith('billing:webhook:event:evt_retryable_failure');
   });
 
-  it('POST /billing/webhook skips handling when a processed dedupe marker exists', async () => {
-    mockRedisGet.mockResolvedValueOnce('1');
+  it('POST /billing/webhook skips handling when dedupe reservation already exists', async () => {
+    mockRedisSet.mockResolvedValueOnce(null);
     const payload = Buffer.from(JSON.stringify({
       id: 'evt_duplicate_before_handling',
       type: 'invoice.paid',
@@ -351,14 +357,19 @@ describe('Critical route integration', () => {
     expect(result.body.success).toBe(true);
     expect(result.body.data).toEqual({ received: true, duplicate: true });
     expect(mockQuery).not.toHaveBeenCalled();
-    expect(mockRedisSet).not.toHaveBeenCalled();
+    expect(mockRedisSet).toHaveBeenCalledWith(
+      'billing:webhook:event:evt_duplicate_before_handling',
+      '1',
+      'EX',
+      60 * 60 * 24,
+      'NX',
+    );
   });
 
-  it('POST /billing/webhook returns duplicate when post-handling dedupe already exists', async () => {
-    mockQuery.mockResolvedValueOnce([]);
-    mockRedisSet.mockResolvedValueOnce(null);
+  it('POST /billing/webhook does not process when dedupe reservation fails', async () => {
+    mockRedisSet.mockRejectedValueOnce(new Error('redis unavailable'));
     const payload = Buffer.from(JSON.stringify({
-      id: 'evt_duplicate',
+      id: 'evt_redis_failure',
       type: 'invoice.paid',
       data: {
         object: {
@@ -373,9 +384,10 @@ describe('Critical route integration', () => {
       'stripe-signature': stripeSignature(payload),
     });
 
-    expect(result.status).toBe(200);
-    expect(result.body.success).toBe(true);
-    expect(result.body.data).toEqual({ received: true, duplicate: true });
+    expect(result.status).toBe(500);
+    expect(result.body.success).toBe(false);
+    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockRedisDel).not.toHaveBeenCalled();
   });
 
   it('POST /auth/register rejects privileged public registration roles', async () => {
