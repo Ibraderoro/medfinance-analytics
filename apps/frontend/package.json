@@ -11,6 +11,7 @@
     "lint:fix": "eslint 'src/**/*.{ts,tsx}' --fix",
     "test": "jest --coverage",
     "clean": "rm -rf dist",
+    "pretest:e2e": "playwright install chromium",
     "test:e2e": "playwright test --config=playwright.config.ts",
     "test:e2e:install": "playwright install --with-deps chromium"
   },
@@ -42,6 +43,6 @@
     "jest-environment-jsdom": "^30.3.0",
     "ts-jest": "^29.1.4",
     "typescript": "^5.4.5",
-    "vite": "^8.0.10"
+    "vite": "^7.3.2"
   }
 }
