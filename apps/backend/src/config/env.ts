@@ -57,8 +57,70 @@ function parseCorsOrigins(raw: string): string[] {
     .filter((origin) => origin.length > 0);
 }
 
+type OidcConfig = {
+  OIDC_ISSUER: string;
+  OIDC_TOKEN_URL: string;
+  OIDC_USERINFO_URL: string;
+  OIDC_CLIENT_ID: string;
+  OIDC_CLIENT_SECRET: string;
+  OIDC_REDIRECT_URI: string;
+};
+
+function isLocalhost(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname.endsWith('.localhost');
+}
+
+function requireSecureUrl(key: keyof OidcConfig, value: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`Environment variable ${key} must be a valid URL`);
+  }
+
+  if (parsed.protocol === 'https:') {
+    return;
+  }
+
+  if (parsed.protocol === 'http:' && isLocalhost(parsed.hostname)) {
+    return;
+  }
+
+  throw new Error(`Environment variable ${key} must use HTTPS unless it targets localhost`);
+}
+
+function validateOidcConfig(config: OidcConfig): OidcConfig {
+  const entries = Object.entries(config) as Array<[keyof OidcConfig, string]>;
+  const present = entries.filter(([, value]) => value.length > 0);
+
+  if (present.length === 0) {
+    return config;
+  }
+
+  const missing = entries
+    .filter(([, value]) => value.length === 0)
+    .map(([key]) => key);
+  if (missing.length > 0) {
+    throw new Error(`Incomplete OIDC configuration; missing ${missing.join(', ')}`);
+  }
+
+  for (const key of ['OIDC_ISSUER', 'OIDC_TOKEN_URL', 'OIDC_USERINFO_URL', 'OIDC_REDIRECT_URI'] as const) {
+    requireSecureUrl(key, config[key]);
+  }
+
+  return config;
+}
+
 const jwtSecret = requireMinLength(requireEnv('JWT_SECRET'), 'JWT_SECRET', 32);
 const refreshTokenSecret = requireMinLength(requireEnv('REFRESH_TOKEN_SECRET'), 'REFRESH_TOKEN_SECRET', 32);
+const oidcConfig = validateOidcConfig({
+  OIDC_ISSUER: optionalEnv('OIDC_ISSUER'),
+  OIDC_TOKEN_URL: optionalEnv('OIDC_TOKEN_URL'),
+  OIDC_USERINFO_URL: optionalEnv('OIDC_USERINFO_URL'),
+  OIDC_CLIENT_ID: optionalEnv('OIDC_CLIENT_ID'),
+  OIDC_CLIENT_SECRET: optionalEnv('OIDC_CLIENT_SECRET'),
+  OIDC_REDIRECT_URI: optionalEnv('OIDC_REDIRECT_URI'),
+});
 
 export const env = {
   NODE_ENV: optionalEnv('NODE_ENV', 'development'),
@@ -113,6 +175,7 @@ export const env = {
   STRIPE_WEBHOOK_SECRET: optionalEnv('STRIPE_WEBHOOK_SECRET'),
   STRIPE_PRO_PRICE_ID: optionalEnv('STRIPE_PRO_PRICE_ID'),
   STRIPE_ENTERPRISE_PRICE_ID: optionalEnv('STRIPE_ENTERPRISE_PRICE_ID'),
+  ...oidcConfig,
 
 
   isProduction: () => optionalEnv('NODE_ENV', 'development') === 'production',

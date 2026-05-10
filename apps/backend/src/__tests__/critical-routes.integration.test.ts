@@ -2,12 +2,17 @@ process.env.JWT_SECRET = process.env.JWT_SECRET ?? '1234567890123456789012345678
 process.env.REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET ?? '12345678901234567890123456789012';
 process.env.AUDIT_EXPORT_SIGNING_SECRET = process.env.AUDIT_EXPORT_SIGNING_SECRET ?? 'abcdefghijklmnopqrstuvwxyz123456';
 process.env.DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://user:pass@localhost:5432/test';
+process.env.STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET ?? 'whsec_test_secret';
 
+import crypto from 'crypto';
 import http from 'http';
 import { NextFunction, Request, Response } from 'express';
 import { AuthenticatedRequest } from '../middleware/auth';
 
 const mockQuery = jest.fn();
+const mockRedisSet = jest.fn(async (): Promise<string | null> => 'OK') as jest.Mock<Promise<string | null>, unknown[]>;
+const mockRedisGet = jest.fn(async (): Promise<string | null> => null) as jest.Mock<Promise<string | null>, unknown[]>;
+const mockRedisDel = jest.fn(async (): Promise<number> => 1) as jest.Mock<Promise<number>, unknown[]>;
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
@@ -46,9 +51,10 @@ jest.mock('../config/database', () => ({
 
 jest.mock('../config/redis', () => ({
   getRedis: () => ({
-    get: async () => null,
+    get: (...args: unknown[]) => mockRedisGet(...args),
     setex: async () => 'OK',
-    del: async () => 1,
+    del: (...args: unknown[]) => mockRedisDel(...args),
+    set: (...args: unknown[]) => mockRedisSet(...args),
     scan: async () => ['0', []],
     ping: async () => 'PONG',
   }),
@@ -147,9 +153,69 @@ async function post(path: string, body: JsonObject, headers: Record<string, stri
   }
 }
 
+async function rawPost(path: string, payload: Buffer, headers: Record<string, string> = {}): Promise<RequestResult> {
+  const server = http.createServer(app);
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  const port = typeof address === 'object' && address ? address.port : 0;
+  let requestError: unknown;
+
+  try {
+    const response = await new Promise<{ status: number; payload: JsonObject }>((resolve, reject) => {
+      const req = http.request({
+        hostname: '127.0.0.1',
+        port,
+        path,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': payload.length,
+          ...headers,
+        },
+      }, (res) => {
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => {
+          try {
+            const parsed: JsonObject = JSON.parse(data || '{}') as JsonObject;
+            resolve({ status: res.statusCode ?? 0, payload: parsed });
+          } catch (error) {
+            reject(error);
+          }
+        });
+      });
+      req.on('error', reject);
+      req.write(payload);
+      req.end();
+    });
+
+    return { status: response.status, body: response.payload };
+  } catch (error) {
+    requestError = error;
+    throw error;
+  } finally {
+    await closeServer(server, requestError);
+  }
+}
+
+function stripeSignature(payload: Buffer): string {
+  const timestamp = Math.floor(Date.now() / 1000);
+  const signature = crypto
+    .createHmac('sha256', process.env.STRIPE_WEBHOOK_SECRET ?? '')
+    .update(`${timestamp}.${payload.toString('utf8')}`)
+    .digest('hex');
+  return `t=${timestamp},v1=${signature}`;
+}
+
 describe('Critical route integration', () => {
   beforeEach(() => {
     mockQuery.mockReset();
+    mockRedisSet.mockReset();
+    mockRedisSet.mockResolvedValue('OK');
+    mockRedisGet.mockReset();
+    mockRedisGet.mockResolvedValue(null);
+    mockRedisDel.mockReset();
+    mockRedisDel.mockResolvedValue(1);
   });
 
   it('GET /financials/summary returns safe defaults with empty db', async () => {
@@ -205,6 +271,123 @@ describe('Critical route integration', () => {
     expect(result.status).toBe(200);
     expect(result.body.success).toBe(true);
     expect(result.body.data).toEqual({ session: 'refreshed' });
+  });
+
+
+
+  it('POST /billing/webhook records Stripe event dedupe only after successful handling', async () => {
+    mockQuery.mockResolvedValueOnce([]);
+    const payload = Buffer.from(JSON.stringify({
+      id: 'evt_processed',
+      type: 'invoice.paid',
+      data: {
+        object: {
+          customer: 'cus_processed',
+          subscription: 'sub_processed',
+          lines: { data: [{ price: { id: 'price_pro' } }] },
+        },
+      },
+    }));
+
+    const result = await rawPost('/api/v1/billing/webhook', payload, {
+      'stripe-signature': stripeSignature(payload),
+    });
+
+    expect(result.status).toBe(200);
+    expect(result.body.success).toBe(true);
+    expect(result.body.data).toEqual({ received: true });
+    expect(mockRedisSet).toHaveBeenCalledWith(
+      'billing:webhook:event:evt_processed',
+      '1',
+      'EX',
+      60 * 60 * 24,
+      'NX',
+    );
+  });
+
+  it('POST /billing/webhook clears reserved dedupe when event handling fails', async () => {
+    const payload = Buffer.from(JSON.stringify({
+      id: 'evt_retryable_failure',
+      type: 'invoice.paid',
+      data: {
+        object: {
+          customer: 'cus_retry',
+          subscription: 'sub_retry',
+          lines: { data: [{ price: { id: 'price_pro' } }] },
+        },
+      },
+    }));
+    mockQuery.mockRejectedValueOnce(new Error('database unavailable'));
+
+    const result = await rawPost('/api/v1/billing/webhook', payload, {
+      'stripe-signature': stripeSignature(payload),
+    });
+
+    expect(result.status).toBe(500);
+    expect(result.body.success).toBe(false);
+    expect(mockRedisSet).toHaveBeenCalledWith(
+      'billing:webhook:event:evt_retryable_failure',
+      '1',
+      'EX',
+      60 * 60 * 24,
+      'NX',
+    );
+    expect(mockRedisDel).toHaveBeenCalledWith('billing:webhook:event:evt_retryable_failure');
+  });
+
+  it('POST /billing/webhook skips handling when dedupe reservation already exists', async () => {
+    mockRedisSet.mockResolvedValueOnce(null);
+    const payload = Buffer.from(JSON.stringify({
+      id: 'evt_duplicate_before_handling',
+      type: 'invoice.paid',
+      data: {
+        object: {
+          customer: 'cus_duplicate',
+          subscription: 'sub_duplicate',
+          lines: { data: [{ price: { id: 'price_pro' } }] },
+        },
+      },
+    }));
+
+    const result = await rawPost('/api/v1/billing/webhook', payload, {
+      'stripe-signature': stripeSignature(payload),
+    });
+
+    expect(result.status).toBe(200);
+    expect(result.body.success).toBe(true);
+    expect(result.body.data).toEqual({ received: true, duplicate: true });
+    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockRedisSet).toHaveBeenCalledWith(
+      'billing:webhook:event:evt_duplicate_before_handling',
+      '1',
+      'EX',
+      60 * 60 * 24,
+      'NX',
+    );
+  });
+
+  it('POST /billing/webhook does not process when dedupe reservation fails', async () => {
+    mockRedisSet.mockRejectedValueOnce(new Error('redis unavailable'));
+    const payload = Buffer.from(JSON.stringify({
+      id: 'evt_redis_failure',
+      type: 'invoice.paid',
+      data: {
+        object: {
+          customer: 'cus_duplicate',
+          subscription: 'sub_duplicate',
+          lines: { data: [{ price: { id: 'price_pro' } }] },
+        },
+      },
+    }));
+
+    const result = await rawPost('/api/v1/billing/webhook', payload, {
+      'stripe-signature': stripeSignature(payload),
+    });
+
+    expect(result.status).toBe(500);
+    expect(result.body.success).toBe(false);
+    expect(mockQuery).not.toHaveBeenCalled();
+    expect(mockRedisDel).not.toHaveBeenCalled();
   });
 
   it('POST /auth/register rejects privileged public registration roles', async () => {

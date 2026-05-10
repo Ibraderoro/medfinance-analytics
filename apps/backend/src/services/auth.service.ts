@@ -23,6 +23,7 @@ interface UserRow {
 type UserIdentity = Pick<UserRow, 'id' | 'email' | 'role' | 'organization_id'>;
 const ALLOWED_ROLES = new Set(['admin', 'analyst', 'viewer']);
 const MFA_TTL_SECONDS = 5 * 60;
+const OIDC_REQUEST_TIMEOUT_MS = 10_000;
 
 function authError(message: string): AppError {
   const err = new Error(message) as AppError;
@@ -43,6 +44,54 @@ function validationError(message: string): AppError {
   err.statusCode = 400;
   err.isOperational = true;
   return err;
+}
+
+function configurationError(message: string): AppError {
+  const err = new Error(message) as AppError;
+  err.statusCode = 500;
+  err.isOperational = true;
+  return err;
+}
+
+function appendErrorMessage(message: string, err: unknown): string {
+  return err instanceof Error && err.message ? `${message}: ${err.message}` : message;
+}
+
+async function fetchOidcJson<T>(url: string, init: RequestInit, failureMessage: string): Promise<T> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), OIDC_REQUEST_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    if (!response.ok) {
+      throw authError(`${failureMessage}: provider returned ${response.status}`);
+    }
+
+    try {
+      return await response.json() as T;
+    } catch (err) {
+      throw authError(appendErrorMessage(`${failureMessage}: invalid JSON response`, err));
+    }
+  } catch (err) {
+    if ((err as AppError).isOperational) {
+      throw err;
+    }
+    throw authError(appendErrorMessage(failureMessage, err));
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function resolveOidcIssuer(): string {
+  if (env.OIDC_ISSUER) {
+    return env.OIDC_ISSUER;
+  }
+
+  try {
+    return new URL(env.OIDC_TOKEN_URL).origin;
+  } catch {
+    throw configurationError('OIDC callback requires a valid OIDC issuer or token URL');
+  }
 }
 
 function hashRefreshToken(token: string): string {
@@ -139,10 +188,79 @@ export class AuthService {
     await this.redis.setex(
       `auth:sso:state:${state}`,
       MFA_TTL_SECONDS,
-      JSON.stringify({ userId: user.id, provider, organizationId: user.organization_id }),
+      JSON.stringify({ userId: user.id, email: user.email, provider, organizationId: user.organization_id }),
     );
 
     return { provider, state, status: 'sso_initiated' as const };
+  }
+
+  async completeOidcLogin(state: string, code: string) {
+    if (!env.OIDC_TOKEN_URL || !env.OIDC_USERINFO_URL || !env.OIDC_CLIENT_ID || !env.OIDC_CLIENT_SECRET || !env.OIDC_REDIRECT_URI) {
+      throw configurationError('OIDC callback requires OIDC_TOKEN_URL, OIDC_USERINFO_URL, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, and OIDC_REDIRECT_URI');
+    }
+
+    const stateKey = `auth:sso:state:${state}`;
+    const rawState = await this.redis.get(stateKey);
+    if (!rawState) {
+      throw authError('Invalid or expired SSO state');
+    }
+
+    const pending = JSON.parse(rawState) as { userId: string; email: string; provider: string; organizationId: string };
+    if (pending.provider !== 'oidc') {
+      throw authError('Invalid SSO provider for OIDC callback');
+    }
+
+    const tokenPayload = await fetchOidcJson<{ access_token?: string }>(env.OIDC_TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        client_id: env.OIDC_CLIENT_ID,
+        client_secret: env.OIDC_CLIENT_SECRET,
+        redirect_uri: env.OIDC_REDIRECT_URI,
+      }),
+    }, 'OIDC token exchange failed');
+    if (!tokenPayload.access_token) {
+      throw authError('OIDC token exchange failed: missing access token');
+    }
+
+    const userInfo = await fetchOidcJson<{ sub?: string; email?: string; email_verified?: boolean }>(env.OIDC_USERINFO_URL, {
+      headers: { Authorization: `Bearer ${tokenPayload.access_token}` },
+    }, 'OIDC userinfo fetch failed');
+    if (!userInfo.sub || !userInfo.email) {
+      throw authError('OIDC user identity did not match pending SSO session');
+    }
+    if (userInfo.email_verified !== true) {
+      throw authError('OIDC email must be verified');
+    }
+
+    const issuer = resolveOidcIssuer();
+    const [user] = await query<UserIdentity & { is_active: boolean }>(
+      `SELECT id, email, role, organization_id, is_active
+       FROM users
+       WHERE id = $1
+         AND organization_id = $2
+         AND idp_issuer = $3
+         AND idp_subject = $4`,
+      [pending.userId, pending.organizationId, issuer, userInfo.sub],
+    );
+    if (!user || !user.is_active) {
+      throw authError('OIDC user identity did not match linked account');
+    }
+
+    await this.redis.del(stateKey);
+    await query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [user.id]);
+    await this.auditService.log({
+      action: 'oidc_login_success',
+      entityType: 'user',
+      entityId: user.id,
+      performedBy: user.id,
+      organizationId: user.organization_id,
+      metadata: { email: user.email },
+    });
+
+    return this.generateTokenPair(user);
   }
 
   async login(email: string, password: string, organizationId: string): Promise<{

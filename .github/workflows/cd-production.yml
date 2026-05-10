@@ -107,10 +107,37 @@ jobs:
             docker compose run --rm backend node apps/backend/dist/db/migrate.js
             docker compose up -d --remove-orphans
 
-      - name: Verify production health
+      - name: Verify production readiness with retries
+        env:
+          PROD_HOST: ${{ secrets.PROD_HOST }}
         run: |
-          sleep 20
-          curl --fail https://app.medfinance.example.com/health
+          if [ -z "$PROD_HOST" ]; then
+            echo "PROD_HOST is required for readiness checks" >&2
+            exit 1
+          fi
+
+          host="${PROD_HOST#https://}"
+          host="${host#http://}"
+          host="${host%/}"
+          url="https://${host}/api/v1/health/ready"
+          max_attempts=8
+          delay=5
+
+          for attempt in $(seq 1 "$max_attempts"); do
+            echo "Readiness check attempt ${attempt}/${max_attempts}"
+            if curl --fail --silent --show-error --max-time 10 "$url"; then
+              echo "Production readiness check succeeded"
+              exit 0
+            fi
+
+            if [ "$attempt" -eq "$max_attempts" ]; then
+              echo "Production readiness check failed after ${max_attempts} attempts" >&2
+              exit 1
+            fi
+
+            sleep "$delay"
+            delay=$((delay * 2 > 60 ? 60 : delay * 2))
+          done
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

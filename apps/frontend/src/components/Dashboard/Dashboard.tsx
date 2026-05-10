@@ -59,4 +59,4 @@ export function Dashboard() {
 }
 
 interface KpiCardProps { label: string; value: string; trend: string; positive: boolean; }
-function KpiCard({ label, value, trend, positive }: KpiCardProps) { return <div className={styles.kpiCard}><span className={styles.kpiLabel}>{label}</span><span className={styles.kpiValue}>{value}</span>{trend !== '—' && <span className={`${styles.kpiTrend} ${positive ? styles.positive : styles.negative}`}>{positive ? '↑' : '↓'} {trend}</span>}</div>; }
+function KpiCard({ label, value, trend, positive }: KpiCardProps) { return <div className={styles.kpiCard} role="group" aria-label={`${label} KPI`}><span className={styles.kpiLabel}>{label}</span><span className={styles.kpiValue}>{value}</span>{trend !== '—' && <span className={`${styles.kpiTrend} ${positive ? styles.positive : styles.negative}`}>{positive ? '↑' : '↓'} {trend}</span>}</div>; }
