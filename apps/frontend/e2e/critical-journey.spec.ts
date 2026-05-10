@@ -116,7 +116,7 @@ const parseNumericValue = (rawValue: string): number => {
 };
 
 const getKpiCardByName = (page: Page, cardName: RegExp): Locator =>
-  page.locator('section, article, div').filter({ hasText: cardName }).first();
+  page.getByRole('group', { name: cardName });
 
 test('golden path login, dashboard KPIs, compliance navigation, and session persistence', async ({ page }) => {
   await mockApi(page);
