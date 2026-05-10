@@ -3,6 +3,9 @@ import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
 
 export default defineConfig({
+  define: {
+    __MEDFINANCE_API_URL__: JSON.stringify(process.env.VITE_API_URL ?? ''),
+  },
   plugins: [react()],
   resolve: {
     alias: {

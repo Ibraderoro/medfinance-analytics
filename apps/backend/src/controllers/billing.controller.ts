@@ -19,7 +19,7 @@ export async function createSubscription(
     const { plan } = req.body as { plan: 'pro' | 'enterprise' };
 
     const data = await billingService.createSubscription(user.organization_id, plan);
-    res.status(201).json({ data });
+    res.success(data, 201);
   } catch (err) {
     next(err);
   }
@@ -33,7 +33,7 @@ export async function getCurrentSubscription(
   try {
     const user = requireAuthenticatedUser(req);
     const data = await billingService.getOrganizationSubscription(user.organization_id);
-    res.json({ data });
+    res.success(data);
   } catch (err) {
     next(err);
   }
@@ -49,18 +49,36 @@ export async function handleStripeWebhook(
   try {
     const signature = req.headers['stripe-signature'];
     if (typeof signature !== 'string') {
-      res.status(400).json({ error: 'Missing Stripe signature' });
+      res.status(400).json({
+        success: false,
+        error: { message: 'Missing Stripe signature', code: 'BILLING_WEBHOOK_SIGNATURE_MISSING' },
+        data: null,
+      });
       return;
     }
 
     const payload = req.body as Buffer;
     const isValid = stripeService.verifyWebhookSignature(payload, signature);
     if (!isValid) {
-      res.status(400).json({ error: 'Invalid Stripe signature' });
+      res.status(400).json({
+        success: false,
+        error: { message: 'Invalid Stripe signature', code: 'BILLING_WEBHOOK_SIGNATURE_INVALID' },
+        data: null,
+      });
       return;
     }
 
-    const event = JSON.parse(payload.toString('utf8')) as { id?: string; type: string; data?: { object?: unknown } };
+    let event: { id?: string; type: string; data?: { object?: unknown } };
+    try {
+      event = JSON.parse(payload.toString('utf8')) as { id?: string; type: string; data?: { object?: unknown } };
+    } catch {
+      res.status(400).json({
+        success: false,
+        error: { message: 'Invalid Stripe webhook JSON payload', code: 'BILLING_WEBHOOK_INVALID_JSON' },
+        data: null,
+      });
+      return;
+    }
 
     if (event.id) {
       dedupKey = `billing:webhook:event:${event.id}`;
