@@ -3,6 +3,7 @@ process.env.REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET ?? '12345678
 process.env.AUDIT_EXPORT_SIGNING_SECRET = process.env.AUDIT_EXPORT_SIGNING_SECRET ?? 'abcdefghijklmnopqrstuvwxyz123456';
 process.env.DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://user:pass@localhost:5432/test';
 
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -38,6 +39,31 @@ describe('production configuration manifests', () => {
 
     expect(compose).toMatch(/^  nginx:/m);
     expect(deployScript).toContain('backend frontend nginx');
+  });
+
+  it('templates the edge nginx config before startup so CSP env vars are parse-safe', () => {
+    const compose = readRepoFile('docker-compose.yml');
+    const nginxConfig = readRepoFile('infrastructure/nginx/nginx.conf');
+
+    expect(compose).toContain('./infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf.template:ro');
+    expect(compose).toContain("envsubst '$$CSP_CONNECT_SRC'");
+    expect(compose).toContain('/etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf');
+    expect(nginxConfig).not.toContain('env CSP_CONNECT_SRC');
+    expect(nginxConfig).not.toContain('if ($CSP_CONNECT_SRC');
+
+    const renderedConfig = execFileSync(
+      'envsubst',
+      ['$CSP_CONNECT_SRC'],
+      {
+        cwd: repoRoot,
+        env: { ...process.env, CSP_CONNECT_SRC: 'https://api.stripe.com' },
+        input: nginxConfig,
+        encoding: 'utf8',
+      },
+    );
+
+    expect(renderedConfig).toContain(`set $csp_connect_src "'self' https://api.stripe.com";`);
+    expect(renderedConfig).not.toContain('$CSP_CONNECT_SRC');
   });
 
   it('documents a distinct audit export signing secret in env examples', () => {

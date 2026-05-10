@@ -52,6 +52,18 @@ describe('api service', () => {
     expect(config.headers?.['x-csrf-token' as keyof typeof config.headers]).toBe('csrf123');
   });
 
+
+  it('creates request headers before adding CSRF when Axios provides none', async () => {
+    document.cookie = 'csrf_token=csrf456; path=/';
+    await import('../services/api');
+    const requestInterceptor = requestUse.mock.calls[0][0] as (config: AxiosRequestConfig) => AxiosRequestConfig;
+
+    const config = requestInterceptor({ method: 'put' });
+
+    expect(config.headers?.['x-csrf-token' as keyof typeof config.headers]).toBe('csrf456');
+  });
+
+
   it('clears session state and redirects to login after a 401 response', async () => {
     sessionStorage.setItem('auth_session_active', 'true');
     const dispatchSpy = jest.spyOn(window, 'dispatchEvent');

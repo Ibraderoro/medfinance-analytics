@@ -22,6 +22,7 @@ export const apiClient = axios.create({
 apiClient.interceptors.request.use((config) => {
   const csrfToken = readCookie('csrf_token');
   if (csrfToken && config.method && !['get', 'head', 'options'].includes(config.method.toLowerCase())) {
+    config.headers = config.headers ?? {};
     config.headers['x-csrf-token'] = csrfToken;
   }
   return config;
