@@ -28,6 +28,18 @@ describe('production configuration manifests', () => {
     },
   );
 
+  it('keeps production deploy script aligned with required backend secrets and compose services', () => {
+    const deployScript = readRepoFile('infrastructure/scripts/deploy.sh');
+    const compose = readRepoFile('docker-compose.yml');
+
+    for (const secretName of requiredBackendSecrets) {
+      expect(deployScript).toContain(secretName);
+    }
+
+    expect(compose).toMatch(/^  nginx:/m);
+    expect(deployScript).toContain('backend frontend nginx');
+  });
+
   it('documents a distinct audit export signing secret in env examples', () => {
     const envExamples = [readRepoFile('.env.example'), readRepoFile('apps/backend/.env.example')];
 

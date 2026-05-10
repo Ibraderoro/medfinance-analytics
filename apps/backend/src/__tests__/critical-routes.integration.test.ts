@@ -239,6 +239,35 @@ describe('Critical route integration', () => {
     expect(errorBody && typeof errorBody === 'object' && 'code' in errorBody ? errorBody.code : undefined).toBe('VALIDATION_ERROR');
   });
 
+  it('GET /financials/revenue returns a structured envelope when free history date is missing', async () => {
+    mockQuery
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    const result = await request('/api/v1/financials/revenue');
+
+    expect(result.status).toBe(403);
+    expect(result.body.success).toBe(false);
+    expect(result.body.data).toBeNull();
+    const errorBody = result.body.error;
+    expect(errorBody && typeof errorBody === 'object' && 'code' in errorBody ? errorBody.code : undefined).toBe('PLAN_HISTORY_WINDOW_EXCEEDED');
+  });
+
+  it('POST /billing/webhook rejects malformed JSON with a structured client error', async () => {
+    const payload = Buffer.from('{not-json');
+
+    const result = await rawPost('/api/v1/billing/webhook', payload, {
+      'stripe-signature': stripeSignature(payload),
+    });
+
+    expect(result.status).toBe(400);
+    expect(result.body.success).toBe(false);
+    const errorBody = result.body.error;
+    expect(errorBody && typeof errorBody === 'object' && 'code' in errorBody ? errorBody.code : undefined).toBe('BILLING_WEBHOOK_INVALID_JSON');
+    expect(mockRedisSet).not.toHaveBeenCalled();
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
   it('GET /compliance/status returns empty array when no rows exist', async () => {
     mockQuery.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
 
@@ -272,8 +301,6 @@ describe('Critical route integration', () => {
     expect(result.body.success).toBe(true);
     expect(result.body.data).toEqual({ session: 'refreshed' });
   });
-
-
 
   it('POST /billing/webhook records Stripe event dedupe only after successful handling', async () => {
     mockQuery.mockResolvedValueOnce([]);

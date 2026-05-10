@@ -37,6 +37,12 @@ function integrationError(message: string): AppError {
   return err;
 }
 
+function safeStripeErrorMessage(payload: unknown): string {
+  if (!payload || typeof payload !== 'object') return 'unknown error';
+  const error = (payload as { error?: { message?: unknown } }).error;
+  return typeof error?.message === 'string' && error.message.length > 0 ? error.message : 'unknown error';
+}
+
 export class StripeService {
   private readonly apiBase = 'https://api.stripe.com/v1';
   private readonly webhookToleranceSeconds = 300;
@@ -50,23 +56,45 @@ export class StripeService {
   private async request<T>(path: string, params: Record<string, string>): Promise<T> {
     this.ensureConfigured();
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), env.HTTP_REQUEST_TIMEOUT_MS);
     const body = new URLSearchParams(params);
-    const response = await fetch(`${this.apiBase}${path}`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body,
-    });
 
-    const payload = await response.json() as { error?: { message?: string } } & T;
+    try {
+      const response = await fetch(`${this.apiBase}${path}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body,
+        signal: controller.signal,
+      });
 
-    if (!response.ok) {
-      throw integrationError(`Stripe API error: ${payload.error?.message ?? 'unknown error'}`);
+      let payload: ({ error?: { message?: string } } & T) | undefined;
+      try {
+        payload = await response.json() as { error?: { message?: string } } & T;
+      } catch (error) {
+        throw integrationError(`Stripe API returned invalid JSON: ${error instanceof Error ? error.message : 'unknown parse error'}`);
+      }
+
+      if (!response.ok) {
+        throw integrationError(`Stripe API error: ${safeStripeErrorMessage(payload)}`);
+      }
+
+      return payload;
+    } catch (error) {
+      if ((error as AppError).isOperational) {
+        throw error;
+      }
+
+      const message = error instanceof Error && error.name === 'AbortError'
+        ? `Stripe API request timed out after ${env.HTTP_REQUEST_TIMEOUT_MS}ms`
+        : `Stripe API request failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+      throw integrationError(message);
+    } finally {
+      clearTimeout(timeout);
     }
-
-    return payload;
   }
 
   async createCustomer(email: string, name: string, organizationId: string): Promise<StripeCustomer> {

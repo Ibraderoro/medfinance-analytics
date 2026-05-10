@@ -1,6 +1,10 @@
 import axios from 'axios';
 
-const BASE_URL = import.meta.env.VITE_API_URL ?? '/api/v1';
+declare const __MEDFINANCE_API_URL__: string | undefined;
+
+const BASE_URL = typeof __MEDFINANCE_API_URL__ !== 'undefined' && __MEDFINANCE_API_URL__
+  ? __MEDFINANCE_API_URL__
+  : '/api/v1';
 
 function readCookie(name: string): string | null {
   const pair = document.cookie.split(';').map((cookie) => cookie.trim()).find((cookie) => cookie.startsWith(`${name}=`));
@@ -18,6 +22,7 @@ export const apiClient = axios.create({
 apiClient.interceptors.request.use((config) => {
   const csrfToken = readCookie('csrf_token');
   if (csrfToken && config.method && !['get', 'head', 'options'].includes(config.method.toLowerCase())) {
+    config.headers = config.headers ?? {};
     config.headers['x-csrf-token'] = csrfToken;
   }
   return config;
@@ -29,7 +34,10 @@ apiClient.interceptors.response.use(
     if (error.response?.status === 401) {
       sessionStorage.removeItem('auth_session_active');
       window.dispatchEvent(new Event('auth-session-changed'));
-      if (window.location.pathname !== '/login') window.location.href = '/login';
+      if (window.location.pathname !== '/login') {
+        window.history.replaceState(null, '', '/login');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }
     }
     return Promise.reject(error);
   },

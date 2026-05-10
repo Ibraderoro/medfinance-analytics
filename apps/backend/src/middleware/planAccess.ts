@@ -28,7 +28,12 @@ export function requireMinimumPlan(minimumPlan: SubscriptionPlan) {
 
       if (!ACTIVE_SUBSCRIPTION_STATUSES.has(subscription.status) || PLAN_PRIORITY[subscription.plan] < PLAN_PRIORITY[minimumPlan]) {
         res.status(403).json({
-          error: `${minimumPlan.toUpperCase()} plan required for this feature`,
+          success: false,
+          error: {
+            message: `${minimumPlan.toUpperCase()} plan required for this feature`,
+            code: 'PLAN_REQUIRED',
+          },
+          data: null,
         });
         return;
       }
@@ -54,7 +59,12 @@ export function enforceFreeHistoryWindow(maxMonths: number) {
       const startDate = parseDate(req.query.startDate as string | undefined);
       if (!startDate) {
         res.status(403).json({
-          error: `Free plan supports up to ${maxMonths} months of financial history. Upgrade to Pro for full analytics.`,
+          success: false,
+          error: {
+            message: `Free plan supports up to ${maxMonths} months of financial history. Upgrade to Pro for full analytics.`,
+            code: 'PLAN_HISTORY_WINDOW_EXCEEDED',
+          },
+          data: null,
         });
         return;
       }
@@ -64,7 +74,12 @@ export function enforceFreeHistoryWindow(maxMonths: number) {
 
       if (startDate < minDate) {
         res.status(403).json({
-          error: `Free plan supports up to ${maxMonths} months of financial history. Upgrade to Pro for full analytics.`,
+          success: false,
+          error: {
+            message: `Free plan supports up to ${maxMonths} months of financial history. Upgrade to Pro for full analytics.`,
+            code: 'PLAN_HISTORY_WINDOW_EXCEEDED',
+          },
+          data: null,
         });
         return;
       }
