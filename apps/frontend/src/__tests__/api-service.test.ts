@@ -63,6 +63,7 @@ describe('api service', () => {
     expect(config.headers?.['x-csrf-token' as keyof typeof config.headers]).toBe('csrf456');
   });
 
+
   it('clears session state and redirects to login after a 401 response', async () => {
     sessionStorage.setItem('auth_session_active', 'true');
     const dispatchSpy = jest.spyOn(window, 'dispatchEvent');
