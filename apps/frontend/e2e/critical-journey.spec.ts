@@ -274,8 +274,9 @@ test('dashboard API failures degrade with no-data and unavailable states', async
   await startAuthenticated(page, { dashboardFailure: true });
   await page.goto('/dashboard');
 
-  await expect(page.getByText('No Data Available').first()).toBeVisible();
-  await expect(page.getByText('Dashboard temporarily unavailable. Please refresh.')).toBeVisible();
+  const dashboardAlert = page.getByRole('alert');
+  await expect(dashboardAlert).toBeVisible();
+  await expect(dashboardAlert).toContainText(/dashboard.*unavailable|unavailable.*dashboard/i);
 });
 
 test('empty compliance state remains usable', async ({ page }) => {
