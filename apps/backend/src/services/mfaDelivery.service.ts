@@ -1,5 +1,6 @@
 import { env } from '../config/env';
 import { AppError } from '../middleware/errorHandler';
+import { logger } from '../utils/logger';
 
 interface MfaDeliveryInput {
   userId: string;
@@ -62,9 +63,15 @@ export class MfaDeliveryService {
         throw error;
       }
 
-      const message = error instanceof Error && error.name === 'AbortError'
+      const isTimeout = error instanceof Error && error.name === 'AbortError';
+      logger.error('MFA delivery failed', {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        isTimeout,
+      });
+      const message = isTimeout
         ? `MFA delivery timed out after ${env.HTTP_REQUEST_TIMEOUT_MS}ms`
-        : `MFA delivery failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+        : 'MFA delivery failed, please try again';
       throw deliveryError(message);
     } finally {
       clearTimeout(timeout);
