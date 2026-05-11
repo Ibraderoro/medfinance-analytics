@@ -17,7 +17,8 @@
     "clean": "npm run clean --workspaces --if-present && rm -rf node_modules",
     "seed": "npm run seed --workspace=apps/backend",
     "test:e2e": "npm run test:e2e --workspace=apps/frontend",
-    "audit:prod": "node scripts/run-prod-audit.js"
+    "audit:prod": "node scripts/run-prod-audit.js",
+    "test:integration": "npm run test:integration --workspace=apps/backend"
   },
   "engines": {
     "node": ">=20.19.0",

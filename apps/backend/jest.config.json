@@ -30,5 +30,8 @@
   },
   "setupFiles": [
     "<rootDir>/src/__tests__/setup-env.ts"
+  ],
+  "testPathIgnorePatterns": [
+    "<rootDir>/src/__tests__/integration/"
   ]
 }
