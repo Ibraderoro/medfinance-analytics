@@ -68,6 +68,7 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+    # Deterministic test-only values for ephemeral CI integration containers; safe to hardcode for reproducible infra-backed tests.
     env:
       NODE_ENV: test
       DATABASE_URL: postgresql://medfinance:medfinance@127.0.0.1:5432/medfinance_test

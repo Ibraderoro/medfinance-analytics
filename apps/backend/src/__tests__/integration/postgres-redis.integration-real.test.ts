@@ -66,10 +66,17 @@ async function ensureSeedData(): Promise<void> {
     [ORG_A, ORG_B],
   );
   await pool.query(
-    `INSERT INTO transactions (department_id, transaction_type, category, amount, occurred_on, organization_id)
+    `INSERT INTO transactions (id, department_id, transaction_type, category, amount, occurred_on, organization_id)
      VALUES
-       ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'revenue', 'integration', 100, '2026-01-01', $1),
-       ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'revenue', 'integration', 200, '2026-01-01', $2)`,
+       ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'revenue', 'integration', 100, '2026-01-01', $1),
+       ('dddddddd-dddd-4ddd-8ddd-dddddddddddd', 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'revenue', 'integration', 200, '2026-01-01', $2)
+     ON CONFLICT (id) DO UPDATE SET
+       department_id = EXCLUDED.department_id,
+       transaction_type = EXCLUDED.transaction_type,
+       category = EXCLUDED.category,
+       amount = EXCLUDED.amount,
+       occurred_on = EXCLUDED.occurred_on,
+       organization_id = EXCLUDED.organization_id`,
     [ORG_A, ORG_B],
   );
   await pool.query(
