@@ -44,9 +44,9 @@ This codebase can support early paid customers, but specific failure modes appea
 ### 1) Distributed rate limiting with Redis + graceful fallback
 
 - Replaced process-local `express-rate-limit` usage with Redis-backed counters (`INCR` + `PEXPIRE`).
-- Added principal-aware keying:
-  - API: bearer token fragment (or IP fallback)
-  - Auth: email (or IP fallback)
+- Added shared rate-limit keying:
+  - API: source IP, with authentication state carried by HttpOnly cookies rather than client-managed header tokens
+  - Auth: source IP
 - Added response headers for limit visibility and fallback to in-memory counters only when Redis is unavailable.
 
 ### 2) Batched analytics ingestion to protect primary DB path

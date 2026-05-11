@@ -20,10 +20,10 @@ class DashboardErrorBoundary extends Component<{ children: ReactNode }, { hasErr
 }
 
 function DashboardContent() {
-  const { revenue, isLoading: finLoading } = useFinancials();
-  const { latest: kpiRow } = useFinancialKpis();
-  const { forecast, isLoading: forecastLoading } = useForecasting();
-  const { items: complianceItems, isLoading: complianceLoading } = useCompliance();
+  const { revenue, isLoading: finLoading, error: financialError } = useFinancials();
+  const { latest: kpiRow, error: kpiError } = useFinancialKpis();
+  const { forecast, isLoading: forecastLoading, error: forecastError } = useForecasting();
+  const { items: complianceItems, isLoading: complianceLoading, error: complianceError } = useCompliance();
   const complianceData = [
     { label: 'Compliant', value: complianceItems.filter((i) => i.status === 'compliant').length, color: '#057a55' },
     { label: 'Review', value: complianceItems.filter((i) => i.status === 'under_review').length, color: '#c27803' },
@@ -37,9 +37,15 @@ function DashboardContent() {
 
   const operatingMarginNumber = Number(kpiRow?.operating_margin);
   const hasFiniteOperatingMargin = Number.isFinite(operatingMarginNumber);
+  const hasDashboardError = Boolean(financialError || kpiError || forecastError || complianceError);
 
   return <div className={styles.dashboard}>
     <h1 className={styles.title}>Financial Overview</h1>
+    {hasDashboardError && (
+      <div className={styles.alert} role="alert">
+        Dashboard temporarily unavailable. Please refresh.
+      </div>
+    )}
     <div className={styles.kpiRow}>
       <KpiCard label="Total Revenue" value={fmt(kpiRow?.total_revenue)} trend={formatGrowth(kpiRow?.revenue_yoy_growth)} positive={Number(kpiRow?.revenue_yoy_growth ?? 0) >= 0} />
       <KpiCard label="Total Expenses" value={fmt(kpiRow?.total_expenses)} trend="—" positive={false} />

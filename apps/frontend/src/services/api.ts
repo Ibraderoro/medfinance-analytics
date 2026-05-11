@@ -71,3 +71,8 @@ export const complianceApi = {
 };
 
 export const insightsApi = { getInsights: () => apiClient.get('/insights') };
+
+export const billingApi = {
+  getSubscription: () => apiClient.get('/billing/subscription'),
+  createSubscription: (plan: 'pro' | 'enterprise') => apiClient.post('/billing/subscription', { plan }),
+};

@@ -5,7 +5,23 @@ on:
     branches: ["**"]
   pull_request:
 
+permissions:
+  actions: read
+  contents: read
+
 jobs:
+  vulnerability-scan:
+    name: Vulnerability scan (OSV)
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@9a498708959aeaef5ef730655706c5a1df1edbc2"
+    with:
+      scan-args: |-
+        -r
+        ./
+
   validate:
     runs-on: ubuntu-latest
     steps:
@@ -43,3 +59,60 @@ jobs:
 
       - name: Frontend e2e smoke test
         run: npm run test:e2e --workspace=apps/frontend
+  backend-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: medfinance
+          POSTGRES_PASSWORD: medfinance
+          POSTGRES_DB: medfinance_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U medfinance -d medfinance_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    # Deterministic test-only values for ephemeral CI integration containers; safe to hardcode for reproducible infra-backed tests.
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://medfinance:medfinance@127.0.0.1:5432/medfinance_test
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6379
+      REDIS_TLS: "false"
+      PG_SSL: "false"
+      JWT_SECRET: 12345678901234567890123456789012
+      REFRESH_TOKEN_SECRET: 22345678901234567890123456789012
+      AUDIT_EXPORT_SIGNING_SECRET: 32345678901234567890123456789012
+      STRIPE_WEBHOOK_SECRET: whsec_integration_secret
+      STRIPE_PRO_PRICE_ID: price_pro_test
+      STRIPE_ENTERPRISE_PRICE_ID: price_enterprise_test
+      ANALYTICS_SAMPLE_RATE: 1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run backend Postgres/Redis integration tests
+        run: npm run test:integration --workspace=apps/backend
+

@@ -10,9 +10,26 @@ on:
         description: 'Version tag to deploy (e.g. v1.2.3)'
         required: true
 
+permissions:
+  actions: read
+  contents: read
+
 jobs:
+  vulnerability-scan:
+    name: Vulnerability scan (OSV)
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@9a498708959aeaef5ef730655706c5a1df1edbc2"
+    with:
+      scan-args: |-
+        -r
+        ./
+
   deploy-production:
     name: Deploy to Production
+    needs: vulnerability-scan
     runs-on: ubuntu-latest
     environment: production
     permissions:
@@ -95,7 +112,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Deploy to production server
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262
         with:
           host: ${{ secrets.PROD_HOST }}
           username: ${{ secrets.PROD_USER }}

@@ -5,6 +5,7 @@ import { DashboardPage } from './pages/Dashboard';
 import { FinancialsPage } from './pages/Financials';
 import { ForecastingPage } from './pages/Forecasting';
 import { CompliancePage } from './pages/Compliance';
+import { BillingPage } from './pages/Billing';
 import { LoginPage } from './pages/Login';
 import { RegisterPage } from './pages/Register';
 import { authApi } from './services/api';
@@ -93,6 +94,7 @@ export default function App() {
           <Route path="financials" element={<FinancialsPage />} />
           <Route path="forecasting" element={<ForecastingPage />} />
           <Route path="compliance" element={<CompliancePage />} />
+          <Route path="billing" element={<BillingPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />} />
