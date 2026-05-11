@@ -16,6 +16,8 @@ const mockEnv = {
   STRIPE_SECRET_KEY: '',
   STRIPE_PRO_PRICE_ID: '',
   STRIPE_ENTERPRISE_PRICE_ID: '',
+  MFA_DELIVERY_WEBHOOK_URL: '',
+  HTTP_REQUEST_TIMEOUT_MS: 30000,
   OIDC_ISSUER: '',
   OIDC_TOKEN_URL: '',
   OIDC_USERINFO_URL: '',
@@ -56,6 +58,7 @@ beforeEach(() => {
   mockRedisGet.mockReset();
   mockRedisDel.mockReset();
   mockEnv.STRIPE_SECRET_KEY = '';
+  mockEnv.MFA_DELIVERY_WEBHOOK_URL = '';
   mockEnv.OIDC_ISSUER = '';
   mockEnv.OIDC_TOKEN_URL = '';
   mockEnv.OIDC_USERINFO_URL = '';
@@ -126,7 +129,7 @@ describe('AuthService.login', () => {
     });
   });
 
-  it('requires MFA for admin users and stores a six-digit code', async () => {
+  it('requires MFA for admin users and stores only a hashed MFA code', async () => {
     const hash = await bcrypt.hash('password123', 10);
     mockQuery
       .mockResolvedValueOnce([
@@ -153,9 +156,86 @@ describe('AuthService.login', () => {
       300,
       expect.any(String),
     );
-    const [, , serializedPayload] = mockRedisSetex.mock.calls[0];
-    const payload = JSON.parse(serializedPayload as string) as { code: string };
-    expect(payload.code).toMatch(/^\d{6}$/);
+    const [key, ttl, serializedPayload] = mockRedisSetex.mock.calls[0];
+    expect(key).toEqual(expect.stringMatching(/^auth:mfa:pending:/));
+    expect(ttl).toBe(300);
+    const payload = JSON.parse(serializedPayload as string) as { code?: string; codeHash: string; attempts: number };
+    expect(payload.code).toBeUndefined();
+    expect(payload.codeHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(payload.attempts).toBe(0);
+  });
+
+  it('delivers the plaintext MFA code through the configured webhook without returning it', async () => {
+    mockEnv.MFA_DELIVERY_WEBHOOK_URL = 'https://mfa-delivery.example.com/send';
+    const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    } as Response);
+    const hash = await bcrypt.hash('password123', 10);
+    mockQuery
+      .mockResolvedValueOnce([{
+        id: 'admin-uuid',
+        email: 'admin@example.com',
+        password_hash: hash,
+        first_name: 'Ada',
+        last_name: 'Admin',
+        role: 'admin',
+        organization_id: 'org-uuid',
+        is_active: true,
+      }])
+      .mockResolvedValueOnce([]);
+    mockRedisSetex.mockResolvedValueOnce('OK');
+
+    const result = await service.login('admin@example.com', 'password123', 'org-uuid');
+
+    expect(result).toEqual({ status: 'mfa_required', tempToken: expect.any(String) });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://mfa-delivery.example.com/send',
+      expect.objectContaining({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: expect.any(String),
+      }),
+    );
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string) as { code: string; email: string };
+    expect(body.email).toBe('admin@example.com');
+    expect(body.code).toMatch(/^\d{6}$/);
+    expect(JSON.stringify(result)).not.toContain(body.code);
+  });
+
+  it('increments MFA attempts without exposing the raw code and expires after repeated failures', async () => {
+    const tempToken = 'temp-token-123';
+    mockRedisGet
+      .mockResolvedValueOnce(JSON.stringify({
+        userId: 'admin-uuid',
+        organizationId: 'org-uuid',
+        codeHash: '0'.repeat(64),
+        attempts: 3,
+      }))
+      .mockResolvedValueOnce(JSON.stringify({
+        userId: 'admin-uuid',
+        organizationId: 'org-uuid',
+        codeHash: '0'.repeat(64),
+        attempts: 4,
+      }));
+    mockRedisSetex.mockResolvedValueOnce('OK');
+    mockRedisDel.mockResolvedValueOnce(1);
+
+    await expect(service.verifyMfa(tempToken, '111111')).rejects.toMatchObject({
+      statusCode: 401,
+      message: 'Invalid MFA code',
+    });
+    expect(mockRedisSetex).toHaveBeenCalledWith(
+      `auth:mfa:pending:${tempToken}`,
+      300,
+      expect.stringContaining('"attempts":4'),
+    );
+
+    await expect(service.verifyMfa(tempToken, '111111')).rejects.toMatchObject({
+      statusCode: 401,
+      message: 'Invalid or expired MFA token',
+    });
+    expect(mockRedisDel).toHaveBeenCalledWith(`auth:mfa:pending:${tempToken}`);
   });
 
   it('throws 401 when account is inactive', async () => {

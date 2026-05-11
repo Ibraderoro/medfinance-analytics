@@ -45,6 +45,7 @@ export async function handleStripeWebhook(
   next: NextFunction,
 ): Promise<void> {
   let dedupKey: string | undefined;
+  let reservedEventId: string | undefined;
 
   try {
     const signature = req.headers['stripe-signature'];
@@ -87,14 +88,39 @@ export async function handleStripeWebhook(
         res.success({ received: true, duplicate: true });
         return;
       }
+
+      let persistedReservation = false;
+      try {
+        persistedReservation = await billingService.reserveWebhookEvent(event.id, event.type);
+      } catch (error) {
+        await redis.del(dedupKey).catch(() => undefined);
+        throw error;
+      }
+
+      if (!persistedReservation) {
+        await redis.del(dedupKey).catch(() => undefined);
+        res.success({ received: true, duplicate: true });
+        return;
+      }
+      reservedEventId = event.id;
     }
 
     try {
       await billingService.handleWebhookEvent(event);
+      if (reservedEventId) {
+        await billingService.markWebhookEventProcessed(reservedEventId);
+      }
     } catch (err) {
       if (dedupKey) {
         try {
           await redis.del(dedupKey);
+        } catch {
+          // Preserve the original webhook processing error so Stripe can retry the event.
+        }
+      }
+      if (reservedEventId) {
+        try {
+          await billingService.releaseWebhookEventReservation(reservedEventId);
         } catch {
           // Preserve the original webhook processing error so Stripe can retry the event.
         }

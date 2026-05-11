@@ -11,8 +11,7 @@
     "lint:fix": "eslint 'src/**/*.{ts,tsx}' --fix",
     "test": "jest --coverage",
     "clean": "rm -rf dist",
-    "pretest:e2e": "playwright install chromium",
-    "test:e2e": "playwright test --config=playwright.config.ts",
+    "test:e2e": "node scripts/ensure-playwright-browser.js && playwright test --config=playwright.config.ts",
     "test:e2e:install": "playwright install --with-deps chromium"
   },
   "dependencies": {

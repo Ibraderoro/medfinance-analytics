@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { logger } from '../utils/logger';
 
 function requireEnv(key: string): string {
   const value = process.env[key];
@@ -70,6 +71,32 @@ function isLocalhost(hostname: string): boolean {
   return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname.endsWith('.localhost');
 }
 
+function validateMfaWebhookUrl(value = optionalEnv('MFA_DELIVERY_WEBHOOK_URL')): string {
+  if (!value) {
+    return '';
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    logger.error('Invalid MFA delivery webhook URL', { key: 'MFA_DELIVERY_WEBHOOK_URL', reason: 'invalid_url' });
+    throw new Error('MFA_DELIVERY_WEBHOOK_URL must be a valid URL');
+  }
+
+  if (parsed.protocol === 'https:' || (parsed.protocol === 'http:' && isLocalhost(parsed.hostname))) {
+    return value;
+  }
+
+  logger.error('Invalid MFA delivery webhook URL', {
+    key: 'MFA_DELIVERY_WEBHOOK_URL',
+    reason: 'insecure_protocol',
+    protocol: parsed.protocol,
+    hostname: parsed.hostname,
+  });
+  throw new Error('MFA_DELIVERY_WEBHOOK_URL must use HTTPS unless it targets localhost');
+}
+
 function requireSecureUrl(key: keyof OidcConfig, value: string): void {
   let parsed: URL;
   try {
@@ -113,6 +140,7 @@ function validateOidcConfig(config: OidcConfig): OidcConfig {
 
 const jwtSecret = requireMinLength(requireEnv('JWT_SECRET'), 'JWT_SECRET', 32);
 const refreshTokenSecret = requireMinLength(requireEnv('REFRESH_TOKEN_SECRET'), 'REFRESH_TOKEN_SECRET', 32);
+const mfaDeliveryWebhookUrl = validateMfaWebhookUrl(optionalEnv('MFA_DELIVERY_WEBHOOK_URL'));
 const oidcConfig = validateOidcConfig({
   OIDC_ISSUER: optionalEnv('OIDC_ISSUER'),
   OIDC_TOKEN_URL: optionalEnv('OIDC_TOKEN_URL'),
@@ -175,6 +203,7 @@ export const env = {
   STRIPE_WEBHOOK_SECRET: optionalEnv('STRIPE_WEBHOOK_SECRET'),
   STRIPE_PRO_PRICE_ID: optionalEnv('STRIPE_PRO_PRICE_ID'),
   STRIPE_ENTERPRISE_PRICE_ID: optionalEnv('STRIPE_ENTERPRISE_PRICE_ID'),
+  MFA_DELIVERY_WEBHOOK_URL: mfaDeliveryWebhookUrl,
   ...oidcConfig,
 
 
