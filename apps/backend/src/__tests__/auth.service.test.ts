@@ -16,6 +16,8 @@ const mockEnv = {
   STRIPE_SECRET_KEY: '',
   STRIPE_PRO_PRICE_ID: '',
   STRIPE_ENTERPRISE_PRICE_ID: '',
+  MFA_DELIVERY_WEBHOOK_URL: '',
+  HTTP_REQUEST_TIMEOUT_MS: 30000,
   OIDC_ISSUER: '',
   OIDC_TOKEN_URL: '',
   OIDC_USERINFO_URL: '',
@@ -56,6 +58,7 @@ beforeEach(() => {
   mockRedisGet.mockReset();
   mockRedisDel.mockReset();
   mockEnv.STRIPE_SECRET_KEY = '';
+  mockEnv.MFA_DELIVERY_WEBHOOK_URL = '';
   mockEnv.OIDC_ISSUER = '';
   mockEnv.OIDC_TOKEN_URL = '';
   mockEnv.OIDC_USERINFO_URL = '';
@@ -162,6 +165,43 @@ describe('AuthService.login', () => {
     expect(payload.attempts).toBe(0);
   });
 
+  it('delivers the plaintext MFA code through the configured webhook without returning it', async () => {
+    mockEnv.MFA_DELIVERY_WEBHOOK_URL = 'https://mfa-delivery.example.com/send';
+    const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    } as Response);
+    const hash = await bcrypt.hash('password123', 10);
+    mockQuery
+      .mockResolvedValueOnce([{
+        id: 'admin-uuid',
+        email: 'admin@example.com',
+        password_hash: hash,
+        first_name: 'Ada',
+        last_name: 'Admin',
+        role: 'admin',
+        organization_id: 'org-uuid',
+        is_active: true,
+      }])
+      .mockResolvedValueOnce([]);
+    mockRedisSetex.mockResolvedValueOnce('OK');
+
+    const result = await service.login('admin@example.com', 'password123', 'org-uuid');
+
+    expect(result).toEqual({ status: 'mfa_required', tempToken: expect.any(String) });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://mfa-delivery.example.com/send',
+      expect.objectContaining({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: expect.any(String),
+      }),
+    );
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string) as { code: string; email: string };
+    expect(body.email).toBe('admin@example.com');
+    expect(body.code).toMatch(/^\d{6}$/);
+    expect(JSON.stringify(result)).not.toContain(body.code);
+  });
 
   it('increments MFA attempts without exposing the raw code and expires after repeated failures', async () => {
     const tempToken = 'temp-token-123';

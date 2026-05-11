@@ -89,8 +89,16 @@ export async function handleStripeWebhook(
         return;
       }
 
-      const persistedReservation = await billingService.reserveWebhookEvent(event.id, event.type);
+      let persistedReservation = false;
+      try {
+        persistedReservation = await billingService.reserveWebhookEvent(event.id, event.type);
+      } catch (error) {
+        await redis.del(dedupKey).catch(() => undefined);
+        throw error;
+      }
+
       if (!persistedReservation) {
+        await redis.del(dedupKey).catch(() => undefined);
         res.success({ received: true, duplicate: true });
         return;
       }

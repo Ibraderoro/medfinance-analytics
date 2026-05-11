@@ -335,7 +335,7 @@ describe('Critical route integration', () => {
     );
     expect(mockQuery).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO stripe_webhook_events'),
-      ['evt_processed', 'invoice.paid'],
+      ['evt_processed', 'invoice.paid', 600],
     );
     expect(mockQuery).toHaveBeenCalledWith(
       expect.stringContaining('UPDATE stripe_webhook_events'),
@@ -404,7 +404,35 @@ describe('Critical route integration', () => {
     expect(mockQuery).toHaveBeenCalledTimes(1);
     expect(mockQuery).toHaveBeenCalledWith(
       expect.stringContaining('INSERT INTO stripe_webhook_events'),
-      ['evt_duplicate_persistent', 'invoice.paid'],
+      ['evt_duplicate_persistent', 'invoice.paid', 600],
+    );
+    expect(mockRedisDel).toHaveBeenCalledWith('billing:webhook:event:evt_duplicate_persistent');
+  });
+
+  it('POST /billing/webhook clears Redis dedupe when persistent reservation throws', async () => {
+    mockQuery.mockRejectedValueOnce(new Error('database unavailable'));
+    const payload = Buffer.from(JSON.stringify({
+      id: 'evt_reservation_error',
+      type: 'invoice.paid',
+      data: {
+        object: {
+          customer: 'cus_reservation_error',
+          subscription: 'sub_reservation_error',
+          lines: { data: [{ price: { id: 'price_pro' } }] },
+        },
+      },
+    }));
+
+    const result = await rawPost('/api/v1/billing/webhook', payload, {
+      'stripe-signature': stripeSignature(payload),
+    });
+
+    expect(result.status).toBe(500);
+    expect(result.body.success).toBe(false);
+    expect(mockRedisDel).toHaveBeenCalledWith('billing:webhook:event:evt_reservation_error');
+    expect(mockQuery).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO stripe_webhook_events'),
+      ['evt_reservation_error', 'invoice.paid', 600],
     );
   });
 

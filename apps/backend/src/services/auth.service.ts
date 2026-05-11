@@ -8,6 +8,7 @@ import { AppError } from '../middleware/errorHandler';
 import { BillingService } from './billing.service';
 import { AuditService } from './audit.service';
 import { logger } from '../utils/logger';
+import { MfaDeliveryService } from './mfaDelivery.service';
 
 interface UserRow {
   id: string;
@@ -140,6 +141,8 @@ export class AuthService {
   private readonly billingService = new BillingService();
 
   private readonly auditService = new AuditService();
+
+  private readonly mfaDeliveryService = new MfaDeliveryService();
 
   private readonly redis = getRedis();
 
@@ -307,8 +310,9 @@ export class AuthService {
     if (user.role === 'admin') {
       const tempToken = crypto.randomUUID();
       const mfaCode = this.generateMfaCode();
+      const mfaKey = `auth:mfa:pending:${tempToken}`;
       await this.redis.setex(
-        `auth:mfa:pending:${tempToken}`,
+        mfaKey,
         MFA_TTL_SECONDS,
         JSON.stringify({
           userId: user.id,
@@ -318,18 +322,32 @@ export class AuthService {
         }),
       );
 
+      let delivery;
+      try {
+        delivery = await this.mfaDeliveryService.sendMfaCode({
+          userId: user.id,
+          email: user.email,
+          organizationId: user.organization_id,
+          code: mfaCode,
+        });
+      } catch (error) {
+        await this.redis.del(mfaKey).catch(() => undefined);
+        throw error;
+      }
+
       await this.auditService.log({
         action: 'admin_mfa_required',
         entityType: 'user',
         entityId: user.id,
         performedBy: user.id,
         organizationId: user.organization_id,
-        metadata: { email: user.email, delivery: 'out_of_band_required' },
+        metadata: { email: user.email, delivery: delivery.method },
       });
 
-      logger.info('Admin MFA challenge created; deliver code via configured out-of-band channel', {
+      logger.info('Admin MFA challenge delivered', {
         userId: user.id,
         organizationId: user.organization_id,
+        delivery: delivery.method,
       });
 
       return {
