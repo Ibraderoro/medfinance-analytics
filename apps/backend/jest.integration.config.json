@@ -17,6 +17,6 @@
     ]
   },
   "setupFiles": [
-    "<rootDir>/src/__tests__/setup-env.ts"
+    "<rootDir>/src/__tests__/integration/setup-integration-env.ts"
   ]
 }

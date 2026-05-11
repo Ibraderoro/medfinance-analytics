@@ -1,7 +1,3 @@
-process.env.STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET ?? 'whsec_integration_secret';
-process.env.STRIPE_PRO_PRICE_ID = process.env.STRIPE_PRO_PRICE_ID ?? 'price_pro_test';
-process.env.STRIPE_ENTERPRISE_PRICE_ID = process.env.STRIPE_ENTERPRISE_PRICE_ID ?? 'price_enterprise_test';
-
 import crypto from 'node:crypto';
 import http from 'node:http';
 import { Pool } from 'pg';
