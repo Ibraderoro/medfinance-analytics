@@ -23,6 +23,7 @@ interface UserRow {
 type UserIdentity = Pick<UserRow, 'id' | 'email' | 'role' | 'organization_id'>;
 const ALLOWED_ROLES = new Set(['admin', 'analyst', 'viewer']);
 const MFA_TTL_SECONDS = 5 * 60;
+const MFA_MAX_ATTEMPTS = 5;
 const OIDC_REQUEST_TIMEOUT_MS = 10_000;
 
 function authError(message: string): AppError {
@@ -94,11 +95,30 @@ function resolveOidcIssuer(): string {
   }
 }
 
-function hashRefreshToken(token: string): string {
+function hmacToken(token: string, secret: string): string {
   return crypto
-    .createHmac('sha256', env.REFRESH_TOKEN_SECRET)
+    .createHmac('sha256', secret)
     .update(token)
     .digest('hex');
+}
+
+function hashRefreshToken(token: string): string {
+  return hmacToken(token, env.REFRESH_TOKEN_SECRET);
+}
+
+function hashMfaCode(tempToken: string, code: string): string {
+  return hmacToken(`${tempToken}:${code.trim()}`, env.JWT_SECRET);
+}
+
+function constantTimeEqual(left: string, right: string): boolean {
+  const leftBuffer = Buffer.from(left, 'hex');
+  const rightBuffer = Buffer.from(right, 'hex');
+
+  if (leftBuffer.length !== rightBuffer.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(leftBuffer, rightBuffer);
 }
 
 function refreshExpiryToDays(expiresIn: string): number {
@@ -290,7 +310,12 @@ export class AuthService {
       await this.redis.setex(
         `auth:mfa:pending:${tempToken}`,
         MFA_TTL_SECONDS,
-        JSON.stringify({ userId: user.id, code: mfaCode, organizationId: user.organization_id }),
+        JSON.stringify({
+          userId: user.id,
+          codeHash: hashMfaCode(tempToken, mfaCode),
+          organizationId: user.organization_id,
+          attempts: 0,
+        }),
       );
 
       await this.auditService.log({
@@ -299,7 +324,12 @@ export class AuthService {
         entityId: user.id,
         performedBy: user.id,
         organizationId: user.organization_id,
-        metadata: { email: user.email },
+        metadata: { email: user.email, delivery: 'out_of_band_required' },
+      });
+
+      logger.info('Admin MFA challenge created; deliver code via configured out-of-band channel', {
+        userId: user.id,
+        organizationId: user.organization_id,
       });
 
       return {
@@ -333,8 +363,22 @@ export class AuthService {
       throw authError('Invalid or expired MFA token');
     }
 
-    const parsed = JSON.parse(raw) as { userId: string; code: string; organizationId: string };
-    if (parsed.code !== code.trim()) {
+    const parsed = JSON.parse(raw) as { userId: string; codeHash?: string; code?: string; organizationId: string; attempts?: number };
+    const expectedHash = parsed.codeHash ?? (parsed.code ? hashMfaCode(tempToken, parsed.code) : '');
+    const providedHash = hashMfaCode(tempToken, code);
+
+    if (!expectedHash || !constantTimeEqual(expectedHash, providedHash)) {
+      const attempts = (parsed.attempts ?? 0) + 1;
+      if (attempts >= MFA_MAX_ATTEMPTS) {
+        await this.redis.del(key);
+        throw authError('Invalid or expired MFA token');
+      }
+
+      await this.redis.setex(
+        key,
+        MFA_TTL_SECONDS,
+        JSON.stringify({ ...parsed, code: undefined, codeHash: expectedHash, attempts }),
+      );
       throw authError('Invalid MFA code');
     }
 

@@ -70,6 +70,35 @@ function configurationError(message: string): AppError {
 
 
 export class BillingService {
+
+  async reserveWebhookEvent(eventId: string, eventType: string): Promise<boolean> {
+    const rows = await query<{ id: string }>(
+      `INSERT INTO stripe_webhook_events (id, event_type, status)
+       VALUES ($1, $2, 'processing')
+       ON CONFLICT (id) DO NOTHING
+       RETURNING id`,
+      [eventId, eventType],
+    );
+
+    return rows.length > 0;
+  }
+
+  async markWebhookEventProcessed(eventId: string): Promise<void> {
+    await query(
+      `UPDATE stripe_webhook_events
+       SET status = 'processed', processed_at = NOW()
+       WHERE id = $1`,
+      [eventId],
+    );
+  }
+
+  async releaseWebhookEventReservation(eventId: string): Promise<void> {
+    await query(
+      `DELETE FROM stripe_webhook_events
+       WHERE id = $1 AND status = 'processing'`,
+      [eventId],
+    );
+  }
   private async upsertStripeSubscription(input: {
     stripeCustomerId: string;
     stripeSubscriptionId: string;
