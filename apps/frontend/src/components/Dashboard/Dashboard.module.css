@@ -10,6 +10,16 @@
   color: var(--color-text);
 }
 
+
+.alert {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  color: var(--color-danger);
+  font-weight: 600;
+  padding: .85rem 1rem;
+}
+
 .kpiRow {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
