@@ -10,14 +10,46 @@
   "coverageDirectory": "coverage",
   "collectCoverageFrom": [
     "src/**/*.ts",
-    "!src/**/*.d.ts"
+    "!src/**/*.d.ts",
+    "!src/__tests__/**",
+    "!src/test/**"
   ],
   "coverageThreshold": {
     "global": {
-      "branches": 30,
-      "functions": 38,
-      "lines": 44,
-      "statements": 43
+      "branches": 37,
+      "functions": 44,
+      "lines": 49,
+      "statements": 48
+    },
+    "./src/services/auth.service.ts": {
+      "branches": 49,
+      "functions": 73,
+      "lines": 72,
+      "statements": 70
+    },
+    "./src/services/billing.service.ts": {
+      "branches": 31,
+      "functions": 76,
+      "lines": 54,
+      "statements": 52
+    },
+    "./src/middleware/tenantContext.ts": {
+      "branches": 50,
+      "functions": 85,
+      "lines": 72,
+      "statements": 71
+    },
+    "./src/services/financials.service.ts": {
+      "branches": 22,
+      "functions": 25,
+      "lines": 48,
+      "statements": 45
+    },
+    "./src/services/forecasting/forecastingMath.ts": {
+      "branches": 70,
+      "functions": 90,
+      "lines": 90,
+      "statements": 90
     }
   },
   "transform": {
