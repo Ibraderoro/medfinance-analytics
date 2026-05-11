@@ -1,7 +1,20 @@
 #!/usr/bin/env node
 const fs = require('fs');
 const { spawnSync } = require('child_process');
-const { chromium } = require('playwright');
+let chromium;
+
+try {
+  ({ chromium } = require('playwright'));
+} catch (error) {
+  console.error(
+    [
+      'Playwright is not installed.',
+      'Run `npm ci` (or `npm install`) to install project dependencies before running E2E tests.',
+      error.message,
+    ].join('\n'),
+  );
+  process.exit(1);
+}
 
 const executablePath = chromium.executablePath();
 
@@ -27,4 +40,9 @@ if (result.error) {
   process.exit(1);
 }
 
-process.exit(result.status ?? 1);
+if (typeof result.status !== 'number') {
+  console.error('Playwright command did not return an exit status.');
+  process.exit(1);
+}
+
+process.exit(result.status);
