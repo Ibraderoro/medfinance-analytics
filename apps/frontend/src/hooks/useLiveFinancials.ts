@@ -1,6 +1,10 @@
 import { useEffect } from 'react';
 
-const BASE_URL = import.meta.env.VITE_API_URL ?? '/api/v1';
+declare const __MEDFINANCE_API_URL__: string | undefined;
+
+const BASE_URL = typeof __MEDFINANCE_API_URL__ !== 'undefined' && __MEDFINANCE_API_URL__
+  ? __MEDFINANCE_API_URL__
+  : '/api/v1';
 
 function buildLiveFinancialsUrl(): string {
   if (BASE_URL.startsWith('http://') || BASE_URL.startsWith('https://')) {

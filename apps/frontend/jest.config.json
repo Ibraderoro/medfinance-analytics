@@ -12,7 +12,8 @@
   ],
   "moduleNameMapper": {
     "^@/(.*)$": "<rootDir>/src/$1",
-    "\\.(css|less|scss|sass)$": "<rootDir>/src/test/styleMock.ts"
+    "\\.(css|less|scss|sass)$": "<rootDir>/src/test/styleMock.ts",
+    "^d3$": "<rootDir>/../../node_modules/d3/dist/d3.js"
   },
   "collectCoverageFrom": [
     "src/**/*.{ts,tsx}",
