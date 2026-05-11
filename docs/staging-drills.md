@@ -141,8 +141,8 @@ Recommended smoke profile:
 
 ```bash
 npx autocannon --connections 25 --duration 120 --pipelining 1 "$STAGING_URL/api/v1/health/ready"
-npx autocannon --connections 10 --duration 120 --headers "authorization=Bearer <staging-test-token>" "$STAGING_URL/api/v1/financials/kpis"
-npx autocannon --connections 10 --duration 120 --headers "authorization=Bearer <staging-test-token>" "$STAGING_URL/api/v1/compliance/status"
+npx autocannon --connections 10 --duration 120 --headers "Cookie=medfinance_access_token=<staging-access-cookie>" "$STAGING_URL/api/v1/financials/kpis"
+npx autocannon --connections 10 --duration 120 --headers "Cookie=medfinance_access_token=<staging-access-cookie>" "$STAGING_URL/api/v1/compliance/status"
 ```
 
 Record:

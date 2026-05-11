@@ -6,9 +6,12 @@
 - **Format**: JSON request/response bodies.
 - **Authentication**:
   - `/health` is public.
-  - `/financials/*`, `/forecasting/*`, and `/compliance/*` require `Authorization: Bearer <JWT>`.
+  - Browser clients authenticate through HttpOnly cookies set by `/auth/login`, `/auth/register`, `/auth/mfa/verify`, and `/auth/refresh`.
+  - Protected endpoints, including `/financials/*`, `/forecasting/*`, `/compliance/*`, `/billing/*`, and `/insights`, require the `medfinance_access_token` cookie.
+  - Unsafe methods require the readable `csrf_token` cookie value to be echoed in the `x-csrf-token` header, except first-time auth bootstrap requests and Stripe webhooks.
 - **Error behavior**:
-  - Invalid/missing bearer token returns `401`.
+  - Invalid/missing auth cookie returns `401`.
+  - Missing or mismatched CSRF token returns `403`.
   - Health endpoint may return `503` if dependencies are degraded.
 
 ## 2) Endpoint Overview
@@ -270,7 +273,8 @@ Returns an explainable business-health assessment derived from recent monthly KP
 
 ```text
 Client (React) 
-   │  GET /api/v1/... + Bearer JWT
+   │  GET /api/v1/... + HttpOnly auth cookies
+   │  POST/PUT/PATCH/DELETE + x-csrf-token
    ▼
 Express Router
    │  route match + auth middleware (protected groups)
@@ -289,7 +293,9 @@ JSON Response
 
 ## 5) Security Notes for Integrators
 
-- Include `Authorization: Bearer <token>` for all non-health endpoints.
+- Use the cookie-based browser session flow: call `/auth/login` (or `/auth/register`/MFA/OIDC completion) with credentials enabled so the API can set `medfinance_access_token` and `medfinance_refresh_token` as HttpOnly cookies.
+- Send protected API requests with credentials included; do not store JWTs in `localStorage` for the SPA.
+- For unsafe methods, read the non-HttpOnly `csrf_token` cookie and send the same value in the `x-csrf-token` header.
 - Token expiry or invalid signature results in `401` and should trigger client-side re-authentication.
 - Respect API timeout expectations (frontend client defaults to 15 seconds).
 
