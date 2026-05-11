@@ -8,12 +8,15 @@ on:
 permissions:
   actions: read
   contents: read
-  security-events: write
 
 jobs:
   vulnerability-scan:
     name: Vulnerability scan (OSV)
-    uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.3.8"
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@9a498708959aeaef5ef730655706c5a1df1edbc2"
     with:
       scan-args: |-
         -r
@@ -58,6 +61,7 @@ jobs:
         run: npm run test:e2e --workspace=apps/frontend
   backend-integration:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:16
