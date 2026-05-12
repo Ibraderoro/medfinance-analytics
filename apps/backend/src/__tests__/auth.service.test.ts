@@ -238,6 +238,36 @@ describe('AuthService.login', () => {
     expect(mockRedisDel).toHaveBeenCalledWith(`auth:mfa:pending:${tempToken}`);
   });
 
+  it('fails closed and removes the pending MFA challenge when production MFA delivery is not configured', async () => {
+    mockEnv.isProduction = () => true;
+    const hash = await bcrypt.hash('password123', 10);
+    mockQuery.mockResolvedValueOnce([{
+      id: 'admin-uuid',
+      email: 'admin@example.com',
+      password_hash: hash,
+      first_name: 'Ada',
+      last_name: 'Admin',
+      role: 'admin',
+      organization_id: 'org-uuid',
+      is_active: true,
+    }]);
+    mockRedisSetex.mockResolvedValueOnce('OK');
+    mockRedisDel.mockResolvedValueOnce(1);
+
+    await expect(service.login('admin@example.com', 'password123', 'org-uuid')).rejects.toMatchObject({
+      statusCode: 500,
+      message: 'MFA delivery requires MFA_DELIVERY_WEBHOOK_URL in production',
+    });
+
+    const pendingKey = mockRedisSetex.mock.calls[0][0];
+    expect(pendingKey).toEqual(expect.stringMatching(/^auth:mfa:pending:/));
+    expect(mockRedisDel).toHaveBeenCalledWith(pendingKey);
+    expect(mockQuery).not.toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO refresh_tokens'),
+      expect.any(Array),
+    );
+  });
+
   it('throws 401 when account is inactive', async () => {
     mockQuery.mockResolvedValueOnce([
       {
@@ -394,7 +424,6 @@ describe('AuthService.register', () => {
   });
 });
 
-
 describe('AuthService OIDC SSO', () => {
   const service = new AuthService();
 
@@ -457,6 +486,70 @@ describe('AuthService OIDC SSO', () => {
       ['sso-user-uuid', 'org-uuid', 'https://issuer.example.com', 'provider-subject'],
     );
     expect(mockRedisDel).toHaveBeenCalledWith('auth:sso:state:550e8400-e29b-41d4-a716-446655440000');
+    expect(result).toHaveProperty('accessToken');
+    expect(result).toHaveProperty('refreshToken');
+  });
+
+  it.each([
+    {
+      providerName: 'Okta',
+      issuer: 'https://acme.okta.com/oauth2/default',
+      tokenUrl: 'https://acme.okta.com/oauth2/default/v1/token',
+      userinfoUrl: 'https://acme.okta.com/oauth2/default/v1/userinfo',
+      subject: 'okta-user-subject',
+    },
+    {
+      providerName: 'Auth0',
+      issuer: 'https://login.acme.example.com/',
+      tokenUrl: 'https://login.acme.example.com/oauth/token',
+      userinfoUrl: 'https://login.acme.example.com/userinfo',
+      subject: 'auth0|user-subject',
+    },
+  ])('completes a provider-specific OIDC callback for $providerName', async ({ issuer, tokenUrl, userinfoUrl, subject }) => {
+    mockEnv.OIDC_ISSUER = issuer;
+    mockEnv.OIDC_TOKEN_URL = tokenUrl;
+    mockEnv.OIDC_USERINFO_URL = userinfoUrl;
+    mockEnv.OIDC_CLIENT_ID = 'client-id';
+    mockEnv.OIDC_CLIENT_SECRET = 'client-secret';
+    mockEnv.OIDC_REDIRECT_URI = 'https://app.example.com/auth/oidc/callback';
+
+    mockRedisGet.mockResolvedValueOnce(JSON.stringify({
+      userId: 'sso-user-uuid',
+      email: 'sso@example.com',
+      provider: 'oidc',
+      organizationId: 'org-uuid',
+    }));
+    const fetchMock = jest.spyOn(global, 'fetch')
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'oidc-access-token' }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ sub: subject, email: 'sso@example.com', email_verified: true }) } as Response);
+    mockQuery
+      .mockResolvedValueOnce([{
+        id: 'sso-user-uuid',
+        email: 'sso@example.com',
+        role: 'viewer',
+        organization_id: 'org-uuid',
+        is_active: true,
+      }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    mockRedisDel.mockResolvedValueOnce(1);
+
+    const result = await service.completeOidcLogin('550e8400-e29b-41d4-a716-446655440000', 'provider-auth-code');
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, tokenUrl, expect.objectContaining({ method: 'POST' }));
+    const tokenBody = fetchMock.mock.calls[0][1]?.body as URLSearchParams;
+    expect(tokenBody.get('grant_type')).toBe('authorization_code');
+    expect(tokenBody.get('code')).toBe('provider-auth-code');
+    expect(tokenBody.get('client_id')).toBe('client-id');
+    expect(tokenBody.get('redirect_uri')).toBe('https://app.example.com/auth/oidc/callback');
+    expect(fetchMock).toHaveBeenNthCalledWith(2, userinfoUrl, expect.objectContaining({
+      headers: { Authorization: 'Bearer oidc-access-token' },
+    }));
+    expect(mockQuery).toHaveBeenCalledWith(
+      expect.stringContaining('AND idp_issuer = $3'),
+      ['sso-user-uuid', 'org-uuid', issuer, subject],
+    );
     expect(result).toHaveProperty('accessToken');
     expect(result).toHaveProperty('refreshToken');
   });
