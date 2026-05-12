@@ -16,6 +16,13 @@ This runbook is the evidence template and command checklist for the required sta
 
 > Agent validation note for May 11, 2026: the local agent environment does not have staging credentials, Docker, `psql`, or `pg_dump`, so live staging drills could not be executed from this workspace. Use the commands below during the staging release window and paste measured results into this document or the release ticket.
 
+
+## Latest evidence packet
+
+- [Staging Drill Evidence — 2026-05-11](./staging-drill-evidence-2026-05-11.md) records the latest agent attempt.
+- Status: **blocked; drills not completed** because no staging connection variables or SSH credentials are available in the agent environment, Docker is not installed, and local package installation is blocked by package-repository `403 Forbidden` responses.
+- Production impact: do **not** treat the staging operational gate as satisfied until the release owner runs the drills below in staging and replaces the blocked evidence packet with measured transcripts and artifacts.
+
 ## Common setup
 
 Record immutable inputs before starting any drill:
