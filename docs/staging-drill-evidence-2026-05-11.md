@@ -67,4 +67,4 @@ The release owner must run the commands in `docs/staging-drills.md` in a provisi
 
 ## Verdict for May 11, 2026
 
-This attempt **does not satisfy** the staging-drill production gate. The repository should continue to show these drills as pending until a release owner executes them with real staging access and records the required evidence.
+This attempt **does not satisfy** the staging-drill production gate. The repository should continue to show these drills as pending until a release owner executes them with real staging access and records the required evidence. `npm run staging:drills:check` is expected to fail against this packet and block production deployment until that replacement evidence is committed or supplied via `STAGING_DRILL_EVIDENCE`.

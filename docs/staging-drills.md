@@ -22,6 +22,7 @@ This runbook is the evidence template and command checklist for the required sta
 - [Staging Drill Evidence — 2026-05-11](./staging-drill-evidence-2026-05-11.md) records the latest agent attempt.
 - Status: **blocked; drills not completed** because no staging connection variables or SSH credentials are available in the agent environment, Docker is not installed, and local package installation is blocked by package-repository `403 Forbidden` responses.
 - Production impact: do **not** treat the staging operational gate as satisfied until the release owner runs the drills below in staging and replaces the blocked evidence packet with measured transcripts and artifacts.
+- Machine gate: production deployment runs `npm run staging:drills:check`, which fails until the evidence packet has `**Result: passed; drills completed.**` and each required drill row is marked passed/completed/satisfied.
 
 ## Common setup
 

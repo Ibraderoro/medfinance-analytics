@@ -56,8 +56,8 @@ jobs:
       - name: Run lint checks
         run: npm run lint
 
-      - name: Run tests
-        run: npm test
+      - name: Run production coverage gate
+        run: npm run coverage:prod
         env:
           NODE_ENV: test
           DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
@@ -68,8 +68,23 @@ jobs:
           REFRESH_TOKEN_SECRET: ${{ secrets.PROD_REFRESH_TOKEN_SECRET }}
           AUDIT_EXPORT_SIGNING_SECRET: ${{ secrets.TEST_AUDIT_EXPORT_SIGNING_SECRET }}
 
+      - name: Production dependency audit
+        run: npm run audit:prod
+
       - name: Build all workspaces
         run: npm run build
+
+      - name: Install Playwright browser
+        run: npm run test:e2e:install --workspace=apps/frontend
+
+      - name: Frontend e2e smoke test
+        run: npm run test:e2e --workspace=apps/frontend
+
+      - name: Verify staging operational drill gate
+        run: npm run staging:drills:check
+
+      - name: Verify external provider evidence gate
+        run: npm run production:external-evidence:check
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

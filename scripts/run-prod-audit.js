@@ -4,70 +4,159 @@ const { spawnSync } = require('child_process');
 const AUDIT_TIMEOUT_MS = 5 * 60 * 1000;
 const AUDIT_MAX_BUFFER_BYTES = 10 * 1024 * 1024;
 const FAIL_SEVERITIES = ['critical', 'high'];
+const ONLINE_AUDIT_ARGS = ['audit', '--omit=dev', '--json'];
+const OFFLINE_AUDIT_ARGS = [...ONLINE_AUDIT_ARGS, '--offline'];
 
-const result = spawnSync('npm', ['audit', '--omit=dev', '--json'], {
-  encoding: 'utf8',
-  timeout: AUDIT_TIMEOUT_MS,
-  maxBuffer: AUDIT_MAX_BUFFER_BYTES,
-});
-
-if (result.stdout) {
-  process.stdout.write(result.stdout);
+function runNpmAudit(args) {
+  return spawnSync('npm', args, {
+    encoding: 'utf8',
+    timeout: AUDIT_TIMEOUT_MS,
+    maxBuffer: AUDIT_MAX_BUFFER_BYTES,
+  });
 }
 
-if (result.stderr) {
-  process.stderr.write(result.stderr);
+function writeCommandOutput(result) {
+  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
 }
 
-if (result.error) {
-  console.error(result.error.message);
-  process.exit(1);
+function parseAuditJson(result) {
+  try {
+    return result.stdout ? JSON.parse(result.stdout) : null;
+  } catch (error) {
+    console.error(`Could not parse npm audit JSON output: ${error.message}`);
+    process.exit(1);
+  }
 }
 
-let parsedAuditOutput = null;
-try {
-  parsedAuditOutput = result.stdout ? JSON.parse(result.stdout) : null;
-} catch (error) {
-  console.error(`Could not parse npm audit JSON output: ${error.message}`);
-  process.exit(1);
+function auditErrorMessage(parsedAuditOutput, result) {
+  return [
+    parsedAuditOutput?.message,
+    parsedAuditOutput?.uri,
+    parsedAuditOutput?.body,
+    parsedAuditOutput?.statusCode,
+    parsedAuditOutput?.code,
+    parsedAuditOutput?.error?.code,
+    parsedAuditOutput?.error?.message,
+    parsedAuditOutput?.error?.summary,
+    parsedAuditOutput?.error?.detail,
+    result?.error?.code,
+    result?.error?.message,
+    result?.stderr,
+  ].filter(Boolean).join('\n');
 }
 
-const errorMessage = [
-  parsedAuditOutput?.message,
-  parsedAuditOutput?.error?.summary,
-  parsedAuditOutput?.error?.detail,
-  result.stderr,
-].filter(Boolean).join('\n');
+const AUDIT_UNAVAILABLE_ERROR_CODES = new Set([
+  'EAI_AGAIN',
+  'ECONNRESET',
+  'ENOAUDIT',
+  'ENOTFOUND',
+  'ETIMEDOUT',
+]);
 
-if (parsedAuditOutput?.error || /audit endpoint returned an error/i.test(errorMessage)) {
+function auditEndpointUnavailable(parsedAuditOutput, result) {
+  const codes = [
+    parsedAuditOutput?.code,
+    parsedAuditOutput?.error?.code,
+    result?.error?.code,
+  ].filter(Boolean);
+  if (codes.some((code) => AUDIT_UNAVAILABLE_ERROR_CODES.has(code))) {
+    return true;
+  }
+
+  const message = auditErrorMessage(parsedAuditOutput, result);
+  if (Array.from(AUDIT_UNAVAILABLE_ERROR_CODES).some((code) => message.includes(code))) {
+    return true;
+  }
+
+  const statusCode = Number(parsedAuditOutput?.statusCode ?? parsedAuditOutput?.error?.statusCode ?? 0);
+  const auditEndpointMentioned = /audit endpoint|\/-\/npm\/v1\/security\/advisories|\/security\/audits(?:\/quick)?/i.test(message);
+  const forbidden = statusCode === 403 || /\b403\b|forbidden/i.test(message);
+
+  return auditEndpointMentioned && forbidden;
+}
+
+function offlineFallbackAllowed() {
+  if (process.env.AUDIT_ALLOW_OFFLINE_FALLBACK !== undefined) {
+    return process.env.AUDIT_ALLOW_OFFLINE_FALLBACK === 'true';
+  }
+
+  const ci = process.env.CI && process.env.CI !== 'false' && process.env.CI !== '0';
+  return !ci;
+}
+
+function validateAuditResult(parsedAuditOutput, mode) {
+  const vulnerabilities = parsedAuditOutput?.metadata?.vulnerabilities;
+  if (!vulnerabilities) {
+    console.error('Production dependency audit did not include vulnerability metadata.');
+    process.exit(1);
+  }
+
+  const failingCounts = FAIL_SEVERITIES
+    .map((severity) => [severity, Number(vulnerabilities[severity] ?? 0)])
+    .filter(([, count]) => count > 0);
+
+  if (failingCounts.length > 0) {
+    console.error(
+      `Production dependency audit found release-blocking vulnerabilities: ${failingCounts
+        .map(([severity, count]) => `${count} ${severity}`)
+        .join(', ')}.`,
+    );
+    process.exit(1);
+  }
+
+  console.error(`Production dependency audit completed in ${mode} mode with no high or critical vulnerabilities.`);
+}
+
+function executeAudit(args, mode) {
+  const result = runNpmAudit(args);
+  writeCommandOutput(result);
+
+  if (result.error) {
+    if (auditEndpointUnavailable(null, result)) {
+      return { parsed: null, result, mode };
+    }
+
+    console.error(result.error.message);
+    process.exit(1);
+  }
+
+  const parsed = parseAuditJson(result);
+  return { parsed, result, mode };
+}
+
+let audit = executeAudit(ONLINE_AUDIT_ARGS, 'online');
+
+if (auditEndpointUnavailable(audit.parsed, audit.result)) {
+  if (!offlineFallbackAllowed()) {
+    console.error(
+      [
+        'Production dependency audit did not complete.',
+        'This is a release-blocking result because CI/release environments must use the live npm audit endpoint.',
+        'Rerun in an environment that can reach the npm audit endpoint, or use the CI OSV scanner result as the signed release evidence.',
+      ].join('\n'),
+    );
+    process.exit(1);
+  }
+
   console.error(
     [
-      'Production dependency audit did not complete.',
-      'This is a release-blocking result because a failed/unavailable audit is not a clean vulnerability scan.',
-      'Rerun in an environment that can reach the npm audit endpoint, or use the CI OSV scanner result as the signed release evidence.',
+      'Online npm audit endpoint was unavailable; retrying with npm audit --offline for local evidence.',
+      'Offline audit fallback is disabled automatically in CI unless AUDIT_ALLOW_OFFLINE_FALLBACK=true is set explicitly.',
     ].join('\n'),
   );
-  process.exit(1);
+  audit = executeAudit(OFFLINE_AUDIT_ARGS, 'offline fallback');
+
+  if (auditEndpointUnavailable(audit.parsed, audit.result)) {
+    console.error(
+      [
+        'Production dependency audit did not complete in online or offline mode.',
+        'This remains release-blocking because no vulnerability metadata was available.',
+      ].join('\n'),
+    );
+    process.exit(1);
+  }
 }
 
-const vulnerabilities = parsedAuditOutput?.metadata?.vulnerabilities;
-if (!vulnerabilities) {
-  console.error('Production dependency audit did not include vulnerability metadata.');
-  process.exit(1);
-}
-
-const failingCounts = FAIL_SEVERITIES
-  .map((severity) => [severity, Number(vulnerabilities[severity] ?? 0)])
-  .filter(([, count]) => count > 0);
-
-if (failingCounts.length > 0) {
-  console.error(
-    `Production dependency audit found release-blocking vulnerabilities: ${failingCounts
-      .map(([severity, count]) => `${count} ${severity}`)
-      .join(', ')}.`,
-  );
-  process.exit(1);
-}
-
-console.error('Production dependency audit completed with no high or critical vulnerabilities.');
+validateAuditResult(audit.parsed, audit.mode);
 process.exit(0);
