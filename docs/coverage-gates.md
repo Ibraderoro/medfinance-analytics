@@ -55,7 +55,7 @@ Stage 3 should be paired with live staging drill evidence, real Postgres/Redis i
 
 ## Production coverage verification
 
-The Stage 3 target is intentionally not wired into the default `npm test` CI gate yet because current coverage remains below that production bar. Release owners should run the explicit production check before broad healthcare-finance launch:
+The Stage 3 target is intentionally not wired into the default `npm test` CI gate yet because current coverage remains below that production bar. The production deployment workflow runs the explicit production check before broad healthcare-finance launch; release owners can also run it locally:
 
 ```bash
 npm run coverage:prod

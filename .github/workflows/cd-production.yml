@@ -56,8 +56,8 @@ jobs:
       - name: Run lint checks
         run: npm run lint
 
-      - name: Run tests
-        run: npm test
+      - name: Run production coverage gate
+        run: npm run coverage:prod
         env:
           NODE_ENV: test
           DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
@@ -67,6 +67,9 @@ jobs:
           JWT_SECRET: ${{ secrets.PROD_JWT_SECRET }}
           REFRESH_TOKEN_SECRET: ${{ secrets.PROD_REFRESH_TOKEN_SECRET }}
           AUDIT_EXPORT_SIGNING_SECRET: ${{ secrets.TEST_AUDIT_EXPORT_SIGNING_SECRET }}
+
+      - name: Production dependency audit
+        run: npm run audit:prod
 
       - name: Build all workspaces
         run: npm run build
