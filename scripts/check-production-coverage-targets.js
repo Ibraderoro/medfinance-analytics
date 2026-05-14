@@ -41,7 +41,12 @@ function readCoverageSummary(summaryPath) {
     );
   }
 
-  return JSON.parse(fs.readFileSync(absolutePath, 'utf8'));
+  const coverageSummary = fs.readFileSync(absolutePath, 'utf8');
+  try {
+    return JSON.parse(coverageSummary);
+  } catch (error) {
+    throw new Error(`Malformed coverage summary JSON at ${absolutePath}: ${error.message}`);
+  }
 }
 
 function normalizePath(value) {
@@ -56,7 +61,8 @@ function findCoverageEntry(summary, gate) {
 
   return Object.entries(summary).find(([coveragePath]) => {
     const normalizedCoveragePath = normalizePath(coveragePath);
-    return normalizedCoveragePath === relativeTarget || normalizedCoveragePath.endsWith(absoluteTarget);
+    const normalizedAbsoluteCoveragePath = normalizePath(path.resolve(ROOT, coveragePath));
+    return normalizedCoveragePath === relativeTarget || normalizedAbsoluteCoveragePath === absoluteTarget;
   })?.[1];
 }
 
@@ -90,4 +96,4 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.error('Production coverage targets are met.');
+console.log('Production coverage targets are met.');
