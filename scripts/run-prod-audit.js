@@ -32,15 +32,48 @@ function parseAuditJson(result) {
 function auditErrorMessage(parsedAuditOutput, result) {
   return [
     parsedAuditOutput?.message,
+    parsedAuditOutput?.uri,
+    parsedAuditOutput?.body,
+    parsedAuditOutput?.statusCode,
+    parsedAuditOutput?.code,
+    parsedAuditOutput?.error?.code,
+    parsedAuditOutput?.error?.message,
     parsedAuditOutput?.error?.summary,
     parsedAuditOutput?.error?.detail,
-    result.stderr,
+    result?.error?.code,
+    result?.error?.message,
+    result?.stderr,
   ].filter(Boolean).join('\n');
 }
 
+const AUDIT_UNAVAILABLE_ERROR_CODES = new Set([
+  'EAI_AGAIN',
+  'ECONNRESET',
+  'ENOAUDIT',
+  'ENOTFOUND',
+  'ETIMEDOUT',
+]);
+
 function auditEndpointUnavailable(parsedAuditOutput, result) {
+  const codes = [
+    parsedAuditOutput?.code,
+    parsedAuditOutput?.error?.code,
+    result?.error?.code,
+  ].filter(Boolean);
+  if (codes.some((code) => AUDIT_UNAVAILABLE_ERROR_CODES.has(code))) {
+    return true;
+  }
+
   const message = auditErrorMessage(parsedAuditOutput, result);
-  return Boolean(parsedAuditOutput?.error) || /audit endpoint returned an error/i.test(message);
+  if (Array.from(AUDIT_UNAVAILABLE_ERROR_CODES).some((code) => message.includes(code))) {
+    return true;
+  }
+
+  const statusCode = Number(parsedAuditOutput?.statusCode ?? parsedAuditOutput?.error?.statusCode ?? 0);
+  const auditEndpointMentioned = /audit endpoint|\/-\/npm\/v1\/security\/advisories/i.test(message);
+  const forbidden = statusCode === 403 || /\b403\b|forbidden/i.test(message);
+
+  return auditEndpointMentioned && forbidden;
 }
 
 function offlineFallbackAllowed() {
@@ -80,6 +113,10 @@ function executeAudit(args, mode) {
   writeCommandOutput(result);
 
   if (result.error) {
+    if (auditEndpointUnavailable(null, result)) {
+      return { parsed: null, result, mode };
+    }
+
     console.error(result.error.message);
     process.exit(1);
   }
