@@ -70,7 +70,7 @@ function auditEndpointUnavailable(parsedAuditOutput, result) {
   }
 
   const statusCode = Number(parsedAuditOutput?.statusCode ?? parsedAuditOutput?.error?.statusCode ?? 0);
-  const auditEndpointMentioned = /audit endpoint|\/-\/npm\/v1\/security\/advisories/i.test(message);
+  const auditEndpointMentioned = /audit endpoint|\/-\/npm\/v1\/security\/advisories|\/security\/audits(?:\/quick)?/i.test(message);
   const forbidden = statusCode === 403 || /\b403\b|forbidden/i.test(message);
 
   return auditEndpointMentioned && forbidden;

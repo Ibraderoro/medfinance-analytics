@@ -35,6 +35,8 @@ These tests provide deterministic lifecycle evidence for code behavior. Before b
 3. A real payment-method failure/recovery test in Stripe test mode.
 4. MFA delivery provider monitoring evidence, including alerting on delivery failures and operational recovery steps.
 
+`npm run production:external-evidence:check` is expected to fail against this packet and block production deployment until replacement evidence includes `**Result: passed; external provider evidence completed.**` and rows marked passed/completed/satisfied for staging OIDC, Stripe webhook replay, Stripe payment failure/recovery, and MFA delivery monitoring.
+
 ## Verdict for May 12, 2026
 
 The repository now has executable backend evidence for MFA challenge/recovery safety, provider-specific OIDC callback handling, and Stripe subscription lifecycle/replay/reconciliation behavior. Production sign-off still requires live staging evidence for configured external providers.
