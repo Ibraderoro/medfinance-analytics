@@ -52,3 +52,13 @@ Target for broad healthcare-finance production confidence:
 | High-risk auth, billing, tenant, compliance, and financial modules | 85 | 75 | 90 | 85 |
 
 Stage 3 should be paired with live staging drill evidence, real Postgres/Redis integration evidence, provider-specific SSO evidence, Stripe replay/reconciliation evidence, and a clean vulnerability scan result.
+
+## Production coverage verification
+
+The Stage 3 target is intentionally not wired into the default `npm test` CI gate yet because current coverage remains below that production bar. Release owners should run the explicit production check before broad healthcare-finance launch:
+
+```bash
+npm run coverage:prod
+```
+
+This command regenerates workspace coverage summaries and then fails unless the Stage 3 global and high-risk module targets above are met. A failing result is expected until the Stage 2 and Stage 3 remediation work is complete; do not treat Stage 1 CI coverage alone as broad production sign-off evidence.
