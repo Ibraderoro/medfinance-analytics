@@ -21,12 +21,12 @@ const executablePath = chromium.executablePath();
 if (!fs.existsSync(executablePath)) {
   console.warn(
     [
-      'Skipping Playwright E2E tests: Chromium is not installed in this environment.',
+      'Playwright E2E tests cannot run because Chromium is not installed.',
       'Run `npm run test:e2e:install --workspace=apps/frontend` in an environment with access to the Playwright browser CDN, then rerun E2E tests.',
       `Expected executable: ${executablePath}`,
     ].join('\n'),
   );
-  process.exit(0);
+  process.exit(1);
 }
 
 const result = spawnSync(

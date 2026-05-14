@@ -20,7 +20,8 @@
     "audit:prod": "node scripts/run-prod-audit.js",
     "test:integration": "npm run test:integration --workspace=apps/backend",
     "coverage:prod": "npm test --workspaces --if-present -- --coverageReporters=json-summary --coverageReporters=text-summary && node scripts/check-production-coverage-targets.js",
-    "staging:drills:check": "node scripts/check-staging-drill-gate.js"
+    "staging:drills:check": "node scripts/check-staging-drill-gate.js",
+    "production:external-evidence:check": "node scripts/check-external-provider-evidence.js"
   },
   "engines": {
     "node": ">=20.19.0",

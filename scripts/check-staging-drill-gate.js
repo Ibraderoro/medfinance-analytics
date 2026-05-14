@@ -23,7 +23,7 @@ if (!fs.existsSync(absoluteEvidencePath)) {
 }
 
 const evidence = fs.readFileSync(absoluteEvidencePath, 'utf8');
-const hasPassedSummary = /\*\*Result:\s*(?:passed|complete|completed);?\s*drills completed\.?\*\*/i.test(evidence);
+const hasPassedSummary = /^\*\*Result:\s*(?:passed|complete|completed);?\s*drills completed\.?\*\*$/im.test(evidence);
 const failures = [];
 
 if (!hasPassedSummary) {
