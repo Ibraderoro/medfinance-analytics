@@ -49,6 +49,7 @@ describe('tenant context middleware', () => {
     const resWithoutOrg = makeResponse();
     attachTenantContext({ user: { id: 'user-1', email: 'u@example.com', role: 'viewer', organization_id: '' } } as AuthenticatedRequest, resWithoutOrg, next);
     expect(resWithoutOrg.status).toHaveBeenCalledWith(403);
+    expect(next).not.toHaveBeenCalled();
   });
 
   it('removes nested tenant override and prototype-pollution fields from request bodies', () => {
@@ -90,7 +91,9 @@ describe('tenant context middleware', () => {
     expect(next).toHaveBeenCalledTimes(1);
 
     const forbiddenRes = makeResponse();
-    blockTenantOverride({ user: { id: 'user-1', email: 'u@example.com', role: 'viewer', organization_id: '' } } as AuthenticatedRequest, forbiddenRes, next);
+    const forbiddenNext = jest.fn() as NextFunction;
+    blockTenantOverride({ user: { id: 'user-1', email: 'u@example.com', role: 'viewer', organization_id: '' } } as AuthenticatedRequest, forbiddenRes, forbiddenNext);
     expect(forbiddenRes.status).toHaveBeenCalledWith(403);
+    expect(forbiddenNext).not.toHaveBeenCalled();
   });
 });

@@ -49,6 +49,7 @@ jest.mock('../config/env', () => ({
 
 import { query } from '../config/database';
 import { AuthService } from '../services/auth.service';
+import { logger } from '../utils/logger';
 
 const mockQuery = query as jest.Mock;
 
@@ -633,13 +634,18 @@ describe('AuthService additional production coverage', () => {
   });
 
   it('logs and continues when non-production customer provisioning fails after user creation', async () => {
-    const warnSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    const warnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => logger);
     mockQuery.mockResolvedValueOnce([]);
     mockQuery.mockResolvedValueOnce([{ id: 'new-uuid', email: 'new@example.com', role: 'viewer', organization_id: 'org-uuid' }]);
     mockQuery.mockRejectedValueOnce(new Error('stripe unavailable'));
     mockQuery.mockResolvedValueOnce([]);
 
     await expect(service.register('new@example.com', 'password123', 'New', 'User', 'org-uuid')).resolves.toHaveProperty('accessToken');
+    expect(warnSpy).toHaveBeenCalledWith('Stripe customer provisioning failed during signup', expect.objectContaining({
+      organizationId: 'org-uuid',
+      email: 'new@example.com',
+      message: 'stripe unavailable',
+    }));
     expect(mockQuery).toHaveBeenCalledWith('INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)', expect.any(Array));
     warnSpy.mockRestore();
   });
@@ -769,6 +775,40 @@ describe('AuthService additional production coverage', () => {
       message: 'OIDC user identity did not match linked account',
     });
   });
+
+  it('accepts case-only OIDC userinfo email differences for a linked account', async () => {
+    mockEnv.OIDC_ISSUER = 'https://issuer.example.com';
+    mockEnv.OIDC_TOKEN_URL = 'https://issuer.example.com/token';
+    mockEnv.OIDC_USERINFO_URL = 'https://issuer.example.com/userinfo';
+    mockEnv.OIDC_CLIENT_ID = 'client-id';
+    mockEnv.OIDC_CLIENT_SECRET = 'client-secret';
+    mockEnv.OIDC_REDIRECT_URI = 'https://app.example.com/callback';
+    mockRedisGet.mockResolvedValueOnce(JSON.stringify({
+      provider: 'oidc',
+      userId: 'u1',
+      email: 'sso@example.com',
+      organizationId: 'org-uuid',
+    }));
+    jest.spyOn(global, 'fetch')
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'token' }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ sub: 'sub', email: 'Sso@Example.com', email_verified: true }) } as Response);
+    mockQuery
+      .mockResolvedValueOnce([{ id: 'u1', email: 'sso@example.com', role: 'viewer', organization_id: 'org-uuid', is_active: true }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    mockRedisDel.mockResolvedValueOnce(1);
+
+    await expect(service.completeOidcLogin('case-insensitive', 'code')).resolves.toMatchObject({
+      accessToken: expect.any(String),
+      refreshToken: expect.any(String),
+    });
+    expect(mockQuery).toHaveBeenCalledWith(
+      expect.stringContaining('AND idp_issuer = $3'),
+      ['u1', 'org-uuid', 'https://issuer.example.com', 'sub'],
+    );
+  });
+
 
   it('rejects provider HTTP and JSON failures as operational OIDC errors', async () => {
     mockEnv.OIDC_TOKEN_URL = 'https://issuer.example.com/token';
