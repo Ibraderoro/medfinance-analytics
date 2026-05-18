@@ -257,6 +257,9 @@ export class AuthService {
     if (userInfo.email_verified !== true) {
       throw authError('OIDC email must be verified');
     }
+    if (userInfo.email.toLowerCase() !== pending.email.toLowerCase()) {
+      throw authError('OIDC userinfo email did not match pending login');
+    }
 
     const issuer = resolveOidcIssuer();
     const [user] = await query<UserIdentity & { is_active: boolean }>(
