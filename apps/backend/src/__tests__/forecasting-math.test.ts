@@ -157,3 +157,34 @@ describe('Edge Case Resilience', () => {
     expect(result.series.every((point) => Number.isFinite(point.confidence_interval.upper))).toBe(true);
   });
 });
+
+describe('Trend edge coverage', () => {
+  it('returns an empty stable forecast for empty history', () => {
+    const result = buildForecastSeries({
+      metric: 'net_income',
+      historicalValues: [],
+      historicalMonths: [],
+      forecastMonths: 3,
+      confidenceLevel: 0.9,
+    });
+
+    expect(result).toEqual({
+      metric: 'net_income',
+      trend: 'stable',
+      confidenceLevel: 0.9,
+      series: [],
+    });
+  });
+
+  it('classifies small movements as stable', () => {
+    const result = buildForecastSeries({
+      metric: 'revenue',
+      historicalValues: [100, 101, 102],
+      historicalMonths: ['2026-01-01', '2026-02-01', '2026-03-01'],
+      forecastMonths: 1,
+      alpha: 0.2,
+    });
+
+    expect(result.trend).toBe('stable');
+  });
+});

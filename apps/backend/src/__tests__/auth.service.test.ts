@@ -620,3 +620,207 @@ describe('AuthService.refresh', () => {
     expect(result).toHaveProperty('refreshToken');
   });
 });
+
+describe('AuthService additional production coverage', () => {
+  const service = new AuthService();
+
+  it('rejects unsupported registration roles before querying for duplicates', async () => {
+    await expect(service.register('bad@example.com', 'password123', 'Bad', 'Role', 'org-uuid', 'owner')).rejects.toMatchObject({
+      statusCode: 400,
+      message: 'Invalid role',
+    });
+    expect(mockQuery).not.toHaveBeenCalled();
+  });
+
+  it('logs and continues when non-production customer provisioning fails after user creation', async () => {
+    const warnSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    mockQuery.mockResolvedValueOnce([]);
+    mockQuery.mockResolvedValueOnce([{ id: 'new-uuid', email: 'new@example.com', role: 'viewer', organization_id: 'org-uuid' }]);
+    mockQuery.mockRejectedValueOnce(new Error('stripe unavailable'));
+    mockQuery.mockResolvedValueOnce([]);
+
+    await expect(service.register('new@example.com', 'password123', 'New', 'User', 'org-uuid')).resolves.toHaveProperty('accessToken');
+    expect(mockQuery).toHaveBeenCalledWith('INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)', expect.any(Array));
+    warnSpy.mockRestore();
+  });
+
+  it('verifies MFA challenges stored with legacy plaintext codes', async () => {
+    mockRedisGet.mockResolvedValueOnce(JSON.stringify({
+      userId: 'admin-uuid',
+      organizationId: 'org-uuid',
+      code: '123456',
+      attempts: 0,
+    }));
+    mockRedisDel.mockResolvedValueOnce(1);
+    mockQuery
+      .mockResolvedValueOnce([{ id: 'admin-uuid', email: 'admin@example.com', role: 'admin', organization_id: 'org-uuid', is_active: true }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    await expect(service.verifyMfa('temp-token', '123456')).resolves.toHaveProperty('accessToken');
+    expect(mockRedisDel).toHaveBeenCalledWith('auth:mfa:pending:temp-token');
+  });
+
+  it('rejects MFA verification when the resolved user is missing after a valid code', async () => {
+    const crypto = await import('crypto');
+    const expectedHash = crypto.createHmac('sha256', mockEnv.JWT_SECRET).update('temp-token:123456').digest('hex');
+    mockRedisGet.mockResolvedValueOnce(JSON.stringify({
+      userId: 'missing-admin',
+      organizationId: 'org-uuid',
+      codeHash: expectedHash,
+      attempts: 0,
+    }));
+    mockRedisDel.mockResolvedValueOnce(1);
+    mockQuery.mockResolvedValueOnce([]);
+
+    await expect(service.verifyMfa('temp-token', '123456')).rejects.toMatchObject({
+      statusCode: 401,
+      message: 'User not found or inactive',
+    });
+  });
+
+  it('rejects inactive SSO users before writing state', async () => {
+    mockQuery.mockResolvedValueOnce([{ id: 'sso-user', email: 'sso@example.com', role: 'viewer', organization_id: 'org-uuid', is_active: false }]);
+
+    await expect(service.initiateSsoLogin('oidc', 'sso@example.com', 'org-uuid')).rejects.toMatchObject({
+      statusCode: 401,
+      message: 'SSO user not found or inactive',
+    });
+    expect(mockRedisSetex).not.toHaveBeenCalled();
+  });
+
+  it('rejects OIDC callback when configuration or state are invalid', async () => {
+    await expect(service.completeOidcLogin('state', 'code')).rejects.toMatchObject({
+      statusCode: 500,
+      message: expect.stringContaining('OIDC callback requires'),
+    });
+
+    mockEnv.OIDC_TOKEN_URL = 'https://issuer.example.com/token';
+    mockEnv.OIDC_USERINFO_URL = 'https://issuer.example.com/userinfo';
+    mockEnv.OIDC_CLIENT_ID = 'client-id';
+    mockEnv.OIDC_CLIENT_SECRET = 'client-secret';
+    mockEnv.OIDC_REDIRECT_URI = 'https://app.example.com/callback';
+    mockRedisGet.mockResolvedValueOnce(null);
+
+    await expect(service.completeOidcLogin('missing', 'code')).rejects.toMatchObject({
+      statusCode: 401,
+      message: 'Invalid or expired SSO state',
+    });
+  });
+
+  it('rejects OIDC callbacks for the wrong provider and missing token payloads', async () => {
+    mockEnv.OIDC_TOKEN_URL = 'https://issuer.example.com/token';
+    mockEnv.OIDC_USERINFO_URL = 'https://issuer.example.com/userinfo';
+    mockEnv.OIDC_CLIENT_ID = 'client-id';
+    mockEnv.OIDC_CLIENT_SECRET = 'client-secret';
+    mockEnv.OIDC_REDIRECT_URI = 'https://app.example.com/callback';
+    mockRedisGet.mockResolvedValueOnce(JSON.stringify({ provider: 'saml', userId: 'u1', email: 'sso@example.com', organizationId: 'org-uuid' }));
+
+    await expect(service.completeOidcLogin('wrong-provider', 'code')).rejects.toMatchObject({
+      statusCode: 401,
+      message: 'Invalid SSO provider for OIDC callback',
+    });
+
+    mockRedisGet.mockResolvedValueOnce(JSON.stringify({ provider: 'oidc', userId: 'u1', email: 'sso@example.com', organizationId: 'org-uuid' }));
+    jest.spyOn(global, 'fetch').mockResolvedValueOnce({ ok: true, json: async () => ({}) } as Response);
+
+    await expect(service.completeOidcLogin('no-token', 'code')).rejects.toMatchObject({
+      statusCode: 401,
+      message: 'OIDC token exchange failed: missing access token',
+    });
+  });
+
+  it('rejects OIDC callbacks when provider responses are malformed or account linkage fails', async () => {
+    mockEnv.OIDC_TOKEN_URL = 'https://issuer.example.com/token';
+    mockEnv.OIDC_USERINFO_URL = 'https://issuer.example.com/userinfo';
+    mockEnv.OIDC_CLIENT_ID = 'client-id';
+    mockEnv.OIDC_CLIENT_SECRET = 'client-secret';
+    mockEnv.OIDC_REDIRECT_URI = 'https://app.example.com/callback';
+
+    mockRedisGet.mockResolvedValueOnce(JSON.stringify({ provider: 'oidc', userId: 'u1', email: 'sso@example.com', organizationId: 'org-uuid' }));
+    jest.spyOn(global, 'fetch')
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'token' }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ email: 'sso@example.com', email_verified: true }) } as Response);
+
+    await expect(service.completeOidcLogin('missing-sub', 'code')).rejects.toMatchObject({
+      statusCode: 401,
+      message: 'OIDC user identity did not match pending SSO session',
+    });
+
+    mockRedisGet.mockResolvedValueOnce(JSON.stringify({ provider: 'oidc', userId: 'u1', email: 'sso@example.com', organizationId: 'org-uuid' }));
+    jest.spyOn(global, 'fetch')
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'token' }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ sub: 'sub', email: 'other@example.com', email_verified: true }) } as Response);
+
+    await expect(service.completeOidcLogin('email-mismatch', 'code')).rejects.toMatchObject({
+      statusCode: 401,
+      message: 'OIDC userinfo email did not match pending login',
+    });
+
+    mockRedisGet.mockResolvedValueOnce(JSON.stringify({ provider: 'oidc', userId: 'u1', email: 'sso@example.com', organizationId: 'org-uuid' }));
+    jest.spyOn(global, 'fetch')
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ access_token: 'token' }) } as Response)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ sub: 'sub', email: 'sso@example.com', email_verified: true }) } as Response);
+    mockQuery.mockResolvedValueOnce([]);
+
+    await expect(service.completeOidcLogin('unlinked', 'code')).rejects.toMatchObject({
+      statusCode: 401,
+      message: 'OIDC user identity did not match linked account',
+    });
+  });
+
+  it('rejects provider HTTP and JSON failures as operational OIDC errors', async () => {
+    mockEnv.OIDC_TOKEN_URL = 'https://issuer.example.com/token';
+    mockEnv.OIDC_USERINFO_URL = 'https://issuer.example.com/userinfo';
+    mockEnv.OIDC_CLIENT_ID = 'client-id';
+    mockEnv.OIDC_CLIENT_SECRET = 'client-secret';
+    mockEnv.OIDC_REDIRECT_URI = 'https://app.example.com/callback';
+    mockRedisGet.mockResolvedValueOnce(JSON.stringify({ provider: 'oidc', userId: 'u1', email: 'sso@example.com', organizationId: 'org-uuid' }));
+    jest.spyOn(global, 'fetch').mockResolvedValueOnce({ ok: false, status: 503, json: async () => ({}) } as Response);
+
+    await expect(service.completeOidcLogin('provider-down', 'code')).rejects.toMatchObject({
+      statusCode: 401,
+      message: 'OIDC token exchange failed: provider returned 503',
+    });
+
+    mockRedisGet.mockResolvedValueOnce(JSON.stringify({ provider: 'oidc', userId: 'u1', email: 'sso@example.com', organizationId: 'org-uuid' }));
+    jest.spyOn(global, 'fetch').mockResolvedValueOnce({ ok: true, json: async () => { throw new Error('bad json'); } } as unknown as Response);
+
+    await expect(service.completeOidcLogin('bad-json', 'code')).rejects.toMatchObject({
+      statusCode: 401,
+      message: expect.stringContaining('invalid JSON response'),
+    });
+  });
+
+  it('handles logout without audit work when the refresh token or user is missing', async () => {
+    mockQuery.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    await expect(service.logout('missing-refresh')).resolves.toBeUndefined();
+    expect(mockQuery).toHaveBeenCalledTimes(2);
+
+    mockQuery.mockResolvedValueOnce([{ user_id: 'user-uuid' }]).mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    await expect(service.logout('missing-user')).resolves.toBeUndefined();
+  });
+
+  it('writes an audit event when logout resolves a user', async () => {
+    mockQuery
+      .mockResolvedValueOnce([{ user_id: 'user-uuid' }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'user-uuid', email: 'user@example.com', role: 'viewer', organization_id: 'org-uuid' }])
+      .mockResolvedValueOnce([]);
+
+    await service.logout('refresh-token');
+
+    expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO audit_log'), expect.arrayContaining(['logout_success']));
+  });
+
+  it('rejects refresh when the stored user is inactive or missing', async () => {
+    const futureDate = new Date(Date.now() + 60_000).toISOString();
+    mockQuery.mockResolvedValueOnce([{ user_id: 'user-uuid', expires_at: futureDate }]).mockResolvedValueOnce([]);
+
+    await expect(service.refresh('valid-but-user-missing')).rejects.toMatchObject({
+      statusCode: 401,
+      message: 'User not found or inactive',
+    });
+  });
+});
