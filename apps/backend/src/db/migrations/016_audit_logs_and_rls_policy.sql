@@ -1,5 +1,5 @@
 CREATE TABLE IF NOT EXISTS audit_logs (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID,
   tenant_id UUID NOT NULL,
   action TEXT NOT NULL CHECK (action IN ('CREATE', 'READ', 'UPDATE', 'DELETE')),
@@ -29,4 +29,5 @@ ALTER TABLE IF EXISTS transactions ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS tenant_isolation_policy ON transactions;
 CREATE POLICY tenant_isolation_policy ON transactions
-USING (tenant_id::text = current_setting('app.current_tenant_id', true));
+USING (organization_id = current_setting('app.current_tenant_id', true)::uuid)
+WITH CHECK (organization_id = current_setting('app.current_tenant_id', true)::uuid);
