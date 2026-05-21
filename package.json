@@ -34,5 +34,8 @@
     "@typescript-eslint/parser": "^7.13.0",
     "eslint": "^8.57.0",
     "typescript": "^5.4.5"
+  },
+  "overrides": {
+    "ws": "8.20.1"
   }
 }
