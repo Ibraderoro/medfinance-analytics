@@ -3,13 +3,14 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
-const evidencePath = process.env.EXTERNAL_PROVIDER_EVIDENCE || 'docs/security/auth-billing-lifecycle-evidence-2026-05-21.md';
+const evidencePath = process.env.PLAYWRIGHT_E2E_EVIDENCE || 'docs/security/playwright-e2e-evidence-2026-05-21.md';
 const absoluteEvidencePath = path.resolve(ROOT, evidencePath);
-const requiredEvidence = [
-  'Staging OIDC provider test',
-  'Staging Stripe webhook replay',
-  'Stripe payment failure/recovery test',
-  'MFA delivery monitoring evidence',
+
+const requiredRows = [
+  'Chromium install step in provisioned environment',
+  'Playwright critical journey suite',
+  'E2E artifact retention (trace/video/report)',
+  'Release commit linkage',
 ];
 
 function fail(message) {
@@ -18,18 +19,18 @@ function fail(message) {
 }
 
 if (!fs.existsSync(absoluteEvidencePath)) {
-  fail(`External provider evidence file not found: ${evidencePath}`);
+  fail(`Playwright E2E evidence file not found: ${evidencePath}`);
 }
 
 const evidence = fs.readFileSync(absoluteEvidencePath, 'utf8');
-const hasPassedSummary = /^\*\*Result:\s*(?:passed|complete|completed);?\s*external provider evidence completed\.?\*\*$/im.test(evidence);
+const hasPassedSummary = /^\*\*Result:\s*(?:passed|complete|completed);?\s*provisioned playwright e2e evidence completed\.?\*\*$/im.test(evidence);
 const failures = [];
 
 if (!hasPassedSummary) {
-  failures.push('missing required summary marker: **Result: passed; external provider evidence completed.**');
+  failures.push('missing required summary marker: **Result: passed; provisioned Playwright E2E evidence completed.**');
 }
 
-for (const item of requiredEvidence) {
+for (const item of requiredRows) {
   const escapedItem = item.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const rowMatch = evidence.match(new RegExp(`\\|\\s*${escapedItem}\\s*\\|([^|]+)\\|`, 'i'));
   if (!rowMatch) {
@@ -49,10 +50,10 @@ for (const item of requiredEvidence) {
 }
 
 if (failures.length > 0) {
-  console.error(`External provider production evidence gate is not satisfied by ${evidencePath}:`);
+  console.error(`Provisioned Playwright E2E evidence gate is not satisfied by ${evidencePath}:`);
   for (const failure of failures) console.error(`- ${failure}`);
-  console.error('Attach live staging OIDC, Stripe, and MFA provider evidence before production deployment.');
+  console.error('Run Playwright E2E in a provisioned environment (with browser install) and attach signed artifacts for release.');
   process.exit(1);
 }
 
-console.error(`External provider production evidence gate satisfied by ${evidencePath}.`);
+console.error(`Provisioned Playwright E2E evidence gate satisfied by ${evidencePath}.`);
