@@ -57,17 +57,20 @@ export class AuditService {
           ],
         );
 
-        await query(
-          `INSERT INTO audit_logs (user_id, tenant_id, action, target_resource, request_id)
-           VALUES ($1, $2, $3, $4, $5)`,
-          [
-            event.performedBy ?? null,
-            event.tenantId ?? event.organizationId,
-            ['CREATE', 'READ', 'UPDATE', 'DELETE'].includes(event.action) ? event.action : 'READ',
-            event.entityType,
-            event.requestId ?? null,
-          ],
-        );
+        const normalizedAction = ['CREATE', 'READ', 'UPDATE', 'DELETE'].includes(event.action) ? event.action : null;
+        if (normalizedAction) {
+          await query(
+            `INSERT INTO audit_logs (user_id, tenant_id, action, target_resource, request_id)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [
+              event.performedBy ?? null,
+              event.tenantId ?? event.organizationId,
+              normalizedAction,
+              event.entityType,
+              event.requestId ?? null,
+            ],
+          );
+        }
       });
     } catch (error) {
       // Fail-closed: if audit persistence fails, the caller should abort the protected action.

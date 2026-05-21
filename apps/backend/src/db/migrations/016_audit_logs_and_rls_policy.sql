@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS audit_logs (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID,
-  tenant_id UUID NOT NULL,
+  user_id TEXT,
+  tenant_id TEXT NOT NULL,
   action TEXT NOT NULL CHECK (action IN ('CREATE', 'READ', 'UPDATE', 'DELETE')),
   target_resource TEXT NOT NULL,
   request_id TEXT,
