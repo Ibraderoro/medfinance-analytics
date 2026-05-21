@@ -23,7 +23,8 @@
     "staging:drills:check": "node scripts/check-staging-drill-gate.js",
     "production:external-evidence:check": "node scripts/check-external-provider-evidence.js",
     "production:security-evidence:check": "node scripts/check-vulnerability-evidence.js",
-    "production:e2e-evidence:check": "node scripts/check-playwright-e2e-evidence.js"
+    "production:e2e-evidence:check": "node scripts/check-playwright-e2e-evidence.js",
+    "security:check-lockfile-ws": "node scripts/check-lockfile-ws-version.js"
   },
   "engines": {
     "node": ">=20.19.0",
