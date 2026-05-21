@@ -257,7 +257,9 @@ export class AuthService {
     if (userInfo.email_verified !== true) {
       throw authError('OIDC email must be verified');
     }
-    if (userInfo.email.toLowerCase() !== pending.email.toLowerCase()) {
+    const pendingEmail = typeof pending.email === 'string' ? pending.email.trim().toLowerCase() : '';
+    const userInfoEmail = userInfo.email.trim().toLowerCase();
+    if (!pendingEmail || userInfoEmail !== pendingEmail) {
       throw authError('OIDC userinfo email did not match pending login');
     }
 
