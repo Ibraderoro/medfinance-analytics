@@ -24,15 +24,6 @@ export class FinancialsService {
     return query<T>(sql, params);
   }
 
-  private async withCacheInvalidation<T>(organizationId: string, operation: () => Promise<T>): Promise<T> {
-    const result = await operation();
-    try {
-      await invalidateOrganizationFinancialCache(organizationId);
-    } catch (error) {
-      console.error('Failed to invalidate organization financial cache:', error);
-    }
-    return result;
-  }
 
   async getKpis(opts: TenantYearOptions) {
     const cacheKey = `kpis:${opts.organizationId}:${opts.year}`;
