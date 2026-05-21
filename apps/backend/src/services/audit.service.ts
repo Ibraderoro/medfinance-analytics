@@ -11,7 +11,10 @@ interface AuditEvent {
   performedBy?: string;
   entityId?: string;
   metadata?: Record<string, unknown>;
+  requestId?: string;
+  tenantId?: string;
 }
+
 
 interface AuditExportRow {
   id: string;
@@ -40,18 +43,32 @@ export class AuditService {
 
   async log(event: AuditEvent): Promise<void> {
     try {
-      await this.runWithAuditTenant(event.organizationId, () => query(
-        `INSERT INTO audit_log (action, entity_type, entity_id, performed_by, organization_id, metadata)
-         VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
-        [
-          event.action,
-          event.entityType,
-          event.entityId ?? null,
-          event.performedBy ?? null,
-          event.organizationId,
-          JSON.stringify(event.metadata ?? {}),
-        ],
-      ));
+      await this.runWithAuditTenant(event.organizationId, async () => {
+        await query(
+          `INSERT INTO audit_log (action, entity_type, entity_id, performed_by, organization_id, metadata)
+           VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
+          [
+            event.action,
+            event.entityType,
+            event.entityId ?? null,
+            event.performedBy ?? null,
+            event.organizationId,
+            JSON.stringify(event.metadata ?? {}),
+          ],
+        );
+
+        await query(
+          `INSERT INTO audit_logs (user_id, tenant_id, action, target_resource, request_id)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [
+            event.performedBy ?? null,
+            event.tenantId ?? event.organizationId,
+            ['CREATE', 'READ', 'UPDATE', 'DELETE'].includes(event.action) ? event.action : 'READ',
+            event.entityType,
+            event.requestId ?? null,
+          ],
+        );
+      });
     } catch (error) {
       // Fail-closed: if audit persistence fails, the caller should abort the protected action.
       throw criticalAuditError(
