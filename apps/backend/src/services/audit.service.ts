@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { query } from '../config/database';
+import { getPool, query } from '../config/database';
 import { env } from '../config/env';
 import { AppError } from '../middleware/errorHandler';
 import { getCurrentTenantContext, runWithTenantContext } from '../middleware/tenantContext';
@@ -11,7 +11,10 @@ interface AuditEvent {
   performedBy?: string;
   entityId?: string;
   metadata?: Record<string, unknown>;
+  requestId?: string;
+  tenantId?: string;
 }
+
 
 interface AuditExportRow {
   id: string;
@@ -32,6 +35,29 @@ function criticalAuditError(message: string): AppError {
 }
 
 export class AuditService {
+  private static readonly ACTION_MAP: Record<string, 'CREATE' | 'READ' | 'UPDATE' | 'DELETE'> = {
+    CREATE: 'CREATE',
+    READ: 'READ',
+    UPDATE: 'UPDATE',
+    DELETE: 'DELETE',
+    financial_data_access: 'READ',
+    admin_endpoint_access: 'READ',
+    oidc_login_success: 'READ',
+    admin_mfa_required: 'READ',
+    login_success: 'READ',
+    admin_mfa_verified: 'READ',
+    refresh_success: 'READ',
+    logout_success: 'READ',
+  };
+
+  private normalizeAuditAction(action: string): 'CREATE' | 'READ' | 'UPDATE' | 'DELETE' {
+    const normalized = AuditService.ACTION_MAP[action];
+    if (!normalized) {
+      throw criticalAuditError(`Critical: unmapped audit action=${action}`);
+    }
+    return normalized;
+  }
+
   private async runWithAuditTenant<T>(organizationId: string, operation: () => Promise<T>): Promise<T> {
     const current = getCurrentTenantContext();
     if (current?.organizationId === organizationId) return operation();
@@ -40,18 +66,61 @@ export class AuditService {
 
   async log(event: AuditEvent): Promise<void> {
     try {
-      await this.runWithAuditTenant(event.organizationId, () => query(
-        `INSERT INTO audit_log (action, entity_type, entity_id, performed_by, organization_id, metadata)
-         VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
-        [
-          event.action,
-          event.entityType,
-          event.entityId ?? null,
-          event.performedBy ?? null,
-          event.organizationId,
-          JSON.stringify(event.metadata ?? {}),
-        ],
-      ));
+      await this.runWithAuditTenant(event.organizationId, async () => {
+        const normalizedAction = this.normalizeAuditAction(event.action);
+        const tenantId = event.tenantId ?? event.organizationId;
+        const shouldWriteImmutable = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(tenantId);
+        const poolLike = typeof getPool === 'function' ? getPool() : null;
+        const client = poolLike ? await poolLike.connect() : null;
+        const hasClientTx = Boolean(client && typeof (client as { query?: unknown }).query === 'function');
+
+        try {
+          if (hasClientTx) {
+            await client!.query('BEGIN');
+            await client!.query(`SELECT set_config('app.current_tenant_id', $1, true)`, [tenantId]);
+          }
+
+          const exec = hasClientTx
+            ? (text: string, params?: unknown[]) => client!.query(text, params)
+            : (text: string, params?: unknown[]) => query(text, params);
+
+          await exec(
+            `INSERT INTO audit_log (action, entity_type, entity_id, performed_by, organization_id, metadata)
+             VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
+            [
+              event.action,
+              event.entityType,
+              event.entityId ?? null,
+              event.performedBy ?? null,
+              event.organizationId,
+              JSON.stringify(event.metadata ?? {}),
+            ],
+          );
+          if (shouldWriteImmutable) {
+            await exec(
+              `INSERT INTO audit_logs (user_id, tenant_id, action, target_resource, request_id)
+               VALUES ($1, $2::uuid, $3, $4, $5)`,
+              [
+                event.performedBy ?? null,
+                tenantId,
+                normalizedAction,
+                `${event.entityType}:${event.action}`,
+                event.requestId ?? null,
+              ],
+            );
+          }
+          if (hasClientTx) {
+            await client!.query('COMMIT');
+          }
+        } catch (txError) {
+          if (hasClientTx) {
+            await client!.query('ROLLBACK').catch(() => undefined);
+          }
+          throw txError;
+        } finally {
+          client?.release();
+        }
+      });
     } catch (error) {
       // Fail-closed: if audit persistence fails, the caller should abort the protected action.
       throw criticalAuditError(

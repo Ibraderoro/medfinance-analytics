@@ -18,6 +18,7 @@ export async function auditFinancialAccess(
         entityType: 'financial_endpoint',
         organizationId: user.organization_id,
         performedBy: user.id,
+        requestId: req.header('X-Request-Id'),
         metadata: {
           method: req.method,
           path: req.originalUrl,
@@ -49,6 +50,7 @@ export async function auditAdminAccess(
         entityType: 'admin_endpoint',
         organizationId: user.organization_id,
         performedBy: user.id,
+        requestId: req.header('X-Request-Id'),
         metadata: {
           method: req.method,
           path: req.originalUrl,
