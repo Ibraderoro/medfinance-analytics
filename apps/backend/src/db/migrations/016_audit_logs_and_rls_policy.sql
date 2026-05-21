@@ -1,12 +1,22 @@
 CREATE TABLE IF NOT EXISTS audit_logs (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id TEXT,
-  tenant_id TEXT NOT NULL,
+  tenant_id UUID NOT NULL,
   action TEXT NOT NULL CHECK (action IN ('CREATE', 'READ', 'UPDATE', 'DELETE')),
   target_resource TEXT NOT NULL,
   request_id TEXT,
   "timestamp" TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_tenant_timestamp ON audit_logs (tenant_id, "timestamp" DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs (user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_request_id ON audit_logs (request_id);
+
+ALTER TABLE IF EXISTS audit_logs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation_policy ON audit_logs;
+CREATE POLICY tenant_isolation_policy ON audit_logs
+USING (tenant_id = current_setting('app.current_tenant_id', true)::uuid)
+WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::uuid);
 
 CREATE OR REPLACE FUNCTION prevent_audit_logs_mutation()
 RETURNS TRIGGER AS $$
