@@ -77,7 +77,7 @@ export class AuditService {
         try {
           if (hasClientTx) {
             await client!.query('BEGIN');
-            await client!.query(`SELECT set_config('app.current_tenant_id', $1, true)`, [event.organizationId]);
+            await client!.query(`SELECT set_config('app.current_tenant_id', $1, true)`, [tenantId]);
           }
 
           const exec = hasClientTx
