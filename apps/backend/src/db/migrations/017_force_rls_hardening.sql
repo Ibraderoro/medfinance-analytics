@@ -22,11 +22,11 @@ BEGIN
         AND table_name = tenant_table
         AND column_name = 'organization_id'
     ) THEN
-      EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', tenant_table);
-      EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', tenant_table);
+      EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', tenant_table);
+      EXECUTE format('ALTER TABLE public.%I FORCE ROW LEVEL SECURITY', tenant_table);
     END IF;
   END LOOP;
 END $$;
 
-ALTER TABLE IF EXISTS audit_logs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS audit_logs FORCE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.audit_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.audit_logs FORCE ROW LEVEL SECURITY;

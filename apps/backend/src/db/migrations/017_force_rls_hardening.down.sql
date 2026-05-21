@@ -21,9 +21,9 @@ BEGIN
       WHERE table_schema = 'public'
         AND table_name = tenant_table
     ) THEN
-      EXECUTE format('ALTER TABLE %I NO FORCE ROW LEVEL SECURITY', tenant_table);
+      EXECUTE format('ALTER TABLE public.%I NO FORCE ROW LEVEL SECURITY', tenant_table);
     END IF;
   END LOOP;
 END $$;
 
-ALTER TABLE IF EXISTS audit_logs NO FORCE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS public.audit_logs NO FORCE ROW LEVEL SECURITY;

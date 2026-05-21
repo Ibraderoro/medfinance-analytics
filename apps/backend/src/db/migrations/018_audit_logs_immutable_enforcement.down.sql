@@ -4,4 +4,4 @@ DROP TRIGGER IF EXISTS trg_prevent_audit_logs_delete ON audit_logs;
 
 DROP FUNCTION IF EXISTS prevent_audit_logs_mutation();
 
-GRANT UPDATE, DELETE, TRUNCATE ON TABLE audit_logs TO PUBLIC;
+-- Intentionally do not broaden table privileges during rollback.

@@ -1,3 +1,10 @@
+const originalEnv = {
+  JWT_SECRET: process.env.JWT_SECRET,
+  REFRESH_TOKEN_SECRET: process.env.REFRESH_TOKEN_SECRET,
+  AUDIT_EXPORT_SIGNING_SECRET: process.env.AUDIT_EXPORT_SIGNING_SECRET,
+  DATABASE_URL: process.env.DATABASE_URL,
+};
+
 process.env.JWT_SECRET = process.env.JWT_SECRET ?? '12345678901234567890123456789012';
 process.env.REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET ?? '12345678901234567890123456789012';
 process.env.AUDIT_EXPORT_SIGNING_SECRET = process.env.AUDIT_EXPORT_SIGNING_SECRET ?? 'abcdefghijklmnopqrstuvwxyz123456';
@@ -33,6 +40,19 @@ jest.mock('@opentelemetry/api', () => ({
 import { observabilityMiddleware } from '../middleware/observability';
 
 describe('observability middleware APM span enrichment', () => {
+  afterAll(() => {
+    const restore = (key: keyof typeof originalEnv): void => {
+      const value = originalEnv[key];
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    };
+
+    restore('JWT_SECRET');
+    restore('REFRESH_TOKEN_SECRET');
+    restore('AUDIT_EXPORT_SIGNING_SECRET');
+    restore('DATABASE_URL');
+  });
+
   beforeEach(() => {
     mockRecordRequest.mockReset();
     mockGetSnapshot.mockClear();

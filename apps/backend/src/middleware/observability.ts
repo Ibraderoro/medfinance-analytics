@@ -31,9 +31,7 @@ function getOpenTelemetryApi(): typeof spanApi {
   return spanApi;
 }
 
-function annotateActiveSpan(req: Request, res: Response, durationMs: number): void {
-  const otel = getOpenTelemetryApi();
-  const span = otel?.trace.getSpan(otel.context.active());
+function annotateActiveSpan(span: SpanLike | undefined, req: Request, res: Response, durationMs: number): void {
   if (!span) return;
 
   const requestUser = (req as Request & { user?: { id?: string; organization_id?: string } }).user;
@@ -57,13 +55,15 @@ function annotateActiveSpan(req: Request, res: Response, durationMs: number): vo
 
 export function observabilityMiddleware(req: Request, res: Response, next: NextFunction): void {
   const start = process.hrtime.bigint();
+  const otel = getOpenTelemetryApi();
+  const activeSpan = otel?.trace.getSpan(otel.context.active());
 
   res.on('finish', () => {
     const durationMs = Number(process.hrtime.bigint() - start) / 1_000_000;
     const isError = res.statusCode >= 500;
     metricsService.recordRequest(durationMs, isError);
 
-    annotateActiveSpan(req, res, durationMs);
+    annotateActiveSpan(activeSpan, req, res, durationMs);
 
     const snapshot = metricsService.getSnapshot();
     if (snapshot.errorRate > env.ERROR_RATE_ALERT_THRESHOLD && snapshot.requestCount >= 20) {
