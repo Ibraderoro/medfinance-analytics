@@ -14,6 +14,7 @@ const TENANT_ENFORCED_TABLES = [
   'compliance_items',
   'regulatory_alerts',
   'audit_log',
+  'audit_logs',
 ];
 
 function requiresTenantContext(queryText: string): boolean {

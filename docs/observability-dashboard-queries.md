@@ -12,3 +12,13 @@ Use these example PromQL queries against `/api/v1/health/metrics` scrape target:
 Alert example:
 
 - `sum(http_errors_total) / sum(http_requests_total) > 0.05`
+
+
+## APM correlation notes
+
+- The backend observability middleware enriches the active OpenTelemetry span with:
+  - `http.request_id` (from `X-Request-Id`)
+  - `http.method`, `http.route`, `http.status_code`, `http.response_time_ms`
+  - `tenant.organization_id` and `enduser.id` when authenticated context exists
+- For 5xx responses, it emits an `http.request.failed` span event containing the request id and latency for rapid triage.
+- Configure exporter endpoints with `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` (or `OTEL_EXPORTER_OTLP_ENDPOINT`) and optional `OTEL_EXPORTER_OTLP_HEADERS`.
