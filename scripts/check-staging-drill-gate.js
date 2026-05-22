@@ -13,6 +13,15 @@ const requiredDrills = [
   'Incident response',
 ];
 
+const additionalEvidenceChecks = [
+  { label: 'backup RTO evidence', pattern: /\bRTO\b/i },
+  { label: 'backup RPO evidence', pattern: /\bRPO\b/i },
+  { label: 'performance p95 evidence', pattern: /\bp95\b/i },
+  { label: 'performance p99 evidence', pattern: /\bp99\b/i },
+  { label: 'incident commander evidence', pattern: /incident commander/i },
+  { label: 'rollback image digest evidence', pattern: /image digests?/i },
+];
+
 function fail(message) {
   console.error(message);
   process.exit(1);
@@ -39,13 +48,19 @@ for (const drill of requiredDrills) {
   }
 
   const status = rowMatch[1].replace(/\*/g, '').trim().toLowerCase();
-  if (/(blocked|pending|not executed|not completed|not run|incomplete)/i.test(status)) {
+  if (/(blocked|pending|not executed|not completed|not run|incomplete|skipped|failed)/i.test(status)) {
     failures.push(`${drill}: status is still release-blocking (${rowMatch[1].trim()})`);
     continue;
   }
 
   if (!/(passed|complete|completed|satisfied)/i.test(status)) {
     failures.push(`${drill}: status must explicitly be passed/completed/satisfied (${rowMatch[1].trim()})`);
+  }
+}
+
+for (const check of additionalEvidenceChecks) {
+  if (!check.pattern.test(evidence)) {
+    failures.push(`missing ${check.label}`);
   }
 }
 
