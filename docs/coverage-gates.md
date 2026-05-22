@@ -42,4 +42,4 @@ npm run production:gates:check
 
 This command enforces coverage, backend integration evidence, external-provider evidence, vulnerability evidence, provisioned E2E evidence, and staging-drill evidence in one release-blocking pass.
 
-After any staging evidence refresh, re-run this command and re-run the external/provider, security, and E2E evidence checks so all release packets remain aligned to the same candidate SHA/date window.
+After any staging evidence refresh, re-run production:gates:check; this command already runs the external/provider, security, and E2E evidence checks so no separate runs are required, ensuring all release packets remain aligned to the same candidate SHA/date window.
