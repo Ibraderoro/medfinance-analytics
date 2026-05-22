@@ -38,4 +38,22 @@ describe('CacheService stampede protection', () => {
     expect(loader).toHaveBeenCalledTimes(1);
     expect(mockSetex).toHaveBeenCalledTimes(1);
   });
+
+  it('clears in-flight entry when loader rejects and allows retry', async () => {
+    mockGet.mockResolvedValue(null);
+    mockSetex.mockResolvedValue('OK');
+    const cache = new CacheService('financials', 300);
+
+    const loader = jest.fn()
+      .mockImplementationOnce(async () => {
+        throw new Error('first load failed');
+      })
+      .mockImplementationOnce(async () => ({ total_revenue: '200.00' }));
+
+    await expect(cache.getOrLoad('summary:org-1:2026', loader)).rejects.toThrow('first load failed');
+    await expect(cache.getOrLoad('summary:org-1:2026', loader)).resolves.toEqual({ total_revenue: '200.00' });
+
+    expect(loader).toHaveBeenCalledTimes(2);
+    expect(mockSetex).toHaveBeenCalledTimes(1);
+  });
 });

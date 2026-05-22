@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
@@ -7,7 +7,7 @@ const root = path.resolve(__dirname, '..');
 const outDir = path.resolve(root, process.env.STAGING_DRILL_OUTPUT_DIR || 'artifacts/staging-drills');
 const runId = process.env.RUN_ID || new Date().toISOString().replace(/[:.]/g, '-');
 const output = [];
-const runIdSafe = runId.replace(/[^a-zA-Z0-9]/g, '');
+const runIdSafe = runId.replace(/[^a-zA-Z0-9]/g, '') || `run${Date.now()}`;
 
 const releaseMetrics = {
   rollbackImageDigests: process.env.ROLLBACK_IMAGE_DIGESTS || 'Capture previous/current image digests from staging and paste here.',
@@ -27,10 +27,10 @@ if (missing.length) {
 
 fs.mkdirSync(outDir, { recursive: true });
 
-function run(name, cmd, opts = {}) {
+function run(name, command, args = [], opts = {}) {
   const startedAt = new Date().toISOString();
   try {
-    const stdout = execSync(cmd, {
+    const stdout = execFileSync(command, args, {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
       timeout: 60000,
@@ -38,7 +38,7 @@ function run(name, cmd, opts = {}) {
       ...opts,
     });
     const endedAt = new Date().toISOString();
-    output.push({ name, status: 'Passed', startedAt, endedAt, cmd, stdout });
+    output.push({ name, status: 'Passed', startedAt, endedAt, cmd: [command, ...args].join(' '), stdout });
     return { ok: true, stdout };
   } catch (error) {
     const endedAt = new Date().toISOString();
@@ -47,7 +47,7 @@ function run(name, cmd, opts = {}) {
       status: 'Failed',
       startedAt,
       endedAt,
-      cmd,
+      cmd: [command, ...args].join(' '),
       stdout: error.stdout?.toString() || '',
       stderr: error.stderr?.toString() || error.message,
     });
@@ -55,45 +55,49 @@ function run(name, cmd, opts = {}) {
   }
 }
 
-const sshPrefix = `ssh -o ConnectTimeout=10 -o BatchMode=yes ${process.env.STAGING_USER}@${process.env.STAGING_HOST}`;
 const drills = [
   {
     key: 'Migration up/down',
-    command: `${sshPrefix} 'cd /opt/medfinance-staging && docker compose run --rm backend node apps/backend/dist/db/migrate.js && docker compose run --rm backend node apps/backend/dist/db/migrate.js rollback && docker compose run --rm backend node apps/backend/dist/db/migrate.js'`,
+    command: 'ssh',
+    args: ['-o', 'ConnectTimeout=10', '-o', 'BatchMode=yes', `${process.env.STAGING_USER}@${process.env.STAGING_HOST}`, 'cd /opt/medfinance-staging && docker compose run --rm backend node apps/backend/dist/db/migrate.js && docker compose run --rm backend node apps/backend/dist/db/migrate.js rollback && docker compose run --rm backend node apps/backend/dist/db/migrate.js'],
   },
   {
     key: 'Backup/restore',
-    command: `${sshPrefix} 'cd /opt/medfinance-staging && RUN_ID=${runId} bash -s' <<\'REMOTE\'\nset -euo pipefail\ndump_path="/tmp/medfinance-staging-${runId}.dump"\nrestore_db="medfinance_restore_${runIdSafe}"\ntrap 'docker compose exec -T postgres sh -c '\''dropdb -U \"$POSTGRES_USER\" --if-exists \"'$restore_db'\"'\'' || true; docker compose exec -T postgres sh -c '\''rm -f \"'$dump_path'\"'\'' || true' EXIT\ndocker compose exec -T postgres sh -c '\''pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --format=custom --no-owner --file='"$dump_path"\''\ndocker compose exec -T postgres sh -c '\''createdb -U "$POSTGRES_USER" '"$restore_db"'\''\ndocker compose exec -T postgres sh -c '\''pg_restore -U "$POSTGRES_USER" -d '"$restore_db"' --clean --if-exists '"$dump_path"'\''\nREMOTE`,
+    command: 'ssh',
+    args: ['-o', 'ConnectTimeout=10', '-o', 'BatchMode=yes', `${process.env.STAGING_USER}@${process.env.STAGING_HOST}`, `cd /opt/medfinance-staging && RUN_ID=${runIdSafe} dump_path=/tmp/medfinance-staging-${runIdSafe}.dump restore_db=medfinance_restore_${runIdSafe} sh -c 'trap "docker compose exec -T postgres sh -c \\\"dropdb -U \\\\\\\"\\\\$POSTGRES_USER\\\\\\\" --if-exists \\\\\\\"\\\\$restore_db\\\\\\\"\\\" || true; docker compose exec -T postgres sh -c \\\"rm -f \\\\\\\"\\\\$dump_path\\\\\\\"\\\" || true" EXIT; docker compose exec -T postgres sh -c "pg_dump -U \\\\\\"\\\\$POSTGRES_USER\\\\\\" -d \\\\\\"\\\\$POSTGRES_DB\\\\\\" --format=custom --no-owner --file=\\\\\\"\\\\$dump_path\\\\\\""; docker compose exec -T postgres sh -c "createdb -U \\\\\\"\\\\$POSTGRES_USER\\\\\\" \\\\\\"\\\\$restore_db\\\\\\""; docker compose exec -T postgres sh -c "pg_restore -U \\\\\\"\\\\$POSTGRES_USER\\\\\\" -d \\\\\\"\\\\$restore_db\\\\\\" --clean --if-exists \\\\\\"\\\\$dump_path\\\\\\""'`],
   },
   {
     key: 'Application rollback',
-    command: `${sshPrefix} 'cd /opt/medfinance-staging && docker compose up -d --remove-orphans backend frontend nginx && docker compose ps'`,
+    command: 'ssh',
+    args: ['-o', 'ConnectTimeout=10', '-o', 'BatchMode=yes', `${process.env.STAGING_USER}@${process.env.STAGING_HOST}`, 'cd /opt/medfinance-staging && docker compose up -d --remove-orphans backend frontend nginx && docker compose ps'],
   },
   {
     key: 'Load/performance',
-    command: `npx autocannon --connections 10 --duration 30 ${process.env.STAGING_URL}/api/v1/health/ready`,
+    command: 'npx',
+    args: ['autocannon', '--connections', '10', '--duration', '30', `${process.env.STAGING_URL}/api/v1/health/ready`],
   },
   {
     key: 'Incident response',
-    command: `${sshPrefix} 'cd /opt/medfinance-staging && echo "Incident drill executed at $(date -u +%FT%TZ)"'`,
+    command: 'ssh',
+    args: ['-o', 'ConnectTimeout=10', '-o', 'BatchMode=yes', `${process.env.STAGING_USER}@${process.env.STAGING_HOST}`, 'cd /opt/medfinance-staging && date -u +%FT%TZ | xargs -I{} echo "Incident drill executed at {}"'],
   },
 ];
 
-const preflight = run('Preflight health', `curl --fail --show-error ${process.env.STAGING_URL}/api/v1/health/ready`);
+const preflight = run('Preflight health', 'curl', ['--fail', '--show-error', `${process.env.STAGING_URL}/api/v1/health/ready`]);
 if (!preflight.ok) {
   console.error('Preflight failed. Aborting drill run.');
 }
 
 for (const drill of drills) {
   if (!preflight.ok) {
-    output.push({ name: drill.key, status: 'Skipped', cmd: drill.command, stdout: '', stderr: 'Skipped due to failed preflight health check.' });
+    output.push({ name: drill.key, status: 'Skipped', cmd: [drill.command, ...(drill.args || [])].join(' '), stdout: '', stderr: 'Skipped due to failed preflight health check.' });
     continue;
   }
-  run(drill.key, drill.command, { shell: '/bin/bash' });
+  run(drill.key, drill.command, drill.args);
 }
 
 const allPassed = output.filter((r) => r.name !== 'Preflight health').every((r) => r.status === 'Passed');
-const mdPath = path.join(outDir, `staging-drill-evidence-${runId}.md`);
+const mdPath = path.join(outDir, `staging-drill-evidence-${runIdSafe}.md`);
 const lines = [];
 lines.push(`# Staging Drill Evidence — ${new Date().toISOString().slice(0, 10)}`);
 lines.push('');
