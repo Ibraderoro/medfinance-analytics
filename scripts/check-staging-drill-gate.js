@@ -13,6 +13,15 @@ const requiredDrills = [
   'Incident response',
 ];
 
+const additionalEvidenceChecks = [
+  { label: 'backup RTO evidence', pattern: /\bRTO\b\s*[:=-]?\s*(?:\d{1,2}:\d{2}(?::\d{2})?|\d+(?:\.\d+)?\s*(?:h|hr|hrs|hour|hours|m|min|mins|minute|minutes|s|sec|secs|second|seconds))\b/i },
+  { label: 'backup RPO evidence', pattern: /\bRPO\b\s*[:=-]?\s*(?:\d{1,2}:\d{2}(?::\d{2})?|\d+(?:\.\d+)?\s*(?:h|hr|hrs|hour|hours|m|min|mins|minute|minutes|s|sec|secs|second|seconds))\b/i },
+  { label: 'performance p95 evidence', pattern: /\bp95\b\s*[:=-]?\s*\d+(?:\.\d+)?\s*(?:ms|s)\b/i },
+  { label: 'performance p99 evidence', pattern: /\bp99\b\s*[:=-]?\s*\d+(?:\.\d+)?\s*(?:ms|s)\b/i },
+  { label: 'incident commander evidence', pattern: /incident commander\s*[:=-]?\s*(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})/i },
+  { label: 'rollback image digest evidence', pattern: /sha256:[0-9a-f]{64}/i },
+];
+
 function fail(message) {
   console.error(message);
   process.exit(1);
@@ -39,13 +48,19 @@ for (const drill of requiredDrills) {
   }
 
   const status = rowMatch[1].replace(/\*/g, '').trim().toLowerCase();
-  if (/(blocked|pending|not executed|not completed|not run|incomplete)/i.test(status)) {
+  if (/(blocked|pending|not executed|not completed|not run|incomplete|skipped|failed)/i.test(status)) {
     failures.push(`${drill}: status is still release-blocking (${rowMatch[1].trim()})`);
     continue;
   }
 
   if (!/(passed|complete|completed|satisfied)/i.test(status)) {
     failures.push(`${drill}: status must explicitly be passed/completed/satisfied (${rowMatch[1].trim()})`);
+  }
+}
+
+for (const check of additionalEvidenceChecks) {
+  if (!check.pattern.test(evidence)) {
+    failures.push(`missing ${check.label}`);
   }
 }
 
