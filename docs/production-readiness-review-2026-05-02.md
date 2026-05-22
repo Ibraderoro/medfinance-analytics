@@ -4,8 +4,10 @@
 **Not fully production-ready.**
 
 ### Readiness estimate
-- **Achieved:** **84%**
-- **Remaining:** **16%**
+- **Achieved:** **88%**
+- **Remaining:** **12%**
+
+_Updated on May 22, 2026 to reflect completed security, external-provider, and provisioned E2E evidence packets dated May 21, 2026._
 
 ## Evidence checked in this review
 - Workspace test suite passed: `npm test -- --runInBand`.

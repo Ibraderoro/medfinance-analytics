@@ -2,14 +2,6 @@ import { NextFunction, Response } from 'express';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { AuthenticatedRequest } from './auth';
 
-declare module 'express-serve-static-core' {
-  interface Request {
-    tenant?: {
-      userId: string;
-      organizationId: string;
-    };
-  }
-}
 
 const TENANT_ORG_FIELDS = ['organization_id', 'organizationId', 'organisationId'] as const;
 const BLOCKED_OBJECT_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
