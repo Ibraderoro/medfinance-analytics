@@ -7,11 +7,13 @@ import { login, register, refresh, logout, verifyMfa, initiateOidc, completeOidc
 export const authRouter = Router();
 const UUID_LIKE_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function hasCookie(req: Request, name: string): boolean {
-  return Boolean(req.headers.cookie
+function getCookieValue(req: Request, name: string): string | undefined {
+  const pair = req.headers.cookie
     ?.split(';')
     .map((part) => part.trim())
-    .some((part) => part.startsWith(`${name}=`)));
+    .find((part) => part.startsWith(`${name}=`));
+  if (!pair) return undefined;
+  return pair.slice(name.length + 1);
 }
 
 authRouter.post(
@@ -55,7 +57,8 @@ authRouter.post(
     body('refreshToken')
       .custom((value, { req }) => {
         if (value === undefined || value === null || value === '') {
-          return hasCookie(req as Request, 'medfinance_refresh_token');
+          const cookieValue = getCookieValue(req as Request, 'medfinance_refresh_token');
+          return typeof cookieValue === 'string' && cookieValue.trim().length > 0;
         }
 
         if (typeof value === 'string' && value.trim().length > 0) return true;

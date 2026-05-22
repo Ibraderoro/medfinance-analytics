@@ -16,6 +16,13 @@ jest.mock('../utils/cache', () => ({
   CacheService: jest.fn().mockImplementation(() => ({
     get: (...args: unknown[]) => mockCacheGet(...args),
     set: (...args: unknown[]) => mockCacheSet(...args),
+    getOrLoad: async (key: string, loader: () => Promise<unknown>) => {
+      const cached = await mockCacheGet(key);
+      if (cached !== undefined && cached !== null) return cached;
+      const loaded = await loader();
+      await mockCacheSet(key, loaded);
+      return loaded;
+    },
   })),
 }));
 
