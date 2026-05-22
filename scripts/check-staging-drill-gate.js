@@ -14,12 +14,12 @@ const requiredDrills = [
 ];
 
 const additionalEvidenceChecks = [
-  { label: 'backup RTO evidence', pattern: /\bRTO\b/i },
-  { label: 'backup RPO evidence', pattern: /\bRPO\b/i },
-  { label: 'performance p95 evidence', pattern: /\bp95\b/i },
-  { label: 'performance p99 evidence', pattern: /\bp99\b/i },
-  { label: 'incident commander evidence', pattern: /incident commander/i },
-  { label: 'rollback image digest evidence', pattern: /image digests?/i },
+  { label: 'backup RTO evidence', pattern: /\bRTO\b\s*[:=-]?\s*(?:\d{1,2}:\d{2}(?::\d{2})?|\d+(?:\.\d+)?\s*(?:h|hr|hrs|hour|hours|m|min|mins|minute|minutes|s|sec|secs|second|seconds))\b/i },
+  { label: 'backup RPO evidence', pattern: /\bRPO\b\s*[:=-]?\s*(?:\d{1,2}:\d{2}(?::\d{2})?|\d+(?:\.\d+)?\s*(?:h|hr|hrs|hour|hours|m|min|mins|minute|minutes|s|sec|secs|second|seconds))\b/i },
+  { label: 'performance p95 evidence', pattern: /\bp95\b\s*[:=-]?\s*\d+(?:\.\d+)?\s*(?:ms|s)\b/i },
+  { label: 'performance p99 evidence', pattern: /\bp99\b\s*[:=-]?\s*\d+(?:\.\d+)?\s*(?:ms|s)\b/i },
+  { label: 'incident commander evidence', pattern: /incident commander\s*[:=-]?\s*(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})/i },
+  { label: 'rollback image digest evidence', pattern: /sha256:[0-9a-f]{64}/i },
 ];
 
 function fail(message) {

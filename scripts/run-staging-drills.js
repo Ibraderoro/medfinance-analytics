@@ -30,7 +30,13 @@ fs.mkdirSync(outDir, { recursive: true });
 function run(name, cmd, opts = {}) {
   const startedAt = new Date().toISOString();
   try {
-    const stdout = execSync(cmd, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts });
+    const stdout = execSync(cmd, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 60000,
+      maxBuffer: 10 * 1024 * 1024,
+      ...opts,
+    });
     const endedAt = new Date().toISOString();
     output.push({ name, status: 'Passed', startedAt, endedAt, cmd, stdout });
     return { ok: true, stdout };
@@ -49,7 +55,7 @@ function run(name, cmd, opts = {}) {
   }
 }
 
-const sshPrefix = `ssh ${process.env.STAGING_USER}@${process.env.STAGING_HOST}`;
+const sshPrefix = `ssh -o ConnectTimeout=10 -o BatchMode=yes ${process.env.STAGING_USER}@${process.env.STAGING_HOST}`;
 const drills = [
   {
     key: 'Migration up/down',
@@ -57,7 +63,7 @@ const drills = [
   },
   {
     key: 'Backup/restore',
-    command: `${sshPrefix} 'cd /opt/medfinance-staging && RUN_ID=${runId} bash -s' <<\'REMOTE\'\nset -euo pipefail\ndump_path="/tmp/medfinance-staging-${runId}.dump"\nrestore_db="medfinance_restore_${runIdSafe}"\ndocker compose exec -T postgres sh -c '\''pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --format=custom --no-owner --file='"$dump_path"\''\ndocker compose exec -T postgres sh -c '\''createdb -U "$POSTGRES_USER" '"$restore_db"'\''\ndocker compose exec -T postgres sh -c '\''pg_restore -U "$POSTGRES_USER" -d '"$restore_db"' --clean --if-exists '"$dump_path"'\''\nREMOTE`,
+    command: `${sshPrefix} 'cd /opt/medfinance-staging && RUN_ID=${runId} bash -s' <<\'REMOTE\'\nset -euo pipefail\ndump_path="/tmp/medfinance-staging-${runId}.dump"\nrestore_db="medfinance_restore_${runIdSafe}"\ntrap 'docker compose exec -T postgres sh -c '\''dropdb -U \"$POSTGRES_USER\" --if-exists \"'$restore_db'\"'\'' || true; docker compose exec -T postgres sh -c '\''rm -f \"'$dump_path'\"'\'' || true' EXIT\ndocker compose exec -T postgres sh -c '\''pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --format=custom --no-owner --file='"$dump_path"\''\ndocker compose exec -T postgres sh -c '\''createdb -U "$POSTGRES_USER" '"$restore_db"'\''\ndocker compose exec -T postgres sh -c '\''pg_restore -U "$POSTGRES_USER" -d '"$restore_db"' --clean --if-exists '"$dump_path"'\''\nREMOTE`,
   },
   {
     key: 'Application rollback',
