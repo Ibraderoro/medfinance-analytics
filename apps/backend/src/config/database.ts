@@ -142,6 +142,11 @@ export async function query<T extends QueryResultRow>(
     await client.query('ROLLBACK').catch(() => undefined);
     throw error;
   } finally {
+    await client.query('RESET ALL').catch((resetError) => {
+      logger.warn('PostgreSQL session reset failed before release', {
+        message: resetError instanceof Error ? resetError.message : String(resetError),
+      });
+    });
     client.release();
   }
   const duration = Date.now() - start;

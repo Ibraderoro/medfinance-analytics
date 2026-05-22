@@ -1,11 +1,10 @@
 import { Request, Router } from 'express';
-import { body } from 'express-validator';
+import { authSchemas } from '@medfinance/shared';
 import { authRateLimiter } from '../middleware/rateLimiter';
-import { validateRequest } from '../middleware/validateRequest';
+import { validateBody } from '../middleware/zodValidate';
 import { login, register, refresh, logout, verifyMfa, initiateOidc, completeOidc } from '../controllers/auth.controller';
 
 export const authRouter = Router();
-const UUID_LIKE_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function hasCookie(req: Request, name: string): boolean {
   return Boolean(req.headers.cookie
@@ -17,58 +16,37 @@ function hasCookie(req: Request, name: string): boolean {
 authRouter.post(
   '/register',
   authRateLimiter,
-  [
-    body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
-    body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
-    body('firstName').notEmpty().withMessage('First name is required'),
-    body('lastName').notEmpty().withMessage('Last name is required'),
-    body('organizationId')
-      .matches(UUID_LIKE_PATTERN)
-      .withMessage('Valid organization ID (UUID-like) is required'),
-    body('role')
-      .optional()
-      .equals('viewer')
-      .withMessage('Public registration can only create viewer accounts'),
-  ],
-  validateRequest(),
+  validateBody(authSchemas.registerBody),
   register,
 );
 
 authRouter.post(
   '/login',
   authRateLimiter,
-  [
-    body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
-    body('password').notEmpty().withMessage('Password is required'),
-    body('organizationId')
-      .matches(UUID_LIKE_PATTERN)
-      .withMessage('Valid organization ID (UUID-like) is required'),
-  ],
-  validateRequest(),
+  validateBody(authSchemas.loginBody),
   login,
 );
 
 authRouter.post(
   '/refresh',
   authRateLimiter,
-  [
-    body('refreshToken')
-      .custom((value, { req }) => {
-        if (value === undefined || value === null || value === '') {
-          return hasCookie(req as Request, 'medfinance_refresh_token');
-        }
-
-        if (typeof value === 'string' && value.trim().length > 0) return true;
-        throw new Error('refreshToken must be a non-empty string');
-      })
-      .withMessage('refreshToken is required'),
-  ],
-  validateRequest(),
+  validateBody(authSchemas.refreshBody),
+  (req, res, next) => {
+    const refreshToken = (req.body as { refreshToken?: string } | undefined)?.refreshToken;
+    if ((refreshToken === undefined || refreshToken === null || refreshToken === '') && !hasCookie(req as Request, 'medfinance_refresh_token')) {
+      res.status(400).json({
+        success: false,
+        error: { message: 'Validation Failed', details: [{ field: 'refreshToken', message: 'refreshToken is required', code: 'custom' }], code: 'VALIDATION_ERROR' },
+      });
+      return;
+    }
+    next();
+  },
   refresh,
 );
 
 authRouter.post('/logout', logout);
 
-authRouter.post('/mfa/verify', authRateLimiter, [body('tempToken').notEmpty(), body('code').isLength({ min: 6, max: 6 })], validateRequest(), verifyMfa);
-authRouter.post('/oidc/initiate', authRateLimiter, [body('email').isEmail().normalizeEmail(), body('organizationId').matches(UUID_LIKE_PATTERN).withMessage('Valid organization ID (UUID-like) is required')], validateRequest(), initiateOidc);
-authRouter.post('/oidc/callback', authRateLimiter, [body('state').isUUID().withMessage('Valid SSO state is required'), body('code').isString().trim().notEmpty().withMessage('Authorization code is required')], validateRequest(), completeOidc);
+authRouter.post('/mfa/verify', authRateLimiter, validateBody(authSchemas.verifyMfaBody), verifyMfa);
+authRouter.post('/oidc/initiate', authRateLimiter, validateBody(authSchemas.oidcInitiateBody), initiateOidc);
+authRouter.post('/oidc/callback', authRateLimiter, validateBody(authSchemas.oidcCallbackBody), completeOidc);

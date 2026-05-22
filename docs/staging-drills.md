@@ -24,6 +24,27 @@ This runbook is the evidence template and command checklist for the required sta
 - Production impact: do **not** treat the staging operational gate as satisfied until the release owner runs the drills below in staging and replaces the blocked evidence packet with measured transcripts and artifacts.
 - Machine gate: production deployment runs `npm run staging:drills:check`, which fails until the evidence packet has `**Result: passed; drills completed.**` and each required drill row is marked passed/completed/satisfied.
 
+
+## Automated execution helper
+
+To reduce manual error and unblock repeatable evidence capture, run:
+
+```bash
+export STAGING_HOST=<staging-ssh-host>
+export STAGING_USER=<staging-ssh-user>
+export STAGING_URL=https://staging.medfinance.example.com
+export RUN_ID=$(date -u +%Y%m%dT%H%M%SZ)
+export STAGING_DRILL_RTO=<measured-rto>
+export STAGING_DRILL_RPO=<measured-rpo>
+export STAGING_DRILL_P95=<measured-p95>
+export STAGING_DRILL_P99=<measured-p99>
+export STAGING_INCIDENT_COMMANDER=<name>
+export ROLLBACK_IMAGE_DIGESTS="backend@sha256:... ; frontend@sha256:..."
+npm run staging:drills:run
+```
+
+This command executes each required drill command, writes per-drill logs to `artifacts/staging-drills/`, and generates a timestamped evidence packet (`staging-drill-evidence-<RUN_ID>.md`) including required release metrics (RTO/RPO, p95/p99, incident commander, rollback image digests). Run `STAGING_DRILL_EVIDENCE=<generated-file> npm run staging:drills:check` to validate the packet before release sign-off.
+
 ## Common setup
 
 Record immutable inputs before starting any drill:

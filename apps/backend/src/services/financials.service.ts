@@ -27,41 +27,34 @@ export class FinancialsService {
 
   async getKpis(opts: TenantYearOptions) {
     const cacheKey = `kpis:${opts.organizationId}:${opts.year}`;
-    const cached = await cache.get(cacheKey);
-    if (cached) return cached;
-
-    const rows = await this.runTracedQuery<Record<string, unknown>>(
-      `SELECT *
-       FROM financial_kpis
-       WHERE organization_id = $1
-         AND fiscal_year = $2
-       ORDER BY fiscal_month ASC`,
-      [opts.organizationId, opts.year],
-    );
-
-    await cache.set(cacheKey, rows);
-    return rows;
+    return cache.getOrLoad<Record<string, unknown>[]>(cacheKey, async () => {
+      const rows = await this.runTracedQuery<Record<string, unknown>>(
+        `SELECT *
+         FROM financial_kpis
+         WHERE organization_id = $1
+           AND fiscal_year = $2
+         ORDER BY fiscal_month ASC`,
+        [opts.organizationId, opts.year],
+      );
+      return rows;
+    });
   }
 
   async getSummary(opts: SummaryOptions) {
     const cacheKey = `summary:${opts.organizationId}:${opts.year}`;
-    const cached = await cache.get(cacheKey);
-    if (cached) return cached;
-
-    const rows = await this.runTracedQuery<Record<string, unknown>>(
-      `SELECT
-         COALESCE(SUM(CASE WHEN transaction_type = 'revenue' THEN amount ELSE 0 END), 0) AS total_revenue,
-         COALESCE(SUM(CASE WHEN transaction_type = 'expense' THEN amount ELSE 0 END), 0) AS total_expenses,
-         COALESCE(SUM(CASE WHEN transaction_type = 'revenue' THEN amount ELSE -amount END), 0) AS net_income
-       FROM transactions
-       WHERE organization_id = $1
-         AND EXTRACT(YEAR FROM occurred_on) = $2`,
-      [opts.organizationId, opts.year],
-    );
-
-    const result = rows[0] ?? {};
-    await cache.set(cacheKey, result);
-    return result;
+    return cache.getOrLoad<Record<string, unknown>>(cacheKey, async () => {
+      const rows = await this.runTracedQuery<Record<string, unknown>>(
+        `SELECT
+           COALESCE(SUM(CASE WHEN transaction_type = 'revenue' THEN amount ELSE 0 END), 0) AS total_revenue,
+           COALESCE(SUM(CASE WHEN transaction_type = 'expense' THEN amount ELSE 0 END), 0) AS total_expenses,
+           COALESCE(SUM(CASE WHEN transaction_type = 'revenue' THEN amount ELSE -amount END), 0) AS net_income
+         FROM transactions
+         WHERE organization_id = $1
+           AND EXTRACT(YEAR FROM occurred_on) = $2`,
+        [opts.organizationId, opts.year],
+      );
+      return rows[0] ?? {};
+    });
   }
 
   async getRevenue(opts: DateRangeOptions) {

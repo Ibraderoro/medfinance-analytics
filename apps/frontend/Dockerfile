@@ -9,7 +9,7 @@ COPY package*.json ./
 COPY apps/frontend/package.json apps/frontend/package.json
 COPY packages/shared/package.json packages/shared/package.json
 
-RUN npm ci --workspaces
+RUN npm ci --workspace=packages/shared --workspace=apps/frontend
 
 COPY packages/shared/ packages/shared/
 COPY apps/frontend/ apps/frontend/

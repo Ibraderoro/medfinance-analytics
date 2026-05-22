@@ -2,6 +2,8 @@ import { getRedis } from '../config/redis';
 import { logger } from './logger';
 
 export class CacheService {
+  private readonly inflight = new Map<string, Promise<unknown>>();
+
   constructor(
     private readonly namespace: string,
     private readonly defaultTtl: number = 60,
@@ -30,6 +32,27 @@ export class CacheService {
       );
     } catch (err) {
       logger.warn('Cache set error:', err);
+    }
+  }
+
+  async getOrLoad<T>(key: string, loader: () => Promise<T>, ttl?: number): Promise<T> {
+    const cached = await this.get<T>(key);
+    if (cached !== null) return cached;
+
+    const existing = this.inflight.get(key) as Promise<T> | undefined;
+    if (existing) return existing;
+
+    const pending = (async () => {
+      const loaded = await loader();
+      await this.set(key, loaded, ttl);
+      return loaded;
+    })();
+
+    this.inflight.set(key, pending);
+    try {
+      return await pending;
+    } finally {
+      this.inflight.delete(key);
     }
   }
 

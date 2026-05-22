@@ -11,7 +11,7 @@ COPY apps/backend/package.json apps/backend/package.json
 COPY packages/shared/package.json packages/shared/package.json
 
 # Install all dependencies (including devDependencies for build)
-RUN npm ci --workspaces
+RUN npm ci --workspace=packages/shared --workspace=apps/backend
 
 # Copy source
 COPY packages/shared/ packages/shared/
@@ -34,7 +34,7 @@ COPY apps/backend/package.json apps/backend/package.json
 COPY packages/shared/package.json packages/shared/package.json
 
 # Install production dependencies only
-RUN npm ci --workspaces --omit=dev
+RUN npm ci --workspace=packages/shared --workspace=apps/backend --omit=dev
 
 # Copy build artifacts
 COPY --from=builder /app/apps/backend/dist apps/backend/dist

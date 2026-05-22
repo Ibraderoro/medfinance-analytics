@@ -32,7 +32,7 @@ describe('database query guardrails', () => {
       query: jest.fn(async (sql: string) => {
         calls.push(sql);
         if (sql.includes('SELECT set_config')) return { rowCount: 1, rows: [] };
-        if (sql === 'BEGIN' || sql === 'ROLLBACK') return { rowCount: 0, rows: [] };
+        if (sql === 'BEGIN' || sql === 'ROLLBACK' || sql === 'RESET ALL') return { rowCount: 0, rows: [] };
         throw new Error('db write failed');
       }),
       release: jest.fn(),
@@ -49,6 +49,35 @@ describe('database query guardrails', () => {
       "SELECT set_config('app.current_tenant_id', $1, true)",
       'SELECT * FROM transactions WHERE organization_id = $1',
       'ROLLBACK',
+      'RESET ALL',
+    ]);
+    expect(client.release).toHaveBeenCalled();
+  });
+
+  it('resets session state before releasing a successful tenant-scoped query connection', async () => {
+    const calls: string[] = [];
+    const client = {
+      query: jest.fn(async (sql: string) => {
+        calls.push(sql);
+        if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'RESET ALL') return { rowCount: 0, rows: [] };
+        if (sql.includes('SELECT set_config')) return { rowCount: 1, rows: [] };
+        return { rowCount: 1, rows: [{ id: 'tx-1' }] };
+      }),
+      release: jest.fn(),
+    };
+
+    mockConnect.mockResolvedValue(client);
+    (getCurrentTenantContext as jest.Mock).mockReturnValue({ organizationId: 'org-1' });
+
+    await expect(query('SELECT * FROM transactions WHERE organization_id = $1', ['org-1']))
+      .resolves.toEqual([{ id: 'tx-1' }]);
+
+    expect(calls).toEqual([
+      'BEGIN',
+      "SELECT set_config('app.current_tenant_id', $1, true)",
+      'SELECT * FROM transactions WHERE organization_id = $1',
+      'COMMIT',
+      'RESET ALL',
     ]);
     expect(client.release).toHaveBeenCalled();
   });

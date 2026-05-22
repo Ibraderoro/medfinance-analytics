@@ -37,6 +37,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Fail-closed npm audit (high+)
+        run: npm audit --audit-level=high
+
       - name: Lint
         run: npm run lint --workspaces --if-present
 
@@ -116,6 +119,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Fail-closed npm audit (high+)
+        run: npm audit --audit-level=high
+
       - name: Run backend Postgres/Redis integration tests
         run: npm run test:integration --workspace=apps/backend
-
