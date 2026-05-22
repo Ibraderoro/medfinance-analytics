@@ -1,8 +1,8 @@
 import { Router } from 'express';
-import { financialSchemas } from '@medfinance/shared';
 import { authenticate, authorize } from '../middleware/auth';
 import { attachTenantContext, blockTenantOverride } from '../middleware/tenantContext';
-import { validateQuery } from '../middleware/zodValidate';
+import { validateRequest } from '../middleware/validateRequest';
+import { financialQuerySchemas } from '../utils/validation';
 import { enforceFreeHistoryWindow } from '../middleware/planAccess';
 import { auditFinancialAccess } from '../middleware/audit';
 import {
@@ -25,11 +25,11 @@ financialsRouter.use(attachTenantContext);
 financialsRouter.use(blockTenantOverride);
 financialsRouter.use(auditFinancialAccess);
 
-financialsRouter.get('/kpis', authorize('viewer'), validateQuery(financialSchemas.summaryQuery), getKpis);
-financialsRouter.get('/summary', authorize('viewer'), validateQuery(financialSchemas.summaryQuery), getSummary);
-financialsRouter.get('/revenue', authorize('viewer'), validateQuery(financialSchemas.dateRangeQuery), enforceFreeHistoryWindow(3), getRevenue);
-financialsRouter.get('/expenses', authorize('viewer'), validateQuery(financialSchemas.dateRangeQuery), enforceFreeHistoryWindow(3), getExpenses);
-financialsRouter.get('/cash-flow', authorize('viewer'), validateQuery(financialSchemas.dateRangeQuery), enforceFreeHistoryWindow(3), getCashFlow);
+financialsRouter.get('/kpis', authorize('viewer'), validateRequest(financialQuerySchemas.summary), getKpis);
+financialsRouter.get('/summary', authorize('viewer'), validateRequest(financialQuerySchemas.summary), getSummary);
+financialsRouter.get('/revenue', authorize('viewer'), validateRequest(financialQuerySchemas.dateRange), enforceFreeHistoryWindow(3), getRevenue);
+financialsRouter.get('/expenses', authorize('viewer'), validateRequest(financialQuerySchemas.dateRange), enforceFreeHistoryWindow(3), getExpenses);
+financialsRouter.get('/cash-flow', authorize('viewer'), validateRequest(financialQuerySchemas.dateRange), enforceFreeHistoryWindow(3), getCashFlow);
 
 financialsRouter.get('/live', authorize('viewer'), getLiveFinancials);
 
