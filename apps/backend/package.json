@@ -15,7 +15,8 @@
     "migrate:rollback": "node -r ts-node/register src/db/migrate.ts rollback",
     "clean": "rm -rf dist",
     "seed": "node -r ts-node/register src/db/seed.ts",
-    "test:integration": "jest --config jest.integration.config.json --runInBand"
+    "test:integration": "jest --config jest.integration.config.json --runInBand",
+    "typecheck": "tsc --project tsconfig.json --noEmit"
   },
   "dependencies": {
     "@medfinance/shared": "*",

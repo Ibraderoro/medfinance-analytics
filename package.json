@@ -27,7 +27,8 @@
     "security:check-lockfile-ws": "node scripts/check-lockfile-ws-version.js",
     "staging:drills:run": "node scripts/run-staging-drills.js",
     "production:gates:check": "npm run coverage:prod && npm run test:integration && npm run production:external-evidence:check && npm run production:security-evidence:check && npm run production:e2e-evidence:check && npm run staging:drills:check",
-    "security:check-lockfile-qs": "node scripts/check-lockfile-qs-version.js"
+    "security:check-lockfile-qs": "node scripts/check-lockfile-qs-version.js",
+    "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "engines": {
     "node": ">=20.19.0",
@@ -41,6 +42,6 @@
   },
   "overrides": {
     "ws": "8.20.1",
-    "qs": "6.15.2"
+    "qs": "^6.15.2"
   }
 }
