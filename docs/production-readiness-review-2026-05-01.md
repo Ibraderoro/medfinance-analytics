@@ -14,7 +14,7 @@ The repository demonstrates strong foundations (passing lint/test/build, securit
 ## Blocking concerns for a "100% ready" claim
 
 1. **Frontend test coverage is materially low and uneven.**
-   - Frontend aggregate statement coverage reported in test output is ~24.07%.
+   - Frontend aggregate statement coverage reported in test output is 39.25% (captured on 2026-05-01 after this PR's hook tests).
    - Multiple chart, hooks, services, and page modules remain at 0% coverage.
    - This leaves significant UI and data-loading behavior unverified for regression.
 
