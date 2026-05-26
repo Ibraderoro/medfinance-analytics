@@ -33,18 +33,31 @@ export async function register(req: Request, res: Response, next: NextFunction):
       res.status(403).json({ success: false, error: { message: 'Self-service registration is disabled', code: 'AUTH_REGISTRATION_DISABLED' }, data: null });
       return;
     }
-    const { email, password, firstName, lastName, role, organizationId } = req.body as { email: string; password: string; firstName: string; lastName: string; role?: string; organizationId: string };
-    const tokens = await service.register(email, password, firstName, lastName, organizationId, role);
+    const { email, password, firstName, lastName, organizationId } = req.body as { email: string; password: string; firstName: string; lastName: string; role?: string; organizationId: string };
+    const tokens = await service.register(email, password, firstName, lastName, organizationId, 'viewer');
     setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
     res.success({ session: 'created' }, 201);
   } catch (err) { next(err); }
 }
 
+/**
+ * Authenticate a user and establish a session.
+ *
+ * Attempts authentication using `email`, `password`, and `organizationId` from the request body.
+ * If the account requires multi-factor authentication, responds with `{ session: 'pending_mfa', tempToken }`.
+ * Otherwise sets the access and refresh auth cookies and responds with `{ session: 'created' }`.
+ * Any thrown errors are forwarded to `next`.
+ */
 export async function login(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const { email, password, organizationId } = req.body as { email: string; password: string; organizationId: string };
-    const tokens = await service.login(email, password, organizationId);
-    setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
+    const result = await service.login(email, password, organizationId);
+    if (result.status === 'mfa_required') {
+      clearAuthCookies(res);
+      res.success({ session: 'pending_mfa', tempToken: result.tempToken });
+      return;
+    }
+    setAuthCookies(res, result.accessToken, result.refreshToken);
     res.success({ session: 'created' });
   } catch (err) { next(err); }
 }
@@ -64,6 +77,11 @@ export async function refresh(req: Request, res: Response, next: NextFunction): 
   } catch (err) { next(err); }
 }
 
+/**
+ * Logs the current user out by revoking the refresh token (if provided) and clearing auth cookies.
+ *
+ * Reads the refresh token from the request body (`refreshToken`) first, then from the refresh cookie; if a token is found it is revoked via the auth service. Clears access and refresh cookies and responds with `{ loggedOut: true }`. Forwards any errors to `next`.
+ */
 export async function logout(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const bodyRefresh = (req.body as { refreshToken?: string }).refreshToken;
@@ -72,5 +90,59 @@ export async function logout(req: Request, res: Response, next: NextFunction): P
     if (refreshToken) await service.logout(refreshToken);
     clearAuthCookies(res);
     res.success({ loggedOut: true });
+  } catch (err) { next(err); }
+}
+
+/**
+ * Verify a multi-factor authentication code and establish a user session.
+ *
+ * Exchanges `tempToken` and `code` from `req.body` for access and refresh tokens, sets the corresponding authentication cookies on `res`, and responds with `{ session: 'created' }`.
+ *
+ * On failure, forwards the error to `next`.
+ */
+export async function verifyMfa(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { tempToken, code } = req.body as { tempToken: string; code: string };
+    const tokens = await service.verifyMfa(tempToken, code);
+    setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
+    res.success({ session: 'created' });
+  } catch (err) { next(err); }
+}
+
+/**
+ * Initiates an OpenID Connect (OIDC) single-sign-on flow for the provided email and sends the provider initiation data in the response.
+ *
+ * @param req - HTTP request whose body must include `email: string` and `organizationId: string` so SSO initiation can be scoped to the target tenant organization.
+ */
+export async function initiateOidc(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { email: emailRaw, organizationId: organizationIdRaw } = req.body as { email?: string; organizationId?: string };
+    const email = (typeof emailRaw === 'string' ? emailRaw : '').trim().toLowerCase();
+    const organizationId = (typeof organizationIdRaw === 'string' ? organizationIdRaw : '').trim();
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (
+      email.length === 0
+      || !emailPattern.test(email)
+      || organizationId.length === 0
+    ) {
+      res.status(400).json({
+        success: false,
+        error: { message: 'email and organizationId are required and email must be valid', code: 'AUTH_INVALID_SSO_REQUEST' },
+        data: null,
+      });
+      return;
+    }
+    const data = await service.initiateSsoLogin('oidc', email, organizationId);
+    res.success(data);
+  } catch (err) { next(err); }
+}
+
+
+export async function completeOidc(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { state, code } = req.body as { state: string; code: string };
+    const tokens = await service.completeOidcLogin(state, code);
+    setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
+    res.success({ session: 'created' });
   } catch (err) { next(err); }
 }

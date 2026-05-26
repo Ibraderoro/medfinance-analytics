@@ -2,10 +2,14 @@ name: OSV-Scanner
 
 # Change "main" to your default branch if you use a different name, i.e. "master"
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
   merge_group:
     branches: [main]
+  schedule:
+    - cron: '21 3 * * 1'
 
 permissions:
   actions: read
@@ -15,22 +19,16 @@ permissions:
 jobs:
   scan-scheduled:
     if: ${{ github.event_name == 'push' || github.event_name == 'schedule' }}
-    uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.3.4"
+    uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@9a498708959aeaef5ef730655706c5a1df1edbc2"
     with:
       scan-args: |-
         -r
-        --skip-git
-        --severity HIGH,CRITICAL
-        --exit-code-on-vuln 1
         ./
 
   scan-pr:
     if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
-    uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@v2.3.4"
+    uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@9a498708959aeaef5ef730655706c5a1df1edbc2"
     with:
       scan-args: |-
         -r
-        --skip-git
-        --severity HIGH,CRITICAL
-        --exit-code-on-vuln 1
         ./

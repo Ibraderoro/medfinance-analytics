@@ -19,7 +19,7 @@ export async function createSubscription(
     const { plan } = req.body as { plan: 'pro' | 'enterprise' };
 
     const data = await billingService.createSubscription(user.organization_id, plan);
-    res.status(201).json({ data });
+    res.success(data, 201);
   } catch (err) {
     next(err);
   }
@@ -33,7 +33,7 @@ export async function getCurrentSubscription(
   try {
     const user = requireAuthenticatedUser(req);
     const data = await billingService.getOrganizationSubscription(user.organization_id);
-    res.json({ data });
+    res.success(data);
   } catch (err) {
     next(err);
   }
@@ -44,30 +44,88 @@ export async function handleStripeWebhook(
   res: Response,
   next: NextFunction,
 ): Promise<void> {
+  let dedupKey: string | undefined;
+  let reservedEventId: string | undefined;
+
   try {
     const signature = req.headers['stripe-signature'];
     if (typeof signature !== 'string') {
-      res.status(400).json({ error: 'Missing Stripe signature' });
+      res.status(400).json({
+        success: false,
+        error: { message: 'Missing Stripe signature', code: 'BILLING_WEBHOOK_SIGNATURE_MISSING' },
+        data: null,
+      });
       return;
     }
 
     const payload = req.body as Buffer;
     const isValid = stripeService.verifyWebhookSignature(payload, signature);
     if (!isValid) {
-      res.status(400).json({ error: 'Invalid Stripe signature' });
+      res.status(400).json({
+        success: false,
+        error: { message: 'Invalid Stripe signature', code: 'BILLING_WEBHOOK_SIGNATURE_INVALID' },
+        data: null,
+      });
       return;
     }
 
-    const event = JSON.parse(payload.toString('utf8')) as { id?: string; type: string; data?: { object?: unknown } };
-    await billingService.handleWebhookEvent(event);
+    let event: { id?: string; type: string; data?: { object?: unknown } };
+    try {
+      event = JSON.parse(payload.toString('utf8')) as { id?: string; type: string; data?: { object?: unknown } };
+    } catch {
+      res.status(400).json({
+        success: false,
+        error: { message: 'Invalid Stripe webhook JSON payload', code: 'BILLING_WEBHOOK_INVALID_JSON' },
+        data: null,
+      });
+      return;
+    }
 
     if (event.id) {
-      const dedupKey = `billing:webhook:event:${event.id}`;
+      dedupKey = `billing:webhook:event:${event.id}`;
       const accepted = await redis.set(dedupKey, '1', 'EX', WEBHOOK_EVENT_DEDUP_TTL_SECONDS, 'NX');
       if (accepted === null) {
         res.success({ received: true, duplicate: true });
         return;
       }
+
+      let persistedReservation = false;
+      try {
+        persistedReservation = await billingService.reserveWebhookEvent(event.id, event.type);
+      } catch (error) {
+        await redis.del(dedupKey).catch(() => undefined);
+        throw error;
+      }
+
+      if (!persistedReservation) {
+        await redis.del(dedupKey).catch(() => undefined);
+        res.success({ received: true, duplicate: true });
+        return;
+      }
+      reservedEventId = event.id;
+    }
+
+    try {
+      await billingService.handleWebhookEvent(event);
+      if (reservedEventId) {
+        await billingService.markWebhookEventProcessed(reservedEventId);
+      }
+    } catch (err) {
+      if (dedupKey) {
+        try {
+          await redis.del(dedupKey);
+        } catch {
+          // Preserve the original webhook processing error so Stripe can retry the event.
+        }
+      }
+      if (reservedEventId) {
+        try {
+          await billingService.releaseWebhookEventReservation(reservedEventId);
+        } catch {
+          // Preserve the original webhook processing error so Stripe can retry the event.
+        }
+      }
+      throw err;
     }
 
     res.success({ received: true });

@@ -15,10 +15,22 @@
     "lint": "npm run lint --workspaces --if-present",
     "migrate": "npm run migrate --workspace=apps/backend",
     "clean": "npm run clean --workspaces --if-present && rm -rf node_modules",
-    "seed": "npm run seed --workspace=apps/backend"
+    "seed": "npm run seed --workspace=apps/backend",
+    "test:e2e": "npm run test:e2e --workspace=apps/frontend",
+    "audit:prod": "node scripts/run-prod-audit.js",
+    "test:integration": "npm run test:integration --workspace=apps/backend",
+    "coverage:prod": "npm test --workspaces --if-present -- --coverageReporters=json-summary --coverageReporters=text-summary && node scripts/check-production-coverage-targets.js",
+    "staging:drills:check": "node scripts/check-staging-drill-gate.js",
+    "production:external-evidence:check": "node scripts/check-external-provider-evidence.js",
+    "production:security-evidence:check": "node scripts/check-vulnerability-evidence.js && npm run security:check-lockfile-ws && npm run security:check-lockfile-qs",
+    "production:e2e-evidence:check": "node scripts/check-playwright-e2e-evidence.js",
+    "security:check-lockfile-ws": "node scripts/check-lockfile-ws-version.js",
+    "staging:drills:run": "node scripts/run-staging-drills.js",
+    "production:gates:check": "npm run coverage:prod && npm run test:integration && npm run production:external-evidence:check && npm run production:security-evidence:check && npm run production:e2e-evidence:check && npm run staging:drills:check",
+    "security:check-lockfile-qs": "node scripts/check-lockfile-qs-version.js"
   },
   "engines": {
-    "node": ">=20.0.0",
+    "node": ">=20.19.0",
     "npm": ">=10.0.0"
   },
   "devDependencies": {
@@ -26,5 +38,9 @@
     "@typescript-eslint/parser": "^7.13.0",
     "eslint": "^8.57.0",
     "typescript": "^5.4.5"
+  },
+  "overrides": {
+    "ws": "8.20.1",
+    "qs": "6.15.2"
   }
 }

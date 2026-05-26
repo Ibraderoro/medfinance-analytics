@@ -1,3 +1,4 @@
+import '../types/express';
 import { Request, Response, NextFunction } from 'express';
 import { logger } from '../utils/logger';
 
@@ -6,6 +7,14 @@ export interface AppError extends Error {
   isOperational?: boolean;
   code?: string;
   details?: unknown;
+}
+
+export function tenantContextError(message: string): AppError {
+  const err = new Error(message) as AppError;
+  err.statusCode = 403;
+  err.isOperational = true;
+  err.code = 'TENANT_CONTEXT_REQUIRED';
+  return err;
 }
 
 function toErrorEnvelope(statusCode: number, message: string, code: string, details?: unknown) {

@@ -12,18 +12,25 @@
   ],
   "moduleNameMapper": {
     "^@/(.*)$": "<rootDir>/src/$1",
-    "\\.(css|less|scss|sass)$": "<rootDir>/src/test/styleMock.ts"
+    "\\.(css|less|scss|sass)$": "<rootDir>/src/test/styleMock.ts",
+    "^d3$": "<rootDir>/../../node_modules/d3/dist/d3.js"
   },
   "collectCoverageFrom": [
     "src/**/*.{ts,tsx}",
-    "!src/**/*.d.ts"
+    "!src/**/*.d.ts",
+    "!src/__tests__/**",
+    "!src/test/**",
+    "!src/main.tsx"
   ],
   "coverageThreshold": {
     "global": {
-      "branches": 20,
-      "functions": 20,
-      "lines": 20,
-      "statements": 20
+      "branches": 85,
+      "functions": 88,
+      "lines": 90,
+      "statements": 90
     }
+  },
+  "transform": {
+    "^.+\\.tsx?$": "ts-jest"
   }
 }

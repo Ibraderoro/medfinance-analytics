@@ -1,6 +1,10 @@
 import { NextFunction, Request, Response } from 'express';
 
 function sanitizeValue(value: unknown): unknown {
+  if (Buffer.isBuffer(value)) {
+    return value;
+  }
+
   if (typeof value === 'string') {
     return value
       .replace(/\0/g, '')

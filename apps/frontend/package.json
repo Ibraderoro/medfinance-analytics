@@ -10,7 +10,9 @@
     "lint": "eslint 'src/**/*.{ts,tsx}'",
     "lint:fix": "eslint 'src/**/*.{ts,tsx}' --fix",
     "test": "jest --coverage",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "test:e2e": "node scripts/run-playwright-e2e.js",
+    "test:e2e:install": "playwright install --with-deps chromium"
   },
   "dependencies": {
     "@medfinance/shared": "*",
@@ -22,6 +24,7 @@
     "zustand": "^4.5.2"
   },
   "devDependencies": {
+    "@playwright/test": "1.55.1",
     "@testing-library/jest-dom": "^6.4.6",
     "@testing-library/react": "^16.0.0",
     "@testing-library/user-event": "^14.5.2",
@@ -32,13 +35,13 @@
     "@types/react-dom": "^18.3.0",
     "@typescript-eslint/eslint-plugin": "^7.13.0",
     "@typescript-eslint/parser": "^7.13.0",
-    "@vitejs/plugin-react": "^4.3.1",
+    "@vitejs/plugin-react": "^5.0.0",
     "eslint": "^8.57.0",
     "eslint-plugin-react-hooks": "^4.6.2",
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^30.3.0",
     "ts-jest": "^29.1.4",
     "typescript": "^5.4.5",
-    "vite": "^8.0.10"
+    "vite": "^7.3.2"
   }
 }

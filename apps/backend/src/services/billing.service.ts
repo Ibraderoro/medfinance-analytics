@@ -61,8 +61,55 @@ function badRequest(message: string): AppError {
   return err;
 }
 
+function configurationError(message: string): AppError {
+  const err = new Error(message) as AppError;
+  err.statusCode = 500;
+  err.isOperational = true;
+  return err;
+}
+
+
+const WEBHOOK_PROCESSING_LEASE_SECONDS = 10 * 60;
 
 export class BillingService {
+
+  async reserveWebhookEvent(eventId: string, eventType: string): Promise<boolean> {
+    const rows = await query<{ id: string }>(
+      `INSERT INTO stripe_webhook_events (id, event_type, status, received_at, processing_expires_at)
+       VALUES ($1, $2, 'processing', NOW(), NOW() + ($3::int * INTERVAL '1 second'))
+       ON CONFLICT (id) DO UPDATE SET
+         event_type = EXCLUDED.event_type,
+         status = 'processing',
+         received_at = NOW(),
+         processing_expires_at = NOW() + ($3::int * INTERVAL '1 second'),
+         processed_at = NULL
+       WHERE stripe_webhook_events.status = 'processing'
+         AND stripe_webhook_events.processing_expires_at < NOW()
+       RETURNING id`,
+      [eventId, eventType, WEBHOOK_PROCESSING_LEASE_SECONDS],
+    );
+
+    return rows.length > 0;
+  }
+
+  async markWebhookEventProcessed(eventId: string): Promise<void> {
+    await query(
+      `UPDATE stripe_webhook_events
+       SET status = 'processed',
+           processed_at = NOW(),
+           processing_expires_at = NULL
+       WHERE id = $1`,
+      [eventId],
+    );
+  }
+
+  async releaseWebhookEventReservation(eventId: string): Promise<void> {
+    await query(
+      `DELETE FROM stripe_webhook_events
+       WHERE id = $1 AND status = 'processing'`,
+      [eventId],
+    );
+  }
   private async upsertStripeSubscription(input: {
     stripeCustomerId: string;
     stripeSubscriptionId: string;
@@ -141,6 +188,12 @@ export class BillingService {
     return 'free';
   }
 
+  ensureProductionCustomerProvisioningConfigured(): void {
+    if (!env.STRIPE_SECRET_KEY && env.isProduction()) {
+      throw configurationError('Stripe customer provisioning requires STRIPE_SECRET_KEY in production');
+    }
+  }
+
   async ensureCustomerForOrganization(
     organizationId: string,
     email: string,
@@ -156,6 +209,8 @@ export class BillingService {
     if (existing) {
       return existing;
     }
+
+    this.ensureProductionCustomerProvisioningConfigured();
 
     const stripeCustomer = env.STRIPE_SECRET_KEY
       ? await this.stripe.createCustomer(email, fullName, organizationId)

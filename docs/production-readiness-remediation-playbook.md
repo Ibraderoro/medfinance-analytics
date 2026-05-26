@@ -54,17 +54,17 @@ Low/uneven frontend coverage means key regressions can ship undetected.
 1. `npm run lint` clean.
 2. `npm test` clean with no untriaged warnings.
 3. `npm run build` clean with no deprecations.
-4. DB migration up/down verified on staging snapshot.
-5. Backup + restore drill completed with documented RTO/RPO.
-6. Rollback drill completed (app + DB schema compatibility).
+4. DB migration up/down verified on staging snapshot; record evidence in [Staging Operational Drills](./staging-drills.md).
+5. Backup + restore drill completed with documented RTO/RPO; record evidence in [Staging Operational Drills](./staging-drills.md).
+6. Rollback drill completed (app + DB schema compatibility); record evidence in [Staging Operational Drills](./staging-drills.md).
 7. Synthetic health + critical user journey monitors green.
-8. On-call runbook includes incident triage for auth, billing, analytics ingestion.
+8. On-call runbook includes incident triage for auth, billing, analytics ingestion; rehearse and record in [Staging Operational Drills](./staging-drills.md).
 9. Security audit gate passed:
    - dependency vulnerability scan clean (e.g., `npm audit` with no critical/high unapproved findings),
    - OWASP/compliance review completed,
    - secrets management validation completed (rotation, storage, least privilege),
    - auth/authz test suite and privilege-boundary checks passed.
-10. Performance/load gate passed:
+10. Performance/load gate passed; record evidence in [Staging Operational Drills](./staging-drills.md):
    - API response-time SLOs verified under expected load,
    - database query performance validated for critical endpoints,
    - CPU/memory/IO utilization within acceptable limits,

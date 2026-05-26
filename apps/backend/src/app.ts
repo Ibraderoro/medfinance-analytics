@@ -1,3 +1,4 @@
+import './types/express';
 import crypto from 'crypto';
 import express, { Application, NextFunction, Request, Response } from 'express';
 import helmet from 'helmet';

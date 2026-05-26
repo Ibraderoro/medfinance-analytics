@@ -29,6 +29,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Fail-closed npm audit (high+)
+        run: npm audit --audit-level=high
+
       - name: Run tests
         run: npm run test
         env:
@@ -71,7 +74,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Deploy to staging server
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262
         with:
           host: ${{ secrets.STAGING_HOST }}
           username: ${{ secrets.STAGING_USER }}

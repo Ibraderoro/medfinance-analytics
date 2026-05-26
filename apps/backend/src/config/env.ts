@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { logger } from '../utils/logger';
 
 function requireEnv(key: string): string {
   const value = process.env[key];
@@ -57,8 +58,97 @@ function parseCorsOrigins(raw: string): string[] {
     .filter((origin) => origin.length > 0);
 }
 
+type OidcConfig = {
+  OIDC_ISSUER: string;
+  OIDC_TOKEN_URL: string;
+  OIDC_USERINFO_URL: string;
+  OIDC_CLIENT_ID: string;
+  OIDC_CLIENT_SECRET: string;
+  OIDC_REDIRECT_URI: string;
+};
+
+function isLocalhost(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || hostname.endsWith('.localhost');
+}
+
+function validateMfaWebhookUrl(value = optionalEnv('MFA_DELIVERY_WEBHOOK_URL')): string {
+  if (!value) {
+    return '';
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    logger.error('Invalid MFA delivery webhook URL', { key: 'MFA_DELIVERY_WEBHOOK_URL', reason: 'invalid_url' });
+    throw new Error('MFA_DELIVERY_WEBHOOK_URL must be a valid URL');
+  }
+
+  if (parsed.protocol === 'https:' || (parsed.protocol === 'http:' && isLocalhost(parsed.hostname))) {
+    return value;
+  }
+
+  logger.error('Invalid MFA delivery webhook URL', {
+    key: 'MFA_DELIVERY_WEBHOOK_URL',
+    reason: 'insecure_protocol',
+    protocol: parsed.protocol,
+    hostname: parsed.hostname,
+  });
+  throw new Error('MFA_DELIVERY_WEBHOOK_URL must use HTTPS unless it targets localhost');
+}
+
+function requireSecureUrl(key: keyof OidcConfig, value: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`Environment variable ${key} must be a valid URL`);
+  }
+
+  if (parsed.protocol === 'https:') {
+    return;
+  }
+
+  if (parsed.protocol === 'http:' && isLocalhost(parsed.hostname)) {
+    return;
+  }
+
+  throw new Error(`Environment variable ${key} must use HTTPS unless it targets localhost`);
+}
+
+function validateOidcConfig(config: OidcConfig): OidcConfig {
+  const entries = Object.entries(config) as Array<[keyof OidcConfig, string]>;
+  const present = entries.filter(([, value]) => value.length > 0);
+
+  if (present.length === 0) {
+    return config;
+  }
+
+  const missing = entries
+    .filter(([, value]) => value.length === 0)
+    .map(([key]) => key);
+  if (missing.length > 0) {
+    throw new Error(`Incomplete OIDC configuration; missing ${missing.join(', ')}`);
+  }
+
+  for (const key of ['OIDC_ISSUER', 'OIDC_TOKEN_URL', 'OIDC_USERINFO_URL', 'OIDC_REDIRECT_URI'] as const) {
+    requireSecureUrl(key, config[key]);
+  }
+
+  return config;
+}
+
 const jwtSecret = requireMinLength(requireEnv('JWT_SECRET'), 'JWT_SECRET', 32);
 const refreshTokenSecret = requireMinLength(requireEnv('REFRESH_TOKEN_SECRET'), 'REFRESH_TOKEN_SECRET', 32);
+const mfaDeliveryWebhookUrl = validateMfaWebhookUrl(optionalEnv('MFA_DELIVERY_WEBHOOK_URL'));
+const oidcConfig = validateOidcConfig({
+  OIDC_ISSUER: optionalEnv('OIDC_ISSUER'),
+  OIDC_TOKEN_URL: optionalEnv('OIDC_TOKEN_URL'),
+  OIDC_USERINFO_URL: optionalEnv('OIDC_USERINFO_URL'),
+  OIDC_CLIENT_ID: optionalEnv('OIDC_CLIENT_ID'),
+  OIDC_CLIENT_SECRET: optionalEnv('OIDC_CLIENT_SECRET'),
+  OIDC_REDIRECT_URI: optionalEnv('OIDC_REDIRECT_URI'),
+});
 
 export const env = {
   NODE_ENV: optionalEnv('NODE_ENV', 'development'),
@@ -93,6 +183,7 @@ export const env = {
   JWT_EXPIRES_IN: optionalEnv('JWT_EXPIRES_IN', '1d'),
   REFRESH_TOKEN_SECRET: refreshTokenSecret,
   REFRESH_TOKEN_EXPIRES_IN: optionalEnv('REFRESH_TOKEN_EXPIRES_IN', '7d'),
+  AUDIT_EXPORT_SIGNING_SECRET: requireMinLength(requireEnv('AUDIT_EXPORT_SIGNING_SECRET'), 'AUDIT_EXPORT_SIGNING_SECRET', 32),
 
   CORS_ALLOWED_ORIGINS: parseCorsOrigins(
     optionalEnv('CORS_ALLOWED_ORIGINS', 'http://localhost:3000'),
@@ -112,6 +203,8 @@ export const env = {
   STRIPE_WEBHOOK_SECRET: optionalEnv('STRIPE_WEBHOOK_SECRET'),
   STRIPE_PRO_PRICE_ID: optionalEnv('STRIPE_PRO_PRICE_ID'),
   STRIPE_ENTERPRISE_PRICE_ID: optionalEnv('STRIPE_ENTERPRISE_PRICE_ID'),
+  MFA_DELIVERY_WEBHOOK_URL: mfaDeliveryWebhookUrl,
+  ...oidcConfig,
 
 
   isProduction: () => optionalEnv('NODE_ENV', 'development') === 'production',
@@ -134,4 +227,8 @@ if (env.REQUIRE_SECURE_TRANSPORT && env.isProduction()) {
 
 if (env.ERROR_RATE_ALERT_THRESHOLD < 0 || env.ERROR_RATE_ALERT_THRESHOLD > 1) {
   throw new Error('ERROR_RATE_ALERT_THRESHOLD must be between 0 and 1');
+}
+
+if (env.AUDIT_EXPORT_SIGNING_SECRET === refreshTokenSecret) {
+  throw new Error('AUDIT_EXPORT_SIGNING_SECRET must be different from REFRESH_TOKEN_SECRET');
 }

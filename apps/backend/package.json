@@ -9,12 +9,13 @@
     "build": "tsc --project tsconfig.json && mkdir -p dist/db/migrations && cp -R src/db/migrations/. dist/db/migrations/",
     "serve": "node dist/index.js",
     "start": "npm run build && npm run serve",
-    "lint": "eslint 'src/**/*.ts' --fix",
+    "lint": "eslint 'src/**/*.ts'",
     "test": "jest --coverage",
     "migrate": "node -r ts-node/register src/db/migrate.ts",
     "migrate:rollback": "node -r ts-node/register src/db/migrate.ts rollback",
     "clean": "rm -rf dist",
-    "seed": "node -r ts-node/register src/db/seed.ts"
+    "seed": "node -r ts-node/register src/db/seed.ts",
+    "test:integration": "jest --config jest.integration.config.json --runInBand"
   },
   "dependencies": {
     "@medfinance/shared": "*",

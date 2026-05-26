@@ -22,9 +22,11 @@ cd "$ROOT_DIR"
 info "Deploying MedFinance Analytics to: ${ENV}"
 
 # Validate required env vars
-[ -z "${JWT_SECRET:-}" ]        && error "JWT_SECRET is not set"
-[ -z "${POSTGRES_PASSWORD:-}" ] && error "POSTGRES_PASSWORD is not set"
-[ -z "${REDIS_PASSWORD:-}" ]    && error "REDIS_PASSWORD is not set"
+[ -z "${JWT_SECRET:-}" ]                  && error "JWT_SECRET is not set"
+[ -z "${REFRESH_TOKEN_SECRET:-}" ]        && error "REFRESH_TOKEN_SECRET is not set"
+[ -z "${AUDIT_EXPORT_SIGNING_SECRET:-}" ] && error "AUDIT_EXPORT_SIGNING_SECRET is not set"
+[ -z "${POSTGRES_PASSWORD:-}" ]           && error "POSTGRES_PASSWORD is not set"
+[ -z "${REDIS_PASSWORD:-}" ]              && error "REDIS_PASSWORD is not set"
 
 info "Building Docker images..."
 docker compose build --no-cache

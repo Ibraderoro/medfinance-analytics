@@ -8,6 +8,7 @@ import { connectRedis, disconnectRedis } from './config/redis';
 import { env } from './config/env';
 import { liveFinancialsService } from './services/liveFinancials.service';
 import { startTracing, stopTracing } from './observability/tracing';
+import { analyticsService } from './services/analytics.service';
 
 const PORT = Number.parseInt(process.env.PORT ?? `${env.PORT}`, 10);
 let isShuttingDown = false;
@@ -24,6 +25,11 @@ app.use((_req, res, next) => {
   next();
 });
 
+/**
+ * Bootstraps and starts the HTTP server, observability, data stores, and background workers, and registers coordinated graceful shutdown handlers.
+ *
+ * Initializes tracing, database and Redis connections, runs migrations and schema validation, starts background services (including analytics and live financials), configures server timeouts, and schedules periodic analytics retention enforcement. Installs signal handlers that run an ordered shutdown sequence which stops workers, clears the retention timer, closes the HTTP server, disconnects resources, and exits the process on completion or on fatal errors during startup/shutdown.
+ */
 async function bootstrap(): Promise<void> {
   try {
     await startTracing();
@@ -33,6 +39,12 @@ async function bootstrap(): Promise<void> {
     await connectRedis();
 
     await liveFinancialsService.start();
+    await analyticsService.startWorker();
+    const retentionTimer = setInterval(() => {
+      analyticsService.enforceRetention().catch((err: unknown) => {
+        logger.error('Analytics retention job failed', { message: err instanceof Error ? err.message : String(err) });
+      });
+    }, 6 * 60 * 60 * 1000);
 
     const server = app.listen(PORT, () => {
       logger.info('MedFinance API started', { port: PORT, env: env.NODE_ENV });
@@ -50,6 +62,8 @@ async function bootstrap(): Promise<void> {
 
       logger.info('Received shutdown signal', { signal });
       await liveFinancialsService.stop();
+      await analyticsService.stopWorker();
+      clearInterval(retentionTimer);
       server.close(async (error) => {
         if (error) {
           logger.error('Error during server shutdown', { message: error.message, stack: error.stack });

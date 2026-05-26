@@ -21,7 +21,7 @@ The backend follows a layered architecture:
 ## 2) Key Runtime Characteristics
 
 - **API versioning**: All endpoints are mounted under `/api/v1`.
-- **Security middleware**: `helmet`, CORS policy, JWT bearer auth (for business endpoints), and rate limiting.
+- **Security middleware**: `helmet`, credentialed CORS policy, HttpOnly cookie-backed JWT authentication (for business endpoints), CSRF validation for unsafe methods, and rate limiting.
 - **Performance optimization**:
   - Gzip compression on responses.
   - Redis-backed caching for selected financial aggregate responses.
@@ -29,8 +29,9 @@ The backend follows a layered architecture:
 
 ## 3) Component Interaction
 
-- Frontend stores JWT access token in `localStorage` and appends it as a `Bearer` token for API calls.
-- Protected backend route groups (`/financials`, `/forecasting`, `/compliance`) are guarded by auth middleware.
+- Frontend does not persist access tokens in `localStorage`; login/register/MFA responses set HttpOnly `medfinance_access_token` and `medfinance_refresh_token` cookies, and the Axios client sends them with `withCredentials: true`.
+- The backend sets a readable `csrf_token` cookie and requires matching `x-csrf-token` headers on unsafe non-bootstrap requests.
+- Protected backend route groups (`/financials`, `/forecasting`, `/compliance`, `/billing`, and `/insights`) are guarded by auth middleware that reads the access cookie for browser sessions.
 - Services execute SQL against PostgreSQL; some high-value reads are cached in Redis.
 - Errors flow to centralized Express error-handling middleware for consistent API behavior.
 
@@ -45,14 +46,15 @@ The backend follows a layered architecture:
 ┌───────────────────────────────────────────────────────────────────┐
 │ Frontend SPA (React + Vite + D3)                                  │
 │ - Pages: Dashboard, Financials, Forecasting, Compliance           │
-│ - Axios client with JWT request interceptor                        │
+│ - Axios client with credentials + CSRF header support              │
 └───────────────────────────────┬───────────────────────────────────┘
-                                │ /api/v1/* (JSON)
+                                │ /api/v1/* (JSON + HttpOnly auth cookies)
                                 ▼
 ┌───────────────────────────────────────────────────────────────────┐
 │ Backend API (Express + TypeScript)                                │
 │ Middleware: helmet → CORS → rate limiter → body parser → logging │
 │ Route groups: /health, /financials, /forecasting, /compliance    │
+│               /billing, /insights, /auth                         │
 └───────────────┬───────────────────────────────┬───────────────────┘
                 │                               │
                 │ SQL                           │ cache / ping
