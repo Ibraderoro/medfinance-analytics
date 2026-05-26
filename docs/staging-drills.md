@@ -220,3 +220,22 @@ Pass criteria:
 - Alert/detection fires within the expected detection window.
 - Mitigation restores staging health.
 - Follow-up items are assigned before closing the drill.
+
+
+## Release packet freshness re-validation
+
+After replacing the staging evidence packet, re-validate the full release evidence set against the same candidate commit SHA/date window before promotion.
+
+Required re-validation sequence:
+
+```bash
+export CANDIDATE_SHA=<release-candidate-sha>
+export STAGING_DRILL_EVIDENCE=docs/staging-drill-evidence-<RUN_ID>.md
+npm run staging:drills:check
+npm run production:external-evidence:check
+npm run production:security-evidence:check
+npm run production:e2e-evidence:check
+npm run production:gates:check
+```
+
+Record the workflow/job links and verify each evidence packet references the same `CANDIDATE_SHA` and release date window in the change-control ticket.

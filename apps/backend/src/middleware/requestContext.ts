@@ -1,16 +1,6 @@
 import { NextFunction, Request, Response } from 'express';
 import { randomUUID } from 'crypto';
 
-declare module 'express-serve-static-core' {
-  interface Request {
-    requestId?: string;
-  }
-
-  interface Response {
-    success: <T>(data: T, statusCode?: number) => void;
-  }
-}
-
 export function requestContext(req: Request, res: Response, next: NextFunction): void {
   const incomingRequestId = req.header('x-request-id');
   const requestId = incomingRequestId && incomingRequestId.trim().length > 0

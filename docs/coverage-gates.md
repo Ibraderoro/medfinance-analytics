@@ -30,3 +30,16 @@ Coverage is necessary but not sufficient for production approval. Broad healthca
 3. Provider-specific OIDC, Stripe replay/reconciliation, payment failure/recovery, and MFA delivery evidence.
 4. A clean dependency vulnerability scan or formally approved exceptions.
 5. Playwright critical-journey smoke tests in a provisioned browser environment.
+
+
+## Unified production evidence gate
+
+Run the complementary production gates together with:
+
+```bash
+npm run production:gates:check
+```
+
+This command enforces coverage, backend integration evidence, external-provider evidence, vulnerability evidence, provisioned E2E evidence, and staging-drill evidence in one release-blocking pass.
+
+After any staging evidence refresh, re-run production:gates:check; this command already runs the external/provider, security, and E2E evidence checks so no separate runs are required, ensuring all release packets remain aligned to the same candidate SHA/date window.
