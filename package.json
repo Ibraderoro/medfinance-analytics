@@ -28,7 +28,16 @@
     "staging:drills:run": "node scripts/run-staging-drills.js",
     "production:gates:check": "npm run coverage:prod && npm run test:integration && npm run production:external-evidence:check && npm run production:security-evidence:check && npm run production:e2e-evidence:check && npm run staging:drills:check",
     "security:check-lockfile-qs": "node scripts/check-lockfile-qs-version.js",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "perf:api:bench": "node scripts/performance/run-api-bench.js",
+    "perf:load:smoke": "mkdir -p artifacts/performance && PERF_PROFILE=smoke k6 run scripts/performance/k6/load-mixed.js --summary-export artifacts/performance/k6-load-smoke-$(date -u +%Y%m%dT%H%M%SZ).json",
+    "perf:load:peak": "mkdir -p artifacts/performance && PERF_PROFILE=peak k6 run scripts/performance/k6/load-mixed.js --summary-export artifacts/performance/k6-load-peak-$(date -u +%Y%m%dT%H%M%SZ).json",
+    "perf:stress:step": "mkdir -p artifacts/performance && k6 run scripts/performance/k6/stress-step.js --summary-export artifacts/performance/k6-stress-step-$(date -u +%Y%m%dT%H%M%SZ).json",
+    "perf:stress:spike": "mkdir -p artifacts/performance && k6 run scripts/performance/k6/stress-spike.js --summary-export artifacts/performance/k6-stress-spike-$(date -u +%Y%m%dT%H%M%SZ).json",
+    "perf:soak": "mkdir -p artifacts/performance && k6 run scripts/performance/k6/soak-peak.js --summary-export artifacts/performance/k6-soak-$(date -u +%Y%m%dT%H%M%SZ).json",
+    "perf:db:analyze": "node scripts/performance/run-db-analysis.js",
+    "perf:redis:check": "node scripts/performance/run-redis-check.js",
+    "perf:report": "node scripts/performance/run-report.js"
   },
   "engines": {
     "node": ">=20.19.0",
@@ -38,7 +47,8 @@
     "@typescript-eslint/eslint-plugin": "^7.13.0",
     "@typescript-eslint/parser": "^7.13.0",
     "eslint": "^8.57.0",
-    "typescript": "^5.4.5"
+    "typescript": "^5.4.5",
+    "autocannon": "^7.15.0"
   },
   "overrides": {
     "ws": "8.20.1",
