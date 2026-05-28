@@ -12,25 +12,29 @@ function identityKey(req: Request): string {
 }
 
 export async function bruteForceProtection(req: Request, res: Response, next: NextFunction): Promise<void> {
-  const redis = getRedis();
-  const key = identityKey(req);
+  try {
+    const redis = getRedis();
+    const key = identityKey(req);
 
-  const attempts = Number(await timedRedis('bruteforce:incr', () => redis.incr(key)));
-  if (attempts === 1) {
-    await timedRedis('bruteforce:expire', () => redis.expire(key, WINDOW_SECONDS));
+    const attempts = Number(await timedRedis('bruteforce:incr', () => redis.incr(key)));
+    if (attempts === 1) {
+      await timedRedis('bruteforce:expire', () => redis.expire(key, WINDOW_SECONDS));
+    }
+
+    if (attempts > MAX_ATTEMPTS_PER_IDENTITY) {
+      res.status(429).json({
+        success: false,
+        error: {
+          message: 'Too many authentication attempts for this identity. Try again later.',
+          code: 'AUTH_BRUTE_FORCE_BLOCKED',
+        },
+        data: null,
+      });
+      return;
+    }
+
+    next();
+  } catch (error) {
+    next(error);
   }
-
-  if (attempts > MAX_ATTEMPTS_PER_IDENTITY) {
-    res.status(429).json({
-      success: false,
-      error: {
-        message: 'Too many authentication attempts for this identity. Try again later.',
-        code: 'AUTH_BRUTE_FORCE_BLOCKED',
-      },
-      data: null,
-    });
-    return;
-  }
-
-  next();
 }

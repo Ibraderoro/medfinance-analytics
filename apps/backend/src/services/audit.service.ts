@@ -46,6 +46,7 @@ export class AuditService {
     admin_mfa_required: 'READ',
     login_success: 'READ',
     admin_mfa_verified: 'READ',
+    refresh_failed: 'READ',
     refresh_success: 'READ',
     logout_success: 'READ',
   };

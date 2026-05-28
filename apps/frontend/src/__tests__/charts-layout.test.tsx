@@ -81,10 +81,33 @@ describe('layout components', () => {
     expect(getByLabelText('Billing')).toBeInTheDocument();
   });
 
+  it('marks the active sidebar link for the current route', () => {
+    const { getByLabelText } = render(
+      <MemoryRouter initialEntries={['/dashboard']} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Sidebar />
+      </MemoryRouter>,
+    );
+    expect(getByLabelText('Dashboard')).toHaveAttribute('aria-current', 'page');
+    expect(getByLabelText('Billing')).not.toHaveAttribute('aria-current');
+  });
+
   it('Header renders the application logo and logout button', () => {
     const { getByText, getByRole } = render(<MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><Header /></MemoryRouter>);
     expect(getByText('MedFinance Analytics')).toBeInTheDocument();
     expect(getByRole('button', { name: /log out/i })).toBeInTheDocument();
+  });
+
+  it('Header renders dark-mode toggle label and handles theme toggling', async () => {
+    const onToggleTheme = jest.fn();
+    const { getByRole } = render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Header theme="dark" onToggleTheme={onToggleTheme} />
+      </MemoryRouter>,
+    );
+
+    expect(getByRole('button', { name: /toggle dark mode/i })).toHaveTextContent('☀️ Light');
+    await userEvent.click(getByRole('button', { name: /toggle dark mode/i }));
+    expect(onToggleTheme).toHaveBeenCalledTimes(1);
   });
 
   it('Header logout clears the session and navigates to /login', async () => {
