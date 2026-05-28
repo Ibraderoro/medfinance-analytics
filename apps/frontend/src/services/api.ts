@@ -52,7 +52,12 @@ export const authApi = {
   refresh: () => apiClient.post('/auth/refresh', {}),
   logout: () => apiClient.post('/auth/logout', {}),
   verifyMfa: (tempToken: string, code: string) => apiClient.post('/auth/mfa/verify', { tempToken, code }),
+  initiateOidc: (email: string, organizationId: string) => apiClient.post('/auth/oidc/initiate', { email, organizationId }),
+  completeOidc: (state: string, code: string) => apiClient.post('/auth/oidc/callback', { state, code }),
+  generateRecoveryCodes: () => apiClient.post('/auth/recovery-codes', {}),
 };
+
+export const completeOidc = (state: string, code: string) => authApi.completeOidc(state, code);
 
 export const financialsApi = {
   getKpis: (year?: number) => apiClient.get('/financials/kpis', { params: { year } }),

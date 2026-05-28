@@ -65,6 +65,7 @@ type OidcConfig = {
   OIDC_CLIENT_ID: string;
   OIDC_CLIENT_SECRET: string;
   OIDC_REDIRECT_URI: string;
+  OIDC_JWKS_URI: string;
 };
 
 function isLocalhost(hostname: string): boolean {
@@ -134,6 +135,9 @@ function validateOidcConfig(config: OidcConfig): OidcConfig {
   for (const key of ['OIDC_ISSUER', 'OIDC_TOKEN_URL', 'OIDC_USERINFO_URL', 'OIDC_REDIRECT_URI'] as const) {
     requireSecureUrl(key, config[key]);
   }
+  if (config.OIDC_JWKS_URI) {
+    requireSecureUrl('OIDC_JWKS_URI', config.OIDC_JWKS_URI);
+  }
 
   return config;
 }
@@ -148,6 +152,7 @@ const oidcConfig = validateOidcConfig({
   OIDC_CLIENT_ID: optionalEnv('OIDC_CLIENT_ID'),
   OIDC_CLIENT_SECRET: optionalEnv('OIDC_CLIENT_SECRET'),
   OIDC_REDIRECT_URI: optionalEnv('OIDC_REDIRECT_URI'),
+  OIDC_JWKS_URI: optionalEnv('OIDC_JWKS_URI'),
 });
 
 export const env = {

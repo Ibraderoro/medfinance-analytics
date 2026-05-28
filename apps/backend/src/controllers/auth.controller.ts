@@ -19,6 +19,14 @@ function clearAuthCookies(res: Response): void {
   res.clearCookie(REFRESH_COOKIE, { httpOnly: true, secure, sameSite: 'strict', path: '/api/v1/auth' });
 }
 
+function authContext(req: Request) {
+  return {
+    ipAddress: (req.headers['x-forwarded-for']?.toString().split(',')[0] ?? req.socket.remoteAddress ?? '').trim(),
+    userAgent: req.headers['user-agent']?.toString() ?? '',
+    deviceId: parseCookies(req.headers.cookie).medfinance_device_id ?? req.headers['x-device-id']?.toString(),
+  };
+}
+
 function parseCookies(raw: string | undefined): Record<string, string> {
   if (!raw) return {};
   return Object.fromEntries(raw.split(';').map((part) => {
@@ -51,7 +59,7 @@ export async function register(req: Request, res: Response, next: NextFunction):
 export async function login(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const { email, password, organizationId } = req.body as { email: string; password: string; organizationId: string };
-    const result = await service.login(email, password, organizationId);
+    const result = await service.login(email, password, organizationId, authContext(req));
     if (result.status === 'mfa_required') {
       clearAuthCookies(res);
       res.success({ session: 'pending_mfa', tempToken: result.tempToken });
@@ -71,7 +79,7 @@ export async function refresh(req: Request, res: Response, next: NextFunction): 
       res.status(400).json({ success: false, error: { message: 'refreshToken is required', code: 'AUTH_REFRESH_TOKEN_REQUIRED' }, data: null });
       return;
     }
-    const tokens = await service.refresh(refreshToken);
+    const tokens = await service.refresh(refreshToken, authContext(req));
     setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
     res.success({ session: 'refreshed' });
   } catch (err) { next(err); }
@@ -197,5 +205,17 @@ export async function revokeInvitation(req: Request, res: Response, next: NextFu
     }
     await service.revokeInvitation(user, req.params.id);
     res.success({ revoked: true });
+  } catch (err) { next(err); }
+}
+
+export async function generateRecoveryCodes(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const user = (req as Request & { user?: { id: string; email: string; role: string; organization_id: string } }).user;
+    if (!user) {
+      res.status(401).json({ success: false, error: { message: 'Unauthorized', code: 'AUTH_REQUIRED' }, data: null });
+      return;
+    }
+    const result = await service.generateRecoveryCodes(user);
+    res.success(result, 201);
   } catch (err) { next(err); }
 }

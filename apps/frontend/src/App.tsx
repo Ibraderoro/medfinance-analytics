@@ -11,6 +11,7 @@ import { BillingPage } from './pages/Billing';
 import { LoginPage } from './pages/Login';
 import { RegisterPage } from './pages/Register';
 import { AdminInvitesPage } from './pages/AdminInvites';
+import { OidcCallbackPage } from './pages/OidcCallback';
 import { authApi } from './services/api';
 
 function useAuthSession() {
@@ -106,6 +107,10 @@ export default function App() {
         <Route
           path="/register"
           element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <RegisterPage />}
+        />
+        <Route
+          path="/oidc/callback"
+          element={<OidcCallbackPage />}
         />
         <Route
           path="/"
