@@ -21,7 +21,6 @@ interface UserRow {
   organization_id: string;
   is_active: boolean;
   mfa_required?: boolean;
-  step_up_required?: boolean;
 }
 
 interface AuthRequestContext {
@@ -430,6 +429,7 @@ export class AuthService {
       }
     }
 
+    await this.recordSuccessfulLogin(user);
     return this.generateTokenPair(user);
   }
 
@@ -549,7 +549,7 @@ export class AuthService {
       metadata: { email: user.email },
     });
 
-    return this.generateTokenPair(user);
+    return this.generateTokenPair(user, ['sso']);
   }
 
   async login(email: string, password: string, organizationId: string, context?: AuthRequestContext): Promise<{
@@ -560,8 +560,7 @@ export class AuthService {
   }> {
     const [user] = await query<UserRow>(
       `SELECT u.id, u.email, u.password_hash, u.first_name, u.last_name, u.role, u.organization_id, u.is_active,
-              COALESCE(p.mfa_enforced, false) AS mfa_required,
-              COALESCE(p.step_up_required_for_billing, false) AS step_up_required
+              COALESCE(p.mfa_enforced, false) AS mfa_required
        FROM users u
        LEFT JOIN organization_auth_policies p ON p.organization_id = u.organization_id
        WHERE u.email = $1 AND u.organization_id = $2`,
@@ -578,7 +577,7 @@ export class AuthService {
     }
 
     const suspicious = await this.detectSuspiciousLogin(user, context);
-    if (user.role === 'admin' || user.mfa_required === true || user.step_up_required === true || suspicious) {
+    if (user.role === 'admin' || user.mfa_required === true || suspicious) {
       const tempToken = crypto.randomUUID();
       const mfaCode = this.generateMfaCode();
       const mfaKey = `auth:mfa:pending:${tempToken}`;
@@ -590,7 +589,7 @@ export class AuthService {
           codeHash: hashMfaCode(tempToken, mfaCode),
           organizationId: user.organization_id,
           attempts: 0,
-          stepUp: suspicious || user.step_up_required === true,
+          stepUp: suspicious,
           context: normalizeAuthContext(context),
         }),
       );
@@ -689,7 +688,7 @@ export class AuthService {
         if (!user || !user.is_active) throw authError('User not found or inactive');
         await this.recordSuccessfulLogin(user, parsed.context);
         await this.auditService.log({ action: 'mfa_recovery_code_used', entityType: 'user', entityId: user.id, performedBy: user.id, organizationId: user.organization_id, metadata: {} });
-        return this.generateTokenPair(user, parsed.context);
+        return this.generateTokenPair(user, ['pwd', 'mfa']);
       }
 
       const attempts = (parsed.attempts ?? 0) + 1;
@@ -728,7 +727,7 @@ export class AuthService {
       metadata: { method: 'totp_or_otp' },
     });
 
-    return this.generateTokenPair(user);
+    return this.generateTokenPair(user, ['pwd', 'mfa']);
   }
 
   async refresh(refreshToken: string, context?: AuthRequestContext) {
@@ -787,7 +786,8 @@ export class AuthService {
       metadata: { email: user.email },
     });
 
-    return this.generateTokenPair(user, context);
+    await this.recordSuccessfulLogin(user, context);
+    return this.generateTokenPair(user, ['refresh_token']);
   }
 
   async logout(refreshToken: string) {
@@ -1010,27 +1010,29 @@ export class AuthService {
   private async recordSuccessfulLogin(user: UserIdentity, context?: AuthRequestContext): Promise<void> {
     const normalized = normalizeAuthContext(context);
     await query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [user.id]);
-    await query(
-      `INSERT INTO auth_sessions (user_id, organization_id, device_id, ip_address, user_agent, last_seen_at)
-       VALUES ($1, $2, $3, $4, $5, NOW())
-       ON CONFLICT (user_id, device_id) DO UPDATE
-       SET ip_address = EXCLUDED.ip_address, user_agent = EXCLUDED.user_agent, last_seen_at = NOW(), revoked_at = NULL`,
-      [user.id, user.organization_id, normalized.deviceId, normalized.ipAddress, normalized.userAgent],
-    ).catch(() => undefined);
+    try {
+      await query(
+        `INSERT INTO auth_sessions (user_id, organization_id, device_id, ip_address, user_agent, last_seen_at)
+         VALUES ($1, $2, $3, $4, $5, NOW())
+         ON CONFLICT (user_id, device_id) DO UPDATE
+         SET ip_address = EXCLUDED.ip_address, user_agent = EXCLUDED.user_agent, last_seen_at = NOW(), revoked_at = NULL`,
+        [user.id, user.organization_id, normalized.deviceId, normalized.ipAddress, normalized.userAgent],
+      );
+    } catch {}
   }
 
   private generateMfaCode(): string {
     return crypto.randomInt(100000, 1000000).toString();
   }
 
-  private async generateTokenPair(user: UserIdentity, context?: AuthRequestContext) {
+  private async generateTokenPair(user: UserIdentity, amr: string[] = ['pwd']) {
     const accessToken = jwt.sign(
       {
         id: user.id,
         email: user.email,
         role: user.role,
         organization_id: user.organization_id,
-        amr: ['pwd', 'mfa'],
+        amr,
         auth_time: Math.floor(Date.now() / 1000),
       },
       env.JWT_SECRET,
@@ -1055,8 +1057,6 @@ export class AuthService {
       'INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)',
       [user.id, tokenHash, expiresAt.toISOString()],
     );
-    await this.recordSuccessfulLogin(user, context).catch(() => undefined);
-
     return { accessToken, refreshToken: plainRefreshToken };
   }
 }
