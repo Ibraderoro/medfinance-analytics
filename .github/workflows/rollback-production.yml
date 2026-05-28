@@ -1,0 +1,38 @@
+name: Rollback — Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_version:
+        description: 'Optional version label to record for the rollback target'
+        required: false
+
+jobs:
+  rollback-production:
+    name: Roll production traffic back to previous color
+    runs-on: [self-hosted, medfinance-production]
+    environment: production
+    permissions:
+      contents: read
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Roll back edge traffic and verify
+        env:
+          PROD_PUBLIC_URL: ${{ vars.PROD_PUBLIC_URL }}
+          PROD_DEPLOY_BASE_DIR: ${{ vars.PROD_DEPLOY_BASE_DIR }}
+          TARGET_VERSION: ${{ github.event.inputs.target_version }}
+        run: |
+          : "${PROD_PUBLIC_URL:?Set PROD_PUBLIC_URL environment variable in GitHub Environments}"
+          args=(
+            --environment production
+            --public-url "$PROD_PUBLIC_URL"
+            --base-dir "${PROD_DEPLOY_BASE_DIR:-/opt/medfinance}"
+          )
+          if [ -n "$TARGET_VERSION" ]; then
+            args+=(--version "$TARGET_VERSION")
+          fi
+          bash infrastructure/deployment/rollback-bluegreen.sh "${args[@]}"

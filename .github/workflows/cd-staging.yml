@@ -6,17 +6,11 @@ on:
   workflow_dispatch:
 
 jobs:
-  deploy-staging:
-    name: Deploy to Staging
+  validate-staging:
+    name: Validate staging candidate
     runs-on: ubuntu-latest
-    environment: staging
     permissions:
       contents: read
-      packages: write
-    concurrency:
-      group: deploy-staging
-      cancel-in-progress: false
-
     steps:
       - uses: actions/checkout@v4
 
@@ -43,6 +37,29 @@ jobs:
           JWT_SECRET: ${{ secrets.STAGING_JWT_SECRET }}
           REFRESH_TOKEN_SECRET: ${{ secrets.STAGING_REFRESH_TOKEN_SECRET }}
 
+  build-staging-images:
+    name: Build immutable staging images
+    needs: validate-staging
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      backend-image: ${{ steps.manifest.outputs.backend_image }}
+      frontend-image: ${{ steps.manifest.outputs.frontend_image }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set image metadata
+        id: meta
+        run: |
+          version="staging-${GITHUB_SHA::12}"
+          namespace="ghcr.io/${GITHUB_REPOSITORY,,}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "namespace=${namespace}" >> "$GITHUB_OUTPUT"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -54,39 +71,98 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push backend image
+        id: backend
         uses: docker/build-push-action@v5
         with:
           context: .
           file: infrastructure/docker/backend/Dockerfile.prod
           push: true
-          tags: ghcr.io/${{ github.repository }}/backend:staging
+          tags: |
+            ${{ steps.meta.outputs.namespace }}/backend:${{ steps.meta.outputs.version }}
+            ${{ steps.meta.outputs.namespace }}/backend:sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Build and push frontend image
+        id: frontend
         uses: docker/build-push-action@v5
         with:
           context: .
           file: infrastructure/docker/frontend/Dockerfile.prod
           push: true
-          tags: ghcr.io/${{ github.repository }}/frontend:staging
+          tags: |
+            ${{ steps.meta.outputs.namespace }}/frontend:${{ steps.meta.outputs.version }}
+            ${{ steps.meta.outputs.namespace }}/frontend:sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Deploy to staging server
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262
-        with:
-          host: ${{ secrets.STAGING_HOST }}
-          username: ${{ secrets.STAGING_USER }}
-          key: ${{ secrets.STAGING_SSH_KEY }}
-          script: |
-            cd /opt/medfinance-staging
-            docker compose pull
-            docker compose up -d postgres redis
-            docker compose run --rm backend node apps/backend/dist/db/migrate.js
-            docker compose up -d --remove-orphans
-
-      - name: Verify staging health
+      - name: Build release manifest
+        id: manifest
+        env:
+          DEPLOY_ENVIRONMENT: staging
+          RELEASE_VERSION: ${{ steps.meta.outputs.version }}
+          BACKEND_IMAGE: ${{ steps.meta.outputs.namespace }}/backend@${{ steps.backend.outputs.digest }}
+          FRONTEND_IMAGE: ${{ steps.meta.outputs.namespace }}/frontend@${{ steps.frontend.outputs.digest }}
         run: |
-          sleep 15
-          curl --fail https://staging.medfinance.example.com/health
+          npm run release:manifest
+          npm run release:manifest:check -- --file release-manifest.json
+          echo "backend_image=${BACKEND_IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "frontend_image=${FRONTEND_IMAGE}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload release manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-release-manifest
+          path: release-manifest.json
+          if-no-files-found: error
+
+  deploy-staging:
+    name: Health-gated blue/green staging deploy
+    needs: build-staging-images
+    runs-on: [self-hosted, medfinance-staging]
+    environment: staging
+    permissions:
+      contents: read
+      packages: read
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download release manifest
+        uses: actions/download-artifact@v4
+        with:
+          name: staging-release-manifest
+
+      - name: Validate release manifest
+        run: npm run release:manifest:check -- --file release-manifest.json
+
+      - name: Log in to container registry on deploy host
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Deploy pinned staging release
+        env:
+          STAGING_PUBLIC_URL: ${{ vars.STAGING_PUBLIC_URL }}
+          STAGING_DEPLOY_BASE_DIR: ${{ vars.STAGING_DEPLOY_BASE_DIR }}
+          STAGING_SECRET_ENV_FILE: ${{ vars.STAGING_SECRET_ENV_FILE }}
+        run: |
+          : "${STAGING_PUBLIC_URL:?Set STAGING_PUBLIC_URL environment variable in GitHub Environments}"
+          bash infrastructure/deployment/deploy-bluegreen.sh \
+            --environment staging \
+            --version "${{ needs.build-staging-images.outputs.version }}" \
+            --backend-image "${{ needs.build-staging-images.outputs.backend-image }}" \
+            --frontend-image "${{ needs.build-staging-images.outputs.frontend-image }}" \
+            --public-url "$STAGING_PUBLIC_URL" \
+            --base-dir "${STAGING_DEPLOY_BASE_DIR:-/opt/medfinance}" \
+            --env-file "${STAGING_SECRET_ENV_FILE:-/opt/medfinance/secrets/staging.env}"

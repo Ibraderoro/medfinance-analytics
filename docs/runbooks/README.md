@@ -55,3 +55,6 @@ curl -fsS http://localhost:3001/api/v1/health/metrics
 3. **Use evidence-based decisions.** Capture timestamps, release SHAs, dashboards, logs, and command outputs.
 4. **Communicate early.** Acknowledge pages quickly and publish status updates at severity-appropriate intervals.
 5. **Document follow-ups.** Every Sev1/Sev2 incident should produce action items with owners and due dates.
+
+- [Database migrations](database-migrations.md)
+- [Production deployment](production-deployment.md)

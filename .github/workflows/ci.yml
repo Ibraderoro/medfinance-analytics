@@ -122,5 +122,8 @@ jobs:
       - name: Fail-closed npm audit (high+)
         run: npm audit --audit-level=high
 
+      - name: Migration preflight
+        run: npm run migrate:preflight --workspace=apps/backend
+
       - name: Run backend Postgres/Redis integration tests
         run: npm run test:integration --workspace=apps/backend
