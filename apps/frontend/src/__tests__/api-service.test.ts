@@ -11,6 +11,7 @@ const axiosCreate = jest.fn((config: unknown) => {
     },
     get: jest.fn(),
     post: jest.fn(),
+    delete: jest.fn(),
   };
 });
 
@@ -85,10 +86,13 @@ describe('api service', () => {
 
   it('exposes typed API helpers for each backend resource', async () => {
     const api = await import('../services/api');
-    const client = api.apiClient as unknown as { get: jest.Mock; post: jest.Mock };
+    const client = api.apiClient as unknown as { get: jest.Mock; post: jest.Mock; delete: jest.Mock };
 
     api.authApi.login('user@example.com', 'pw', 'org-1');
-    api.authApi.register({ email: 'user@example.com', password: 'pw', firstName: 'A', lastName: 'B', organizationId: 'org-1' });
+    api.authApi.register({ email: 'user@example.com', password: 'pw', firstName: 'A', lastName: 'B', invitationToken: 'invite-token' });
+    api.authApi.verifyInvitation('invite-token');
+    api.authApi.createInvitation({ email: 'new@example.com', role: 'viewer', expiresInHours: 24 });
+    api.authApi.revokeInvitation('invite-id');
     api.authApi.refresh();
     api.authApi.logout();
     api.authApi.verifyMfa('temp', '123456');

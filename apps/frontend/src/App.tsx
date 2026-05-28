@@ -10,6 +10,7 @@ import { CompliancePage } from './pages/Compliance';
 import { BillingPage } from './pages/Billing';
 import { LoginPage } from './pages/Login';
 import { RegisterPage } from './pages/Register';
+import { AdminInvitesPage } from './pages/AdminInvites';
 import { authApi } from './services/api';
 
 function useAuthSession() {
@@ -120,6 +121,7 @@ export default function App() {
           <Route path="forecasting" element={<ForecastingPage />} />
           <Route path="compliance" element={<CompliancePage />} />
           <Route path="billing" element={<BillingPage />} />
+          <Route path="admin/invitations" element={<AdminInvitesPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />} />

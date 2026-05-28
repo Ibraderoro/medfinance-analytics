@@ -9,6 +9,7 @@ import { BillingService } from './billing.service';
 import { AuditService } from './audit.service';
 import { logger } from '../utils/logger';
 import { MfaDeliveryService } from './mfaDelivery.service';
+import { runWithTenantContext } from '../middleware/tenantContext';
 
 interface UserRow {
   id: string;
@@ -22,11 +23,34 @@ interface UserRow {
 }
 
 type UserIdentity = Pick<UserRow, 'id' | 'email' | 'role' | 'organization_id'>;
+
+interface InvitationRow {
+  id: string;
+  organization_id: string;
+  email: string;
+  role: string;
+  invited_by: string;
+  token_hash: string;
+  expires_at: string;
+  accepted_at: string | null;
+  revoked_at: string | null;
+}
+
+interface InvitationTokenPayload extends jwt.JwtPayload {
+  typ: 'organization_invite';
+  jti: string;
+  org: string;
+  email: string;
+  role: string;
+}
+
 const ALLOWED_ROLES = new Set(['admin', 'analyst', 'viewer']);
 const MFA_TTL_SECONDS = 5 * 60;
 const MFA_MAX_ATTEMPTS = 5;
 const OIDC_REQUEST_TIMEOUT_MS = 10_000;
 const REFRESH_REVOKED_PREFIX = 'auth:refresh:revoked:';
+const INVITATION_TOKEN_TTL_HOURS = 72;
+const GENERIC_INVITE_ERROR = 'Invalid or expired invitation';
 
 function authError(message: string): AppError {
   const err = new Error(message) as AppError;
@@ -108,6 +132,25 @@ function hashRefreshToken(token: string): string {
   return hmacToken(token, env.REFRESH_TOKEN_SECRET);
 }
 
+function hashInvitationToken(token: string): string {
+  return hmacToken(token, env.JWT_SECRET);
+}
+
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+function emailDomain(email: string): string {
+  return normalizeEmail(email).split('@')[1] ?? '';
+}
+
+function inviteError(): AppError {
+  const err = new Error(GENERIC_INVITE_ERROR) as AppError;
+  err.statusCode = 401;
+  err.isOperational = true;
+  return err;
+}
+
 function hashMfaCode(tempToken: string, code: string): string {
   return hmacToken(`${tempToken}:${code.trim()}`, env.JWT_SECRET);
 }
@@ -152,16 +195,136 @@ export class AuthService {
     password: string,
     firstName: string,
     lastName: string,
-    organizationId: string,
-    role = 'viewer',
+    invitationToken: string,
   ) {
-    if (!ALLOWED_ROLES.has(role)) {
-      throw validationError('Invalid role');
+    return this.acceptInvitation(invitationToken, email, password, firstName, lastName);
+  }
+
+  async createInvitation(inviter: UserIdentity, email: string, role = 'viewer', expiresInHours = INVITATION_TOKEN_TTL_HOURS) {
+    if (inviter.role !== 'admin') {
+      throw validationError('Only organization admins can create invitations');
+    }
+    if (!ALLOWED_ROLES.has(role) || role === 'admin') {
+      throw validationError('Invitations can only grant analyst or viewer access');
+    }
+
+    const normalizedEmail = normalizeEmail(email);
+    const boundedHours = Math.min(Math.max(Math.floor(expiresInHours || INVITATION_TOKEN_TTL_HOURS), 1), 168);
+    const [organization] = await query<{ id: string; name: string }>(
+      'SELECT id, name FROM organizations WHERE id = $1',
+      [inviter.organization_id],
+    );
+    if (!organization) {
+      throw validationError('Invalid organization');
+    }
+
+    const verifiedDomains = await runWithTenantContext({ organizationId: inviter.organization_id, userId: inviter.id }, () => query<{ domain: string }>(
+      'SELECT domain FROM organization_domains WHERE organization_id = $1 AND verified_at IS NOT NULL',
+      [inviter.organization_id],
+    ));
+    if (verifiedDomains.length > 0 && !verifiedDomains.some((domain) => domain.domain.toLowerCase() === emailDomain(normalizedEmail))) {
+      throw validationError('Invited email domain is not verified for this organization');
+    }
+
+    const existingUser = await query<{ id: string }>(
+      'SELECT id FROM users WHERE email = $1 AND organization_id = $2',
+      [normalizedEmail, inviter.organization_id],
+    );
+    if (existingUser.length > 0) {
+      throw conflictError('Invitation could not be created');
+    }
+
+    const jti = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + boundedHours * 60 * 60 * 1000);
+    const token = jwt.sign(
+      { typ: 'organization_invite', org: inviter.organization_id, email: normalizedEmail, role },
+      env.JWT_SECRET,
+      {
+        algorithm: 'HS256',
+        expiresIn: `${boundedHours}h`,
+        issuer: env.JWT_ISSUER,
+        audience: env.JWT_AUDIENCE,
+        subject: normalizedEmail,
+        jwtid: jti,
+      },
+    );
+    const tokenHash = hashInvitationToken(token);
+
+    const [invite] = await runWithTenantContext({ organizationId: inviter.organization_id, userId: inviter.id }, () => query<{ id: string; expires_at: string }>(
+      `INSERT INTO organization_invitations (organization_id, email, role, invited_by, token_hash, token_jti, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, expires_at`,
+      [inviter.organization_id, normalizedEmail, role, inviter.id, tokenHash, jti, expiresAt.toISOString()],
+    ));
+
+    await this.auditService.log({
+      action: 'invite_created',
+      entityType: 'organization_invitation',
+      entityId: invite.id,
+      performedBy: inviter.id,
+      organizationId: inviter.organization_id,
+      metadata: { email: normalizedEmail, role, expiresAt: invite.expires_at },
+    });
+
+    return { id: invite.id, token, email: normalizedEmail, role, organizationId: inviter.organization_id, organizationName: organization.name, expiresAt: invite.expires_at };
+  }
+
+  async verifyInvitation(token: string) {
+    const invite = await this.resolveInvitation(token);
+    return {
+      valid: true,
+      email: invite.email,
+      role: invite.role,
+      organizationId: invite.organization_id,
+      expiresAt: invite.expires_at,
+    };
+  }
+
+  async revokeInvitation(inviter: UserIdentity, invitationId: string) {
+    if (inviter.role !== 'admin') {
+      throw validationError('Only organization admins can revoke invitations');
+    }
+
+    const [invite] = await runWithTenantContext({ organizationId: inviter.organization_id, userId: inviter.id }, () => query<{ id: string }>(
+      `UPDATE organization_invitations
+       SET revoked_at = NOW(), revoked_by = $1
+       WHERE id = $2 AND organization_id = $3 AND accepted_at IS NULL AND revoked_at IS NULL
+       RETURNING id`,
+      [inviter.id, invitationId, inviter.organization_id],
+    ));
+
+    if (invite) {
+      await this.auditService.log({
+        action: 'invite_revoked',
+        entityType: 'organization_invitation',
+        entityId: invite.id,
+        performedBy: inviter.id,
+        organizationId: inviter.organization_id,
+        metadata: {},
+      });
+    }
+
+    return { revoked: true };
+  }
+
+  async acceptInvitation(token: string, email: string, password: string, firstName: string, lastName: string) {
+    const invite = await this.resolveInvitation(token);
+    const normalizedEmail = normalizeEmail(email);
+    if (normalizedEmail !== invite.email) {
+      await this.auditService.log({
+        action: 'invite_accept_failed',
+        entityType: 'organization_invitation',
+        entityId: invite.id,
+        performedBy: invite.invited_by,
+        organizationId: invite.organization_id,
+        metadata: { reason: 'email_mismatch', attemptedEmailDomain: emailDomain(normalizedEmail) },
+      });
+      throw inviteError();
     }
 
     const existing = await query<{ id: string }>(
       'SELECT id FROM users WHERE email = $1 AND organization_id = $2',
-      [email, organizationId],
+      [normalizedEmail, invite.organization_id],
     );
     if (existing.length > 0) {
       throw conflictError('Email already registered');
@@ -177,18 +340,34 @@ export class AuthService {
       `INSERT INTO users (email, password_hash, first_name, last_name, role, organization_id)
        VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id, email, role, organization_id`,
-      [email, passwordHash, firstName, lastName, role, organizationId],
+      [normalizedEmail, passwordHash, firstName, lastName, invite.role, invite.organization_id],
     );
 
+    await runWithTenantContext({ organizationId: invite.organization_id, userId: user.id }, () => query(
+      `UPDATE organization_invitations
+       SET accepted_at = NOW(), accepted_by = $1
+       WHERE id = $2 AND accepted_at IS NULL AND revoked_at IS NULL`,
+      [user.id, invite.id],
+    ));
+
+    await this.auditService.log({
+      action: 'invite_accepted',
+      entityType: 'organization_invitation',
+      entityId: invite.id,
+      performedBy: user.id,
+      organizationId: invite.organization_id,
+      metadata: { email: normalizedEmail, role: invite.role },
+    });
+
     if (env.isProduction()) {
-      await this.billingService.ensureCustomerForOrganization(organizationId, email, fullName);
+      await this.billingService.ensureCustomerForOrganization(invite.organization_id, normalizedEmail, fullName);
     } else {
       try {
-        await this.billingService.ensureCustomerForOrganization(organizationId, email, fullName);
+        await this.billingService.ensureCustomerForOrganization(invite.organization_id, normalizedEmail, fullName);
       } catch (err) {
-        logger.warn('Stripe customer provisioning failed during signup', {
-          organizationId,
-          email,
+        logger.warn('Stripe customer provisioning failed during invite acceptance', {
+          organizationId: invite.organization_id,
+          email: normalizedEmail,
           message: err instanceof Error ? err.message : String(err),
           stack: err instanceof Error ? err.stack : undefined,
         });
@@ -520,6 +699,49 @@ export class AuthService {
       organizationId: user.organization_id,
       metadata: { email: user.email },
     });
+  }
+
+
+  private async resolveInvitation(token: string): Promise<InvitationRow> {
+    let payload: InvitationTokenPayload;
+    try {
+      const verified = jwt.verify(token, env.JWT_SECRET, {
+        algorithms: ['HS256'],
+        issuer: env.JWT_ISSUER,
+        audience: env.JWT_AUDIENCE,
+      });
+      if (!verified || typeof verified !== 'object') {
+        throw inviteError();
+      }
+      payload = verified as InvitationTokenPayload;
+    } catch {
+      throw inviteError();
+    }
+
+    if (payload.typ !== 'organization_invite' || !payload.jti || !payload.org || !payload.email || !ALLOWED_ROLES.has(payload.role)) {
+      throw inviteError();
+    }
+
+    const tokenHash = hashInvitationToken(token);
+    const [invite] = await runWithTenantContext({ organizationId: payload.org, userId: 'invite-verifier' }, () => query<InvitationRow>(
+      `SELECT id, organization_id, email, role, invited_by, token_hash, expires_at, accepted_at, revoked_at
+       FROM organization_invitations
+       WHERE token_hash = $1 AND token_jti = $2 AND organization_id = $3`,
+      [tokenHash, payload.jti, payload.org],
+    ));
+
+    if (
+      !invite
+      || invite.accepted_at
+      || invite.revoked_at
+      || new Date(invite.expires_at) <= new Date()
+      || invite.email !== normalizeEmail(payload.email)
+      || invite.role !== payload.role
+    ) {
+      throw inviteError();
+    }
+
+    return invite;
   }
 
   private generateMfaCode(): string {

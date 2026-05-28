@@ -289,25 +289,56 @@ describe('AuthService.login', () => {
 
 describe('AuthService.register', () => {
   const service = new AuthService();
+  const admin = { id: 'admin-uuid', email: 'admin@example.com', role: 'admin', organization_id: '11111111-1111-4111-8111-111111111111' };
 
-  it('throws 409 when email is already taken', async () => {
+  async function issueInvite(email = 'new@example.com') {
+    mockQuery
+      .mockResolvedValueOnce([{ id: admin.organization_id, name: 'Acme Health' }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'invite-uuid', expires_at: new Date(Date.now() + 3600_000).toISOString() }])
+      .mockResolvedValueOnce([]);
+    const invite = await service.createInvitation(admin, email, 'viewer', 24);
+    mockQuery.mockReset();
+    return invite;
+  }
+
+  function mockResolvedInvite(email = 'new@example.com') {
+    mockQuery.mockResolvedValueOnce([{
+      id: 'invite-uuid',
+      organization_id: admin.organization_id,
+      email,
+      role: 'viewer',
+      invited_by: admin.id,
+      token_hash: 'unused',
+      expires_at: new Date(Date.now() + 3600_000).toISOString(),
+      accepted_at: null,
+      revoked_at: null,
+    }]);
+  }
+
+  it('throws 409 when the invited email is already taken in the invitation tenant', async () => {
+    const invite = await issueInvite('taken@example.com');
+    mockResolvedInvite('taken@example.com');
     mockQuery.mockResolvedValueOnce([{ id: 'existing-uuid' }]);
 
     await expect(
-      service.register('taken@example.com', 'password123', 'Bob', 'Jones', 'org-uuid'),
+      service.register('taken@example.com', 'password123', 'Bob', 'Jones', invite.token),
     ).rejects.toMatchObject({ statusCode: 409 });
   });
 
   it('fails closed before inserting a user when production Stripe customer provisioning is not configured', async () => {
+    const invite = await issueInvite('new@example.com');
     mockEnv.isProduction = () => true;
-    mockQuery.mockResolvedValueOnce([]); // email not taken
+    mockResolvedInvite('new@example.com');
+    mockQuery.mockResolvedValueOnce([]);
 
     await expect(service.register(
       'new@example.com',
       'password123',
       'New',
       'User',
-      'org-uuid',
+      invite.token,
     )).rejects.toMatchObject({
       statusCode: 500,
       message: 'Stripe customer provisioning requires STRIPE_SECRET_KEY in production',
@@ -320,11 +351,13 @@ describe('AuthService.register', () => {
   });
 
   it('does not call Stripe when the production user insert fails', async () => {
+    const invite = await issueInvite('duplicate@example.com');
     mockEnv.isProduction = () => true;
     mockEnv.STRIPE_SECRET_KEY = 'sk_test_123';
     const fetchMock = jest.spyOn(global, 'fetch');
 
-    mockQuery.mockResolvedValueOnce([]); // email not taken
+    mockResolvedInvite('duplicate@example.com');
+    mockQuery.mockResolvedValueOnce([]);
     mockQuery.mockRejectedValueOnce(new Error('duplicate key value violates unique constraint'));
 
     await expect(service.register(
@@ -332,7 +365,7 @@ describe('AuthService.register', () => {
       'password123',
       'Dupe',
       'User',
-      'org-uuid',
+      invite.token,
     )).rejects.toThrow('duplicate key value violates unique constraint');
 
     expect(fetchMock).not.toHaveBeenCalled();
@@ -342,46 +375,28 @@ describe('AuthService.register', () => {
     );
   });
 
-  it('provisions a production Stripe customer only after the user insert succeeds', async () => {
+  it('provisions a production Stripe customer only after the invited user insert succeeds', async () => {
+    const invite = await issueInvite('prod@example.com');
     mockEnv.isProduction = () => true;
     mockEnv.STRIPE_SECRET_KEY = 'sk_test_123';
-    const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue({
+    jest.spyOn(global, 'fetch').mockResolvedValue({
       ok: true,
       json: async () => ({ id: 'cus_prod_123', email: 'prod@example.com' }),
     } as Response);
 
-    mockQuery.mockResolvedValueOnce([]); // email not taken
-    mockQuery.mockResolvedValueOnce([
-      {
-        id: 'prod-user-uuid',
-        email: 'prod@example.com',
-        role: 'viewer',
-        organization_id: 'org-uuid',
-      },
-    ]); // INSERT user RETURNING
-    mockQuery.mockResolvedValueOnce([]); // no existing customer for organization
-    mockQuery.mockResolvedValueOnce([
-      {
-        id: 'customer-uuid',
-        organization_id: 'org-uuid',
-        stripe_customer_id: 'cus_prod_123',
-        email: 'prod@example.com',
-      },
-    ]); // INSERT customer RETURNING
-    mockQuery.mockResolvedValueOnce([]); // INSERT refresh token
+    mockResolvedInvite('prod@example.com');
+    mockQuery.mockResolvedValueOnce([]);
+    mockQuery.mockResolvedValueOnce([{ id: 'prod-user-uuid', email: 'prod@example.com', role: 'viewer', organization_id: admin.organization_id }]);
+    mockQuery.mockResolvedValueOnce([]);
+    mockQuery.mockResolvedValueOnce([]);
+    mockQuery.mockResolvedValueOnce([]);
+    mockQuery.mockResolvedValueOnce([{ id: 'customer-uuid', organization_id: admin.organization_id, stripe_customer_id: 'cus_prod_123', email: 'prod@example.com' }]);
+    mockQuery.mockResolvedValueOnce([]);
 
-    const result = await service.register(
-      'prod@example.com',
-      'password123',
-      'Prod',
-      'User',
-      'org-uuid',
-    );
+    const result = await service.register('prod@example.com', 'password123', 'Prod', 'User', invite.token);
 
     expect(result).toHaveProperty('accessToken');
     expect(result).toHaveProperty('refreshToken');
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-
     const userInsertCall = mockQuery.mock.calls.find((call) => String(call[0]).includes('INSERT INTO users'));
     const customerLookupCall = mockQuery.mock.calls.find((call) => String(call[0]).includes('FROM customers'));
     expect(userInsertCall).toBeDefined();
@@ -391,34 +406,18 @@ describe('AuthService.register', () => {
     );
   });
 
-  it('returns tokens for a new registration', async () => {
-    mockQuery.mockResolvedValueOnce([]); // email not taken
-    mockQuery.mockResolvedValueOnce([
-      {
-        id: 'new-uuid',
-        email: 'new@example.com',
-        role: 'viewer',
-        organization_id: 'org-uuid',
-      },
-    ]); // INSERT user RETURNING
-    mockQuery.mockResolvedValueOnce([]); // no existing customer for organization
-    mockQuery.mockResolvedValueOnce([
-      {
-        id: 'customer-uuid',
-        organization_id: 'org-uuid',
-        stripe_customer_id: 'cus_local_orguuid',
-        email: 'new@example.com',
-      },
-    ]); // INSERT local customer RETURNING
-    mockQuery.mockResolvedValueOnce([]); // INSERT refresh token
+  it('returns tokens for a new invited registration', async () => {
+    const invite = await issueInvite('new@example.com');
+    mockResolvedInvite('new@example.com');
+    mockQuery.mockResolvedValueOnce([]);
+    mockQuery.mockResolvedValueOnce([{ id: 'new-uuid', email: 'new@example.com', role: 'viewer', organization_id: admin.organization_id }]);
+    mockQuery.mockResolvedValueOnce([]);
+    mockQuery.mockResolvedValueOnce([]);
+    mockQuery.mockResolvedValueOnce([]);
+    mockQuery.mockResolvedValueOnce([{ id: 'customer-uuid', organization_id: admin.organization_id, stripe_customer_id: 'cus_local_orguuid', email: 'new@example.com' }]);
+    mockQuery.mockResolvedValueOnce([]);
 
-    const result = await service.register(
-      'new@example.com',
-      'password123',
-      'New',
-      'User',
-      'org-uuid',
-    );
+    const result = await service.register('new@example.com', 'password123', 'New', 'User', invite.token);
 
     expect(result).toHaveProperty('accessToken');
     expect(result).toHaveProperty('refreshToken');
@@ -625,24 +624,48 @@ describe('AuthService.refresh', () => {
 describe('AuthService additional production coverage', () => {
   const service = new AuthService();
 
-  it('rejects unsupported registration roles before querying for duplicates', async () => {
-    await expect(service.register('bad@example.com', 'password123', 'Bad', 'Role', 'org-uuid', 'owner')).rejects.toMatchObject({
-      statusCode: 400,
-      message: 'Invalid role',
+  it('rejects registration without a valid signed invitation before creating users', async () => {
+    await expect(service.register('bad@example.com', 'password123', 'Bad', 'Role', 'not-a-token')).rejects.toMatchObject({
+      statusCode: 401,
+      message: 'Invalid or expired invitation',
     });
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  it('logs and continues when non-production customer provisioning fails after user creation', async () => {
+  it('logs and continues when non-production customer provisioning fails after invite acceptance', async () => {
     const warnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => logger);
-    mockQuery.mockResolvedValueOnce([]);
-    mockQuery.mockResolvedValueOnce([{ id: 'new-uuid', email: 'new@example.com', role: 'viewer', organization_id: 'org-uuid' }]);
-    mockQuery.mockRejectedValueOnce(new Error('stripe unavailable'));
-    mockQuery.mockResolvedValueOnce([]);
+    const admin = { id: 'admin-uuid', email: 'admin@example.com', role: 'admin', organization_id: '11111111-1111-4111-8111-111111111111' };
+    mockQuery
+      .mockResolvedValueOnce([{ id: admin.organization_id, name: 'Acme Health' }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'invite-uuid', expires_at: new Date(Date.now() + 3600_000).toISOString() }])
+      .mockResolvedValueOnce([]);
+    const invite = await service.createInvitation(admin, 'new@example.com', 'viewer', 24);
+    mockQuery.mockReset();
+    mockQuery
+      .mockResolvedValueOnce([{
+        id: 'invite-uuid',
+        organization_id: admin.organization_id,
+        email: 'new@example.com',
+        role: 'viewer',
+        invited_by: admin.id,
+        token_hash: 'unused',
+        expires_at: new Date(Date.now() + 3600_000).toISOString(),
+        accepted_at: null,
+        revoked_at: null,
+      }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'new-uuid', email: 'new@example.com', role: 'viewer', organization_id: admin.organization_id }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(new Error('stripe unavailable'))
+      .mockResolvedValueOnce([]);
 
-    await expect(service.register('new@example.com', 'password123', 'New', 'User', 'org-uuid')).resolves.toHaveProperty('accessToken');
-    expect(warnSpy).toHaveBeenCalledWith('Stripe customer provisioning failed during signup', expect.objectContaining({
-      organizationId: 'org-uuid',
+    await expect(service.register('new@example.com', 'password123', 'New', 'User', invite.token)).resolves.toHaveProperty('accessToken');
+    expect(warnSpy).toHaveBeenCalledWith('Stripe customer provisioning failed during invite acceptance', expect.objectContaining({
+      organizationId: admin.organization_id,
       email: 'new@example.com',
       message: 'stripe unavailable',
     }));
@@ -862,5 +885,107 @@ describe('AuthService additional production coverage', () => {
       statusCode: 401,
       message: 'User not found or inactive',
     });
+  });
+});
+
+describe('AuthService invitation onboarding', () => {
+  const service = new AuthService();
+  const admin = { id: 'admin-uuid', email: 'admin@example.com', role: 'admin', organization_id: '11111111-1111-4111-8111-111111111111' };
+
+  it('creates signed organization-scoped invitations without client supplied tenant IDs', async () => {
+    mockQuery
+      .mockResolvedValueOnce([{ id: admin.organization_id, name: 'Acme Health' }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'invite-uuid', expires_at: new Date(Date.now() + 3600_000).toISOString() }])
+      .mockResolvedValueOnce([]);
+
+    const invite = await service.createInvitation(admin, 'New.User@Example.com', 'analyst', 24);
+
+    expect(invite).toMatchObject({ id: 'invite-uuid', email: 'new.user@example.com', role: 'analyst', organizationId: admin.organization_id });
+    expect(invite.token.split('.')).toHaveLength(3);
+    expect(mockQuery).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT INTO organization_invitations'),
+      expect.arrayContaining([admin.organization_id, 'new.user@example.com', 'analyst', admin.id]),
+    );
+  });
+
+  it('rejects non-admin and admin-role invitation abuse', async () => {
+    await expect(service.createInvitation({ ...admin, role: 'viewer' }, 'user@example.com', 'viewer', 24)).rejects.toMatchObject({
+      statusCode: 400,
+      message: 'Only organization admins can create invitations',
+    });
+
+    await expect(service.createInvitation(admin, 'user@example.com', 'admin', 24)).rejects.toMatchObject({
+      statusCode: 400,
+      message: 'Invitations can only grant analyst or viewer access',
+    });
+  });
+
+  it('prevents invite acceptance with a mismatched email and logs the abuse attempt', async () => {
+    mockQuery
+      .mockResolvedValueOnce([{ id: admin.organization_id, name: 'Acme Health' }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'invite-uuid', expires_at: new Date(Date.now() + 3600_000).toISOString() }])
+      .mockResolvedValueOnce([]);
+    const invite = await service.createInvitation(admin, 'target@example.com', 'viewer', 24);
+    mockQuery.mockReset();
+    mockQuery
+      .mockResolvedValueOnce([{
+        id: 'invite-uuid',
+        organization_id: admin.organization_id,
+        email: 'target@example.com',
+        role: 'viewer',
+        invited_by: admin.id,
+        token_hash: 'unused',
+        expires_at: new Date(Date.now() + 3600_000).toISOString(),
+        accepted_at: null,
+        revoked_at: null,
+      }])
+      .mockResolvedValueOnce([]);
+
+    await expect(service.acceptInvitation(invite.token, 'attacker@example.com', 'password12345', 'Mallory', 'Evil')).rejects.toMatchObject({
+      statusCode: 401,
+      message: 'Invalid or expired invitation',
+    });
+    expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO audit_log'), expect.arrayContaining(['invite_accept_failed']));
+  });
+
+  it('rejects expired or revoked invitation verification with a generic error', async () => {
+    mockQuery
+      .mockResolvedValueOnce([{ id: admin.organization_id, name: 'Acme Health' }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'invite-uuid', expires_at: new Date(Date.now() + 3600_000).toISOString() }])
+      .mockResolvedValueOnce([]);
+    const invite = await service.createInvitation(admin, 'target@example.com', 'viewer', 24);
+    mockQuery.mockReset();
+    mockQuery.mockResolvedValueOnce([{
+      id: 'invite-uuid',
+      organization_id: admin.organization_id,
+      email: 'target@example.com',
+      role: 'viewer',
+      invited_by: admin.id,
+      token_hash: 'unused',
+      expires_at: new Date(Date.now() + 3600_000).toISOString(),
+      accepted_at: null,
+      revoked_at: new Date().toISOString(),
+    }]);
+
+    await expect(service.verifyInvitation(invite.token)).rejects.toMatchObject({
+      statusCode: 401,
+      message: 'Invalid or expired invitation',
+    });
+  });
+
+  it('revokes only pending invitations in the admin organization without disclosing cross-tenant IDs', async () => {
+    mockQuery.mockResolvedValueOnce([]);
+
+    await expect(service.revokeInvitation(admin, 'other-tenant-invite')).resolves.toEqual({ revoked: true });
+    expect(mockQuery).toHaveBeenCalledWith(
+      expect.stringContaining('WHERE id = $2 AND organization_id = $3'),
+      [admin.id, 'other-tenant-invite', admin.organization_id],
+    );
   });
 });

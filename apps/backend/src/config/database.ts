@@ -16,6 +16,8 @@ const TENANT_ENFORCED_TABLES = [
   'regulatory_alerts',
   'audit_log',
   'audit_logs',
+  'organization_invitations',
+  'organization_domains',
 ];
 
 function requiresTenantContext(queryText: string): boolean {

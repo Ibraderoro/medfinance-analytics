@@ -49,6 +49,10 @@ export class AuditService {
     refresh_failed: 'READ',
     refresh_success: 'READ',
     logout_success: 'READ',
+    invite_created: 'CREATE',
+    invite_accepted: 'UPDATE',
+    invite_accept_failed: 'READ',
+    invite_revoked: 'UPDATE',
   };
 
   private normalizeAuditAction(action: string): 'CREATE' | 'READ' | 'UPDATE' | 'DELETE' {

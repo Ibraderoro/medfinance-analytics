@@ -48,7 +48,7 @@ const corsOptions: CorsOptions = {
 
 const csrfProtection = (req: Request, res: Response, next: NextFunction): void => {
   const isWebhook = req.path === '/api/v1/billing/webhook' && req.method === 'POST';
-  const isAuthBootstrapRoute = req.method === 'POST' && (req.path === '/api/v1/auth/login' || req.path === '/api/v1/auth/register');
+  const isAuthBootstrapRoute = req.method === 'POST' && (req.path === '/api/v1/auth/login' || req.path === '/api/v1/auth/register' || req.path === '/api/v1/auth/invitations/accept');
 
   const cookies = parseCookies(req.headers.cookie);
   const hadCsrfCookie = Boolean(cookies[csrfCookieName]);
