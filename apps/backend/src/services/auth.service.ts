@@ -176,7 +176,7 @@ function hashInvitationToken(token: string): string {
 }
 
 function hashRecoveryCode(code: string): string {
-  return hmacToken(code.trim().toUpperCase(), env.JWT_SECRET);
+  return hmacToken(code.replace(/-/g, '').trim().toUpperCase(), env.JWT_SECRET);
 }
 
 function normalizeEmail(email: string): string {
@@ -506,8 +506,11 @@ export class AuthService {
     }
 
     const issuer = resolveOidcIssuer();
-    const idToken = tokenPayload.id_token && pending.nonce
-      ? await this.validateOidcIdToken(tokenPayload.id_token, issuer, pending.nonce)
+    if (pending.nonce && !tokenPayload.id_token) {
+      throw authError('OIDC token exchange failed: missing ID token');
+    }
+    const idToken = pending.nonce
+      ? await this.validateOidcIdToken(tokenPayload.id_token as string, issuer, pending.nonce)
       : null;
 
     const userInfo = await fetchOidcJson<{ sub?: string; email?: string; email_verified?: boolean }>(env.OIDC_USERINFO_URL, {
@@ -641,18 +644,29 @@ export class AuthService {
 
     return {
       status: 'success' as const,
-      ...(await this.generateTokenPair(user)),
+      ...(await this.generateTokenPair(user, ['pwd'], context)),
     };
   }
 
   async generateRecoveryCodes(user: UserIdentity) {
     const codes = Array.from({ length: 10 }, () => `${crypto.randomBytes(4).toString('hex')}-${crypto.randomBytes(4).toString('hex')}`.toUpperCase());
-    await query('DELETE FROM user_recovery_codes WHERE user_id = $1 AND used_at IS NULL', [user.id]);
-    for (const code of codes) {
-      await query(
-        'INSERT INTO user_recovery_codes (user_id, organization_id, code_hash) VALUES ($1, $2, $3)',
-        [user.id, user.organization_id, hashRecoveryCode(code)],
-      );
+    const client = await getPool().connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`SELECT set_config('app.current_tenant_id', $1, true)`, [user.organization_id]);
+      await client.query('DELETE FROM user_recovery_codes WHERE user_id = $1 AND used_at IS NULL', [user.id]);
+      for (const code of codes) {
+        await client.query(
+          'INSERT INTO user_recovery_codes (user_id, organization_id, code_hash) VALUES ($1, $2, $3)',
+          [user.id, user.organization_id, hashRecoveryCode(code)],
+        );
+      }
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
     }
     await this.auditService.log({
       action: 'recovery_codes_rotated',
@@ -678,7 +692,7 @@ export class AuthService {
     const providedHash = hashMfaCode(tempToken, code);
 
     if (!expectedHash || !constantTimeEqual(expectedHash, providedHash)) {
-      const recovered = await this.consumeRecoveryCode(parsed.userId, code);
+      const recovered = await this.consumeRecoveryCode(parsed.userId, code, parsed.organizationId);
       if (recovered) {
         await this.redis.del(key);
         const [user] = await query<UserIdentity & { is_active: boolean }>(
@@ -688,7 +702,7 @@ export class AuthService {
         if (!user || !user.is_active) throw authError('User not found or inactive');
         await this.recordSuccessfulLogin(user, parsed.context);
         await this.auditService.log({ action: 'mfa_recovery_code_used', entityType: 'user', entityId: user.id, performedBy: user.id, organizationId: user.organization_id, metadata: {} });
-        return this.generateTokenPair(user, ['pwd', 'mfa']);
+        return this.generateTokenPair(user, ['pwd', 'mfa'], parsed.context);
       }
 
       const attempts = (parsed.attempts ?? 0) + 1;
@@ -727,7 +741,7 @@ export class AuthService {
       metadata: { method: 'totp_or_otp' },
     });
 
-    return this.generateTokenPair(user, ['pwd', 'mfa']);
+    return this.generateTokenPair(user, ['pwd', 'mfa'], parsed.context);
   }
 
   async refresh(refreshToken: string, context?: AuthRequestContext) {
@@ -787,7 +801,7 @@ export class AuthService {
     });
 
     await this.recordSuccessfulLogin(user, context);
-    return this.generateTokenPair(user, ['refresh_token']);
+    return this.generateTokenPair(user, ['refresh_token'], context, tokenHash);
   }
 
   async logout(refreshToken: string) {
@@ -939,21 +953,32 @@ export class AuthService {
     return invite;
   }
 
-  private async consumeRecoveryCode(userId: string, code: string): Promise<boolean> {
+  private async consumeRecoveryCode(userId: string, code: string, organizationId: string): Promise<boolean> {
     if (!/^[A-Fa-f0-9]{8}-?[A-Fa-f0-9]{8}$/.test(code.trim())) return false;
-    const [row] = await query<{ id: string }>(
-      `UPDATE user_recovery_codes
-       SET used_at = NOW()
-       WHERE id = (
-         SELECT id FROM user_recovery_codes
-         WHERE user_id = $1 AND code_hash = $2 AND used_at IS NULL
-         ORDER BY created_at ASC
-         LIMIT 1
-       )
-       RETURNING id`,
-      [userId, hashRecoveryCode(code)],
-    );
-    return Boolean(row);
+    const client = await getPool().connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`SELECT set_config('app.current_tenant_id', $1, true)`, [organizationId]);
+      const result = await client.query<{ id: string }>(
+        `UPDATE user_recovery_codes
+         SET used_at = NOW()
+         WHERE id = (
+           SELECT id FROM user_recovery_codes
+           WHERE user_id = $1 AND code_hash = $2 AND used_at IS NULL
+           ORDER BY created_at ASC
+           LIMIT 1
+         )
+         RETURNING id`,
+        [userId, hashRecoveryCode(code)],
+      );
+      await client.query('COMMIT');
+      return Boolean(result.rows[0]);
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   private async getJwks(issuer: string, kid?: string, forceRefresh = false): Promise<JsonWebKey[]> {
@@ -1011,21 +1036,33 @@ export class AuthService {
     const normalized = normalizeAuthContext(context);
     await query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [user.id]);
     try {
-      await query(
+      await runWithTenantContext({ organizationId: user.organization_id, userId: user.id }, () => query(
         `INSERT INTO auth_sessions (user_id, organization_id, device_id, ip_address, user_agent, last_seen_at)
          VALUES ($1, $2, $3, $4, $5, NOW())
          ON CONFLICT (user_id, device_id) DO UPDATE
          SET ip_address = EXCLUDED.ip_address, user_agent = EXCLUDED.user_agent, last_seen_at = NOW(), revoked_at = NULL`,
         [user.id, user.organization_id, normalized.deviceId, normalized.ipAddress, normalized.userAgent],
-      );
-    } catch {}
+      ));
+    } catch (error) {
+      logger.error('Failed to record auth session', {
+        userId: user.id,
+        organizationId: user.organization_id,
+        deviceId: normalized.deviceId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   private generateMfaCode(): string {
     return crypto.randomInt(100000, 1000000).toString();
   }
 
-  private async generateTokenPair(user: UserIdentity, amr: string[] = ['pwd']) {
+  private async generateTokenPair(
+    user: UserIdentity,
+    amr: string[] = ['pwd'],
+    context?: AuthRequestContext,
+    rotatedFromTokenHash?: string,
+  ) {
     const accessToken = jwt.sign(
       {
         id: user.id,
@@ -1048,14 +1085,17 @@ export class AuthService {
 
     const plainRefreshToken = crypto.randomBytes(40).toString('hex');
     const tokenHash = hashRefreshToken(plainRefreshToken);
+    const normalized = normalizeAuthContext(context);
 
     const days = refreshExpiryToDays(env.REFRESH_TOKEN_EXPIRES_IN);
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + days);
 
     await query(
-      'INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)',
-      [user.id, tokenHash, expiresAt.toISOString()],
+      `INSERT INTO refresh_tokens
+         (user_id, token_hash, expires_at, device_id, ip_address, user_agent, rotated_from_token_hash)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [user.id, tokenHash, expiresAt.toISOString(), normalized.deviceId, normalized.ipAddress, normalized.userAgent, rotatedFromTokenHash ?? null],
     );
     return { accessToken, refreshToken: plainRefreshToken };
   }

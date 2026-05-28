@@ -5,6 +5,8 @@ import styles from './Page.module.css';
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const isAxiosError = (e: unknown): e is { response?: { status?: number; data?: { error?: { message?: string } } } } =>
+  typeof e === 'object' && e !== null && 'response' in e;
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -43,8 +45,6 @@ export function LoginPage() {
       }
       setError('SSO is initiated. Continue with your identity provider using the returned state.');
     } catch (err: unknown) {
-      const isAxiosError = (e: unknown): e is { response?: { data?: { error?: { message?: string } } } } =>
-        typeof e === 'object' && e !== null && 'response' in e;
       setError(isAxiosError(err) ? err.response?.data?.error?.message ?? 'Unable to start SSO.' : 'Unable to start SSO.');
     } finally {
       setIsSubmitting(false);
@@ -78,8 +78,6 @@ export function LoginPage() {
       window.dispatchEvent(new Event('auth-session-changed'));
       navigate('/dashboard', { replace: true });
     } catch (err: unknown) {
-      const isAxiosError = (e: unknown): e is { response?: { status?: number; data?: { error?: { message?: string } } } } =>
-        typeof e === 'object' && e !== null && 'response' in e;
       const status = isAxiosError(err) ? err.response?.status : null;
       const serverMessage = isAxiosError(err) ? err.response?.data?.error?.message : undefined;
       setError(serverMessage ?? (status === 401
@@ -117,7 +115,7 @@ export function LoginPage() {
         {pendingMfaToken && (
           <label>
             <span>Verification code</span>
-            <input ref={mfaInputRef} type="text" inputMode="numeric" pattern="([0-9]{6}|[A-Fa-f0-9]{8}-?[A-Fa-f0-9]{8})" value={mfaCode} onChange={(e) => setMfaCode(e.target.value.replace(/[^A-Fa-f0-9-]/g, '').slice(0, 17))} required maxLength={17} autoComplete="one-time-code" style={{ width: '100%', padding: '0.65rem', marginTop: 4 }} />
+            <input ref={mfaInputRef} type="text" inputMode="text" pattern="([0-9]{6}|[A-Fa-f0-9]{8}-?[A-Fa-f0-9]{8})" value={mfaCode} onChange={(e) => setMfaCode(e.target.value.replace(/[^A-Fa-f0-9-]/g, '').slice(0, 17))} required maxLength={17} autoComplete="one-time-code" style={{ width: '100%', padding: '0.65rem', marginTop: 4 }} />
             {mfaCode && fieldErrors.mfaCode && <small className={styles.error}>{fieldErrors.mfaCode}</small>}
           </label>
         )}

@@ -57,6 +57,8 @@ export const authApi = {
   generateRecoveryCodes: () => apiClient.post('/auth/recovery-codes', {}),
 };
 
+export const completeOidc = (state: string, code: string) => authApi.completeOidc(state, code);
+
 export const financialsApi = {
   getKpis: (year?: number) => apiClient.get('/financials/kpis', { params: { year } }),
   getSummary: (year?: number) => apiClient.get('/financials/summary', { params: { year } }),

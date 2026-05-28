@@ -98,6 +98,7 @@ authRouter.post(
 
 authRouter.post(
   '/invitations',
+  authRateLimiter,
   authenticate,
   authorize('admin'),
   [
@@ -111,9 +112,10 @@ authRouter.post(
 
 authRouter.delete(
   '/invitations/:id',
+  authRateLimiter,
   authenticate,
   authorize('admin'),
   revokeInvitation,
 );
 
-authRouter.post('/recovery-codes', authenticate, generateRecoveryCodes);
+authRouter.post('/recovery-codes', authRateLimiter, authenticate, generateRecoveryCodes);

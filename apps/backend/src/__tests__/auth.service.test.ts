@@ -605,7 +605,7 @@ describe('AuthService OIDC SSO', () => {
       message: 'OIDC email must be verified',
     });
     expect(mockRedisDel).not.toHaveBeenCalledWith('auth:sso:state:550e8400-e29b-41d4-a716-446655440000');
-    expect(mockQuery).not.toHaveBeenCalledWith('INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)', expect.any(Array));
+    expect(mockQuery).not.toHaveBeenCalledWith(expect.stringContaining('INSERT INTO refresh_tokens'), expect.any(Array));
   });
 });
 
@@ -643,9 +643,23 @@ describe('AuthService.refresh', () => {
     mockQuery.mockResolvedValueOnce([]); // DELETE old token
     mockQuery.mockResolvedValueOnce([]); // INSERT new token
 
-    const result = await service.refresh('valid_token');
+    const result = await service.refresh('valid_token', {
+      deviceId: 'device-123',
+      ipAddress: '203.0.113.10',
+      userAgent: 'jest-agent',
+    });
     expect(result).toHaveProperty('accessToken');
     expect(result).toHaveProperty('refreshToken');
+    const insertCall = mockQuery.mock.calls.find((call) => String(call[0]).includes('INSERT INTO refresh_tokens'));
+    expect(insertCall?.[1]).toEqual(expect.arrayContaining([
+      'user-uuid',
+      expect.any(String),
+      expect.any(String),
+      'device-123',
+      '203.0.113.10',
+      'jest-agent',
+      expect.any(String),
+    ]));
   });
 });
 
@@ -708,7 +722,7 @@ describe('AuthService additional production coverage', () => {
       email: 'new@example.com',
       message: 'stripe unavailable',
     }));
-    expect(mockQuery).toHaveBeenCalledWith('INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)', expect.any(Array));
+    expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO refresh_tokens'), expect.any(Array));
     warnSpy.mockRestore();
   });
 
@@ -796,6 +810,24 @@ describe('AuthService additional production coverage', () => {
     await expect(service.completeOidcLogin('no-token', 'code')).rejects.toMatchObject({
       statusCode: 401,
       message: 'OIDC token exchange failed: missing access token',
+    });
+
+    mockRedisGet.mockResolvedValueOnce(JSON.stringify({
+      provider: 'oidc',
+      userId: 'u1',
+      email: 'sso@example.com',
+      organizationId: 'org-uuid',
+      nonce: 'nonce-value',
+      codeVerifier: 'verifier',
+    }));
+    jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ access_token: 'token-without-id' }),
+    } as Response);
+
+    await expect(service.completeOidcLogin('missing-id-token', 'code')).rejects.toMatchObject({
+      statusCode: 401,
+      message: 'OIDC token exchange failed: missing ID token',
     });
   });
 

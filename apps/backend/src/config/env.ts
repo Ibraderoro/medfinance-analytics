@@ -132,8 +132,11 @@ function validateOidcConfig(config: OidcConfig): OidcConfig {
     throw new Error(`Incomplete OIDC configuration; missing ${missing.join(', ')}`);
   }
 
-  for (const key of ['OIDC_ISSUER', 'OIDC_TOKEN_URL', 'OIDC_USERINFO_URL', 'OIDC_REDIRECT_URI', 'OIDC_JWKS_URI'] as const) {
+  for (const key of ['OIDC_ISSUER', 'OIDC_TOKEN_URL', 'OIDC_USERINFO_URL', 'OIDC_REDIRECT_URI'] as const) {
     requireSecureUrl(key, config[key]);
+  }
+  if (config.OIDC_JWKS_URI) {
+    requireSecureUrl('OIDC_JWKS_URI', config.OIDC_JWKS_URI);
   }
 
   return config;

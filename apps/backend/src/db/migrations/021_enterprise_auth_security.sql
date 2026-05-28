@@ -77,10 +77,15 @@ CREATE INDEX IF NOT EXISTS idx_auth_security_events_org_created ON auth_security
 CREATE INDEX IF NOT EXISTS idx_tenant_oidc_enabled ON tenant_oidc_providers (organization_id, enabled) WHERE enabled = TRUE;
 
 ALTER TABLE IF EXISTS organization_auth_policies ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS organization_auth_policies FORCE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS tenant_oidc_providers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS tenant_oidc_providers FORCE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS auth_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS auth_sessions FORCE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS user_recovery_codes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS user_recovery_codes FORCE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS auth_security_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE IF EXISTS auth_security_events FORCE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS tenant_isolation_policy ON organization_auth_policies;
 CREATE POLICY tenant_isolation_policy ON organization_auth_policies

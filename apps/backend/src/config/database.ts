@@ -18,6 +18,7 @@ const TENANT_ENFORCED_TABLES = [
   'audit_logs',
   'organization_invitations',
   'organization_domains',
+  'auth_sessions',
 ];
 
 function requiresTenantContext(queryText: string): boolean {
