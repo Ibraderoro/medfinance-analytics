@@ -145,12 +145,35 @@ describe('ComplianceService production coverage', () => {
     const service = new ComplianceService();
     mockQuery
       .mockResolvedValueOnce([{ id: 'alert-1', severity: 'critical' }])
-      .mockResolvedValueOnce([{ id: 'alert-2', severity: 'medium' }]);
+      .mockResolvedValueOnce([{ count: '1' }])
+      .mockResolvedValueOnce([{ id: 'alert-2', severity: 'medium' }])
+      .mockResolvedValueOnce([{ count: '1' }]);
 
-    await expect(service.getRegulatoryAlerts({ organizationId: 'org-1', severity: 'critical' })).resolves.toHaveLength(1);
-    await expect(service.getRegulatoryAlerts({ organizationId: 'org-1' })).resolves.toHaveLength(1);
+    await expect(service.getRegulatoryAlerts({
+      organizationId: 'org-1',
+      severity: 'critical',
+      page: 1,
+      limit: 50,
+    })).resolves.toEqual({
+      items: [{ id: 'alert-1', severity: 'critical' }],
+      total: 1,
+      page: 1,
+      limit: 50,
+    });
+    await expect(service.getRegulatoryAlerts({
+      organizationId: 'org-1',
+      page: 1,
+      limit: 50,
+    })).resolves.toEqual({
+      items: [{ id: 'alert-2', severity: 'medium' }],
+      total: 1,
+      page: 1,
+      limit: 50,
+    });
 
-    expect(mockQuery).toHaveBeenNthCalledWith(1, expect.stringContaining('FROM regulatory_alerts'), ['org-1', 'critical']);
-    expect(mockQuery).toHaveBeenNthCalledWith(2, expect.stringContaining('FROM regulatory_alerts'), ['org-1', null]);
+    expect(mockQuery).toHaveBeenNthCalledWith(1, expect.stringContaining('FROM regulatory_alerts'), ['org-1', 'critical', 50, 0]);
+    expect(mockQuery).toHaveBeenNthCalledWith(2, expect.stringContaining('COUNT(*) AS count'), ['org-1', 'critical']);
+    expect(mockQuery).toHaveBeenNthCalledWith(3, expect.stringContaining('FROM regulatory_alerts'), ['org-1', null, 50, 0]);
+    expect(mockQuery).toHaveBeenNthCalledWith(4, expect.stringContaining('COUNT(*) AS count'), ['org-1', null]);
   });
 });
