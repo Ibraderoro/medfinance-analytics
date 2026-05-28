@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { query } from '../config/database';
+import { getPool, query } from '../config/database';
 import { env } from '../config/env';
 import { getRedis } from '../config/redis';
 import { AppError } from '../middleware/errorHandler';
@@ -322,33 +322,13 @@ export class AuthService {
       throw inviteError();
     }
 
-    const existing = await query<{ id: string }>(
-      'SELECT id FROM users WHERE email = $1 AND organization_id = $2',
-      [normalizedEmail, invite.organization_id],
-    );
-    if (existing.length > 0) {
-      throw conflictError('Email already registered');
-    }
-
     const fullName = `${firstName} ${lastName}`.trim();
     if (env.isProduction()) {
       this.billingService.ensureProductionCustomerProvisioningConfigured();
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
-    const [user] = await query<UserIdentity>(
-      `INSERT INTO users (email, password_hash, first_name, last_name, role, organization_id)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, email, role, organization_id`,
-      [normalizedEmail, passwordHash, firstName, lastName, invite.role, invite.organization_id],
-    );
-
-    await runWithTenantContext({ organizationId: invite.organization_id, userId: user.id }, () => query(
-      `UPDATE organization_invitations
-       SET accepted_at = NOW(), accepted_by = $1
-       WHERE id = $2 AND accepted_at IS NULL AND revoked_at IS NULL`,
-      [user.id, invite.id],
-    ));
+    const user = await this.claimInvitationAndCreateUser(invite, normalizedEmail, passwordHash, firstName, lastName);
 
     await this.auditService.log({
       action: 'invite_accepted',
@@ -701,6 +681,80 @@ export class AuthService {
     });
   }
 
+  private async claimInvitationAndCreateUser(
+    invite: InvitationRow,
+    normalizedEmail: string,
+    passwordHash: string,
+    firstName: string,
+    lastName: string,
+  ): Promise<UserIdentity> {
+    const client = await getPool().connect();
+
+    try {
+      await client.query('BEGIN');
+      await client.query(`SELECT set_config('app.current_tenant_id', $1, true)`, [invite.organization_id]);
+
+      const claimed = await client.query<InvitationRow>(
+        `UPDATE organization_invitations
+         SET accepted_at = NOW()
+         WHERE id = $1
+           AND organization_id = $2
+           AND accepted_at IS NULL
+           AND revoked_at IS NULL
+           AND expires_at > NOW()
+         RETURNING id, organization_id, email, role, invited_by, token_hash, expires_at, accepted_at, revoked_at`,
+        [invite.id, invite.organization_id],
+      );
+      const claimedInvite = claimed.rows[0];
+      if (!claimedInvite || claimedInvite.email !== normalizedEmail || claimedInvite.role !== invite.role) {
+        throw inviteError();
+      }
+
+      const existing = await client.query<{ id: string }>(
+        'SELECT id FROM users WHERE email = $1 AND organization_id = $2',
+        [normalizedEmail, invite.organization_id],
+      );
+      if (existing.rows.length > 0) {
+        throw conflictError('Email already registered');
+      }
+
+      const created = await client.query<UserIdentity>(
+        `INSERT INTO users (email, password_hash, first_name, last_name, role, organization_id)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING id, email, role, organization_id`,
+        [normalizedEmail, passwordHash, firstName, lastName, invite.role, invite.organization_id],
+      );
+      const user = created.rows[0];
+      if (!user) {
+        throw conflictError('Unable to create invited user');
+      }
+
+      const acceptedBy = await client.query<{ id: string }>(
+        `UPDATE organization_invitations
+         SET accepted_by = $1
+         WHERE id = $2
+           AND organization_id = $3
+           AND accepted_at IS NOT NULL
+           AND accepted_by IS NULL
+         RETURNING id`,
+        [user.id, invite.id, invite.organization_id],
+      );
+      if (acceptedBy.rows.length === 0) {
+        throw inviteError();
+      }
+
+      await client.query('COMMIT');
+      return user;
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      if ((err as { code?: string }).code === '23505') {
+        throw conflictError('Email already registered');
+      }
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
 
   private async resolveInvitation(token: string): Promise<InvitationRow> {
     let payload: InvitationTokenPayload;

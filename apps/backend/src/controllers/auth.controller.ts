@@ -163,7 +163,9 @@ export async function createInvitation(req: Request, res: Response, next: NextFu
 
 export async function verifyInvitation(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const token = typeof req.query.token === 'string' ? req.query.token : '';
+    const headerToken = req.header('x-invitation-token');
+    const bodyToken = (req.body as { token?: unknown } | undefined)?.token;
+    const token = typeof headerToken === 'string' ? headerToken.trim() : (typeof bodyToken === 'string' ? bodyToken.trim() : '');
     if (!token) {
       res.status(400).json({ success: false, error: { message: 'Invitation token is required', code: 'AUTH_INVITE_TOKEN_REQUIRED' }, data: null });
       return;
@@ -175,6 +177,10 @@ export async function verifyInvitation(req: Request, res: Response, next: NextFu
 
 export async function acceptInvitation(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
+    if (!env.ALLOW_SELF_SERVICE_REGISTRATION) {
+      res.status(403).json({ success: false, error: { message: 'Self-service registration is disabled', code: 'AUTH_REGISTRATION_DISABLED' }, data: null });
+      return;
+    }
     const { token, email, password, firstName, lastName } = req.body as { token: string; email: string; password: string; firstName: string; lastName: string };
     const tokens = await service.acceptInvitation(token, email, password, firstName, lastName);
     setAuthCookies(res, tokens.accessToken, tokens.refreshToken);

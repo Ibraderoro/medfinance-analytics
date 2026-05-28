@@ -8,6 +8,7 @@
 - Audit trail: invite creation, failed acceptance, successful acceptance, and revocation must be retained.
 
 ### Primary threats and mitigations
+
 | Threat | Mitigation |
 | --- | --- |
 | Unauthorized tenant join by submitting another `organizationId` at registration | Public registration no longer accepts `organizationId`; account creation requires a signed invitation token whose tenant is validated server-side. |
@@ -33,7 +34,7 @@
 
 ### Endpoints
 - `POST /api/v1/auth/invitations` — admin-only invite creation.
-- `GET /api/v1/auth/invitations/verify?token=...` — public token verification for onboarding UX.
+- `GET /api/v1/auth/invitations/verify` with `x-invitation-token` — public token verification for onboarding UX.
 - `POST /api/v1/auth/invitations/accept` — public invite acceptance and session creation.
 - `POST /api/v1/auth/register` — preserved compatibility endpoint, now requiring `invitationToken` instead of `organizationId`.
 - `DELETE /api/v1/auth/invitations/:id` — admin-only revocation scoped to the caller's organization.

@@ -23,7 +23,7 @@ authRouter.post(
   authRateLimiter,
   [
     body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
-    body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
+    body('password').isLength({ min: 12 }).withMessage('Password must be at least 12 characters'),
     body('firstName').notEmpty().withMessage('First name is required'),
     body('lastName').notEmpty().withMessage('Last name is required'),
     body('invitationToken').isString().trim().notEmpty().withMessage('Invitation token is required'),
@@ -87,7 +87,7 @@ authRouter.post(
   [
     body('token').isString().trim().notEmpty().withMessage('Invitation token is required'),
     body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
-    body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
+    body('password').isLength({ min: 12 }).withMessage('Password must be at least 12 characters'),
     body('firstName').notEmpty().withMessage('First name is required'),
     body('lastName').notEmpty().withMessage('Last name is required'),
   ],

@@ -73,6 +73,7 @@ describe('Auth flow', () => {
 
     expect(await screen.findByText('Invitation verified for invited@example.com.')).toBeInTheDocument();
     expect(screen.getByLabelText('Email')).toHaveValue('invited@example.com');
+    expect(screen.getByLabelText('Email')).toHaveAttribute('readonly');
   });
 
   it('navigates to dashboard after successful invite registration', async () => {

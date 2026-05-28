@@ -46,7 +46,7 @@ apiClient.interceptors.response.use(
 export const authApi = {
   login: (email: string, password: string, organizationId: string) => apiClient.post('/auth/login', { email, password, organizationId }),
   register: (data: { email: string; password: string; firstName: string; lastName: string; invitationToken: string }) => apiClient.post('/auth/register', data),
-  verifyInvitation: (token: string) => apiClient.get('/auth/invitations/verify', { params: { token } }),
+  verifyInvitation: (token: string) => apiClient.get('/auth/invitations/verify', { headers: { 'x-invitation-token': token } }),
   createInvitation: (data: { email: string; role: 'analyst' | 'viewer'; expiresInHours?: number }) => apiClient.post('/auth/invitations', data),
   revokeInvitation: (id: string) => apiClient.delete(`/auth/invitations/${id}`),
   refresh: () => apiClient.post('/auth/refresh', {}),

@@ -3,6 +3,17 @@ import bcrypt from 'bcryptjs';
 const mockRedisSetex = jest.fn();
 const mockRedisGet = jest.fn();
 const mockRedisDel = jest.fn();
+const mockQuery = jest.fn();
+const mockDbClientRelease = jest.fn();
+const mockDbClientQuery = jest.fn(async (text: string, params?: unknown[]) => {
+  const normalized = String(text).trim().toUpperCase();
+  if (normalized === 'BEGIN' || normalized === 'COMMIT' || normalized === 'ROLLBACK' || normalized.startsWith('SELECT SET_CONFIG')) {
+    return { rows: [], rowCount: 0 };
+  }
+
+  const rows = await mockQuery(text, params);
+  return { rows, rowCount: Array.isArray(rows) ? rows.length : 0 };
+});
 
 const mockEnv = {
   JWT_SECRET: 'test_jwt_secret_at_least_32_chars_long',
@@ -30,7 +41,13 @@ const mockEnv = {
 
 // Mock the database module so no real PostgreSQL connection is needed.
 jest.mock('../config/database', () => ({
-  query: jest.fn(),
+  query: (...args: unknown[]) => mockQuery(...args),
+  getPool: () => ({
+    connect: async () => ({
+      query: (...args: [string, unknown[]?]) => mockDbClientQuery(...args),
+      release: () => mockDbClientRelease(),
+    }),
+  }),
 }));
 
 // Mock Redis so MFA/SSO paths never connect to a real Redis instance.
@@ -47,17 +64,16 @@ jest.mock('../config/env', () => ({
   env: mockEnv,
 }));
 
-import { query } from '../config/database';
 import { AuthService } from '../services/auth.service';
 import { logger } from '../utils/logger';
-
-const mockQuery = query as jest.Mock;
 
 beforeEach(() => {
   mockQuery.mockReset();
   mockRedisSetex.mockReset();
   mockRedisGet.mockReset();
   mockRedisDel.mockReset();
+  mockDbClientQuery.mockClear();
+  mockDbClientRelease.mockClear();
   mockEnv.STRIPE_SECRET_KEY = '';
   mockEnv.MFA_DELIVERY_WEBHOOK_URL = '';
   mockEnv.OIDC_ISSUER = '';
@@ -303,8 +319,8 @@ describe('AuthService.register', () => {
     return invite;
   }
 
-  function mockResolvedInvite(email = 'new@example.com') {
-    mockQuery.mockResolvedValueOnce([{
+  function invitationRow(email = 'new@example.com') {
+    return {
       id: 'invite-uuid',
       organization_id: admin.organization_id,
       email,
@@ -314,12 +330,21 @@ describe('AuthService.register', () => {
       expires_at: new Date(Date.now() + 3600_000).toISOString(),
       accepted_at: null,
       revoked_at: null,
-    }]);
+    };
+  }
+
+  function mockResolvedInvite(email = 'new@example.com') {
+    mockQuery.mockResolvedValueOnce([invitationRow(email)]);
+  }
+
+  function mockClaimedInvite(email = 'new@example.com') {
+    mockQuery.mockResolvedValueOnce([invitationRow(email)]);
   }
 
   it('throws 409 when the invited email is already taken in the invitation tenant', async () => {
     const invite = await issueInvite('taken@example.com');
     mockResolvedInvite('taken@example.com');
+    mockClaimedInvite('taken@example.com');
     mockQuery.mockResolvedValueOnce([{ id: 'existing-uuid' }]);
 
     await expect(
@@ -357,6 +382,7 @@ describe('AuthService.register', () => {
     const fetchMock = jest.spyOn(global, 'fetch');
 
     mockResolvedInvite('duplicate@example.com');
+    mockClaimedInvite('duplicate@example.com');
     mockQuery.mockResolvedValueOnce([]);
     mockQuery.mockRejectedValueOnce(new Error('duplicate key value violates unique constraint'));
 
@@ -385,9 +411,10 @@ describe('AuthService.register', () => {
     } as Response);
 
     mockResolvedInvite('prod@example.com');
+    mockClaimedInvite('prod@example.com');
     mockQuery.mockResolvedValueOnce([]);
     mockQuery.mockResolvedValueOnce([{ id: 'prod-user-uuid', email: 'prod@example.com', role: 'viewer', organization_id: admin.organization_id }]);
-    mockQuery.mockResolvedValueOnce([]);
+    mockQuery.mockResolvedValueOnce([{ id: 'invite-uuid' }]);
     mockQuery.mockResolvedValueOnce([]);
     mockQuery.mockResolvedValueOnce([]);
     mockQuery.mockResolvedValueOnce([{ id: 'customer-uuid', organization_id: admin.organization_id, stripe_customer_id: 'cus_prod_123', email: 'prod@example.com' }]);
@@ -409,9 +436,10 @@ describe('AuthService.register', () => {
   it('returns tokens for a new invited registration', async () => {
     const invite = await issueInvite('new@example.com');
     mockResolvedInvite('new@example.com');
+    mockClaimedInvite('new@example.com');
     mockQuery.mockResolvedValueOnce([]);
     mockQuery.mockResolvedValueOnce([{ id: 'new-uuid', email: 'new@example.com', role: 'viewer', organization_id: admin.organization_id }]);
-    mockQuery.mockResolvedValueOnce([]);
+    mockQuery.mockResolvedValueOnce([{ id: 'invite-uuid' }]);
     mockQuery.mockResolvedValueOnce([]);
     mockQuery.mockResolvedValueOnce([]);
     mockQuery.mockResolvedValueOnce([{ id: 'customer-uuid', organization_id: admin.organization_id, stripe_customer_id: 'cus_local_orguuid', email: 'new@example.com' }]);
@@ -655,9 +683,20 @@ describe('AuthService additional production coverage', () => {
         accepted_at: null,
         revoked_at: null,
       }])
+      .mockResolvedValueOnce([{
+        id: 'invite-uuid',
+        organization_id: admin.organization_id,
+        email: 'new@example.com',
+        role: 'viewer',
+        invited_by: admin.id,
+        token_hash: 'unused',
+        expires_at: new Date(Date.now() + 3600_000).toISOString(),
+        accepted_at: new Date().toISOString(),
+        revoked_at: null,
+      }])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([{ id: 'new-uuid', email: 'new@example.com', role: 'viewer', organization_id: admin.organization_id }])
-      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'invite-uuid' }])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
       .mockRejectedValueOnce(new Error('stripe unavailable'))
@@ -977,6 +1016,38 @@ describe('AuthService invitation onboarding', () => {
       statusCode: 401,
       message: 'Invalid or expired invitation',
     });
+  });
+
+
+  it('does not create a user when a pending invite cannot be claimed atomically', async () => {
+    mockQuery
+      .mockResolvedValueOnce([{ id: admin.organization_id, name: 'Acme Health' }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'invite-uuid', expires_at: new Date(Date.now() + 3600_000).toISOString() }])
+      .mockResolvedValueOnce([]);
+    const invite = await service.createInvitation(admin, 'target@example.com', 'viewer', 24);
+    mockQuery.mockReset();
+    mockQuery
+      .mockResolvedValueOnce([{
+        id: 'invite-uuid',
+        organization_id: admin.organization_id,
+        email: 'target@example.com',
+        role: 'viewer',
+        invited_by: admin.id,
+        token_hash: 'unused',
+        expires_at: new Date(Date.now() + 3600_000).toISOString(),
+        accepted_at: null,
+        revoked_at: null,
+      }])
+      .mockResolvedValueOnce([]);
+
+    await expect(service.acceptInvitation(invite.token, 'target@example.com', 'password12345', 'Ada', 'Invitee')).rejects.toMatchObject({
+      statusCode: 401,
+      message: 'Invalid or expired invitation',
+    });
+    expect(mockQuery).not.toHaveBeenCalledWith(expect.stringContaining('INSERT INTO users'), expect.any(Array));
+    expect(mockDbClientQuery).toHaveBeenCalledWith('ROLLBACK');
   });
 
   it('revokes only pending invitations in the admin organization without disclosing cross-tenant IDs', async () => {
