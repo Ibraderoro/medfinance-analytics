@@ -2,42 +2,29 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 2rem;
-  height: 60px;
-  background: var(--color-primary);
+  padding: 0 1.5rem;
+  height: 64px;
+  background: linear-gradient(90deg, var(--color-primary-dark), var(--color-primary));
   color: #fff;
-  box-shadow: 0 2px 4px rgba(0,0,0,.15);
+  box-shadow: 0 2px 10px rgba(0,0,0,.16);
   position: sticky;
   top: 0;
   z-index: 100;
 }
-
-.logo {
-  display: flex;
-  align-items: center;
-  gap: .5rem;
-  font-weight: 700;
-  font-size: 1.1rem;
-}
-
-.logoIcon {
-  font-size: 1.4rem;
-}
-
-.logoText {
-  letter-spacing: -.01em;
-}
-
-.nav {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.badge {
-  background: rgba(255,255,255,.15);
-  padding: .25rem .75rem;
-  border-radius: 9999px;
-  font-size: .8rem;
+.logo { display: flex; align-items: center; gap: .5rem; font-weight: 700; font-size: 1.05rem; }
+.logoIcon { font-size: 1.25rem; }
+.logoText { letter-spacing: -.01em; }
+.nav { display: flex; align-items: center; gap: .6rem; }
+.badge { background: rgba(255,255,255,.15); padding: .25rem .7rem; border-radius: 999px; font-size: .78rem; font-weight: 600; }
+.themeButton, .logoutButton {
+  border: 1px solid rgba(255,255,255,.35);
+  background: rgba(255,255,255,.12);
+  color: #fff;
+  padding: .4rem .65rem;
+  border-radius: 8px;
   font-weight: 600;
+}
+@media (max-width: 768px) {
+  .badge { display: none; }
+  .logoText { font-size: .95rem; }
 }

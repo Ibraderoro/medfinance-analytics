@@ -1,6 +1,7 @@
 import Redis from 'ioredis';
 import { env } from './env';
 import { logger } from '../utils/logger';
+import { metricsService } from '../services/metrics.service';
 
 let redisClient: Redis;
 
@@ -8,6 +9,17 @@ export const CACHE_TTL = {
   financialDataSeconds: 300,
   latestMetricsSeconds: 120,
 } as const;
+
+export async function timedRedis<T>(operation: string, fn: () => Promise<T>): Promise<T> {
+  const start = process.hrtime.bigint();
+  try {
+    return await fn();
+  } finally {
+    const durationMs = Number(process.hrtime.bigint() - start) / 1_000_000;
+    metricsService.recordRedisOperation(durationMs);
+    logger.debug('Redis operation completed', { operation, durationMs: Number(durationMs.toFixed(3)) });
+  }
+}
 
 export function getRedis(): Redis {
   if (!redisClient) {
@@ -46,23 +58,23 @@ export async function invalidateFinancialCache(organizationId: string): Promise<
   for (const pattern of patterns) {
     let cursor = '0';
     do {
-      const [nextCursor, batch] = await redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+      const [nextCursor, batch] = await timedRedis('redis:scan', () => redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100));
       cursor = nextCursor;
       batch.forEach((key) => keys.add(key));
     } while (cursor !== '0');
   }
 
   if (keys.size === 0) return 0;
-  return redis.del(...Array.from(keys));
+  return timedRedis('del:invalidateFinancialCache', () => redis.del(...Array.from(keys)));
 }
 
-export async function connectRedis(retries = 12, retryDelayMs = 3_000): Promise<void> { /* unchanged */
+export async function connectRedis(retries = 12, retryDelayMs = 3_000): Promise<void> {
   const client = getRedis();
   let lastError: unknown;
   for (let attempt = 1; attempt <= retries; attempt += 1) {
     try {
-      if (client.status === 'wait') await client.connect();
-      await client.ping();
+      if (client.status === 'wait') await timedRedis('connect', () => client.connect());
+      await timedRedis('ping', () => client.ping());
       logger.info('Redis connected', { attempt });
       return;
     } catch (error) {
@@ -76,5 +88,5 @@ export async function connectRedis(retries = 12, retryDelayMs = 3_000): Promise<
 
 export async function disconnectRedis(): Promise<void> {
   if (!redisClient) return;
-  await redisClient.quit();
+  await timedRedis('quit', () => redisClient.quit());
 }

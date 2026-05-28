@@ -1,6 +1,7 @@
 import { Request, Router } from 'express';
 import { body } from 'express-validator';
 import { authRateLimiter } from '../middleware/rateLimiter';
+import { bruteForceProtection } from '../middleware/bruteForceProtection';
 import { validateRequest } from '../middleware/validateRequest';
 import { login, register, refresh, logout, verifyMfa, initiateOidc, completeOidc } from '../controllers/auth.controller';
 
@@ -19,6 +20,7 @@ function getCookieValue(req: Request, name: string): string | undefined {
 authRouter.post(
   '/register',
   authRateLimiter,
+  bruteForceProtection,
   [
     body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
     body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
@@ -39,6 +41,7 @@ authRouter.post(
 authRouter.post(
   '/login',
   authRateLimiter,
+  bruteForceProtection,
   [
     body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
     body('password').notEmpty().withMessage('Password is required'),

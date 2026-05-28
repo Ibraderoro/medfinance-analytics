@@ -26,6 +26,7 @@ const ALLOWED_ROLES = new Set(['admin', 'analyst', 'viewer']);
 const MFA_TTL_SECONDS = 5 * 60;
 const MFA_MAX_ATTEMPTS = 5;
 const OIDC_REQUEST_TIMEOUT_MS = 10_000;
+const REFRESH_REVOKED_PREFIX = 'auth:refresh:revoked:';
 
 function authError(message: string): AppError {
   const err = new Error(message) as AppError;
@@ -432,6 +433,10 @@ export class AuthService {
 
   async refresh(refreshToken: string) {
     const tokenHash = hashRefreshToken(refreshToken);
+    const revoked = await this.redis.get(`${REFRESH_REVOKED_PREFIX}${tokenHash}`);
+    if (revoked) {
+      throw authError('Refresh token has been revoked');
+    }
 
     const [row] = await query<{ user_id: string; expires_at: string }>(
       'SELECT user_id, expires_at FROM refresh_tokens WHERE token_hash = $1',
@@ -439,6 +444,12 @@ export class AuthService {
     );
 
     if (!row || new Date(row.expires_at) < new Date()) {
+      await this.auditService.log({
+        action: 'refresh_failed',
+        entityType: 'auth',
+        organizationId: 'system',
+        metadata: { reason: 'invalid_or_expired_refresh_token' },
+      });
       throw authError('Invalid or expired refresh token');
     }
 
@@ -452,6 +463,7 @@ export class AuthService {
     }
 
     await query('DELETE FROM refresh_tokens WHERE token_hash = $1', [tokenHash]);
+    await this.redis.setex(`${REFRESH_REVOKED_PREFIX}${tokenHash}`, Math.max(60, refreshExpiryToDays(env.REFRESH_TOKEN_EXPIRES_IN) * 24 * 60 * 60), '1');
     await this.auditService.log({
       action: 'refresh_success',
       entityType: 'user',
@@ -471,6 +483,7 @@ export class AuthService {
       [tokenHash],
     );
     await query('DELETE FROM refresh_tokens WHERE token_hash = $1', [tokenHash]);
+    await this.redis.setex(`${REFRESH_REVOKED_PREFIX}${tokenHash}`, Math.max(60, refreshExpiryToDays(env.REFRESH_TOKEN_EXPIRES_IN) * 24 * 60 * 60), '1');
 
     if (!row?.user_id) {
       return;

@@ -1,5 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
+import { Loading } from './components/common/Loading';
 import { Layout } from './components/Layout/Layout';
 import { DashboardPage } from './pages/Dashboard';
 import { FinancialsPage } from './pages/Financials';
@@ -55,9 +57,31 @@ function useAuthSession() {
   return isAuthenticated;
 }
 
+
+function useThemeMode() {
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    try {
+      return (localStorage.getItem('theme_mode') as 'light' | 'dark') || 'light';
+    } catch {
+      return 'light';
+    }
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    try {
+      localStorage.setItem('theme_mode', theme);
+    } catch {
+      // Swallow storage errors in restricted environments
+    }
+  }, [theme]);
+
+  return { theme, toggleTheme: () => setTheme((t) => (t === 'light' ? 'dark' : 'light')) };
+}
+
 function ProtectedRoute({ children, isAuthenticated }: { children: JSX.Element; isAuthenticated: boolean | null }) {
   if (isAuthenticated === null) {
-    return <div style={{ padding: '2rem' }}>Checking secure session…</div>;
+    return <Loading message="Checking secure session" />;
   }
 
   if (!isAuthenticated) {
@@ -69,8 +93,10 @@ function ProtectedRoute({ children, isAuthenticated }: { children: JSX.Element; 
 
 export default function App() {
   const isAuthenticated = useAuthSession();
+  const { theme, toggleTheme } = useThemeMode();
 
   return (
+    <ErrorBoundary fallbackTitle="Application unavailable">
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <Routes>
         <Route
@@ -85,7 +111,7 @@ export default function App() {
           path="/"
           element={(
             <ProtectedRoute isAuthenticated={isAuthenticated}>
-              <Layout />
+              <Layout theme={theme} onToggleTheme={toggleTheme} />
             </ProtectedRoute>
           )}
         >
@@ -100,5 +126,6 @@ export default function App() {
         <Route path="*" element={<Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />} />
       </Routes>
     </BrowserRouter>
+    </ErrorBoundary>
   );
 }

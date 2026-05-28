@@ -1,0 +1,2 @@
+DROP INDEX IF EXISTS idx_regulatory_alerts_org_severity_due_date;
+DROP INDEX IF EXISTS idx_audit_log_org_performed_at_desc;
