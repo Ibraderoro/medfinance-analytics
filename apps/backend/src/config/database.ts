@@ -139,10 +139,17 @@ export async function query<T extends QueryResultRow>(
     } else {
       res = await client.query<T>(text, params);
     }
+    logger.debug('Query executed', {
+      duration: Date.now() - start,
+      rows: res.rowCount,
+      hasParams: Boolean(params?.length),
+    });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => undefined);
     throw error;
   } finally {
+    const duration = Date.now() - start;
+    metricsService.recordDbQuery(duration);
     await client.query('RESET ALL').catch((resetError) => {
       logger.warn('PostgreSQL session reset failed before release', {
         message: resetError instanceof Error ? resetError.message : String(resetError),
