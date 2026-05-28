@@ -227,7 +227,7 @@ flowchart TD
 | Logs | Request logs, contextual metadata, error stacks |
 | Metrics | Route health, dependency readiness, business performance signals |
 | Traces | Request path instrumentation and correlation IDs |
-| Health probes | `/health/live` and `/health/ready` for orchestration and SRE automation |
+| Health probes | `/api/v1/health/live` and `/api/v1/health/ready` for orchestration and SRE automation |
 
 ### Operational intent
 - Detect dependency degradation (Postgres/Redis) before user impact escalates.

@@ -59,11 +59,21 @@ function useAuthSession() {
 
 
 function useThemeMode() {
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('theme_mode') as 'light' | 'dark') || 'light');
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    try {
+      return (localStorage.getItem('theme_mode') as 'light' | 'dark') || 'light';
+    } catch {
+      return 'light';
+    }
+  });
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('theme_mode', theme);
+    try {
+      localStorage.setItem('theme_mode', theme);
+    } catch {
+      // Swallow storage errors in restricted environments
+    }
   }, [theme]);
 
   return { theme, toggleTheme: () => setTheme((t) => (t === 'light' ? 'dark' : 'light')) };

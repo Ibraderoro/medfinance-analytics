@@ -238,7 +238,14 @@ if (env.isProduction()) {
   if (env.JWT_SECRET === env.REFRESH_TOKEN_SECRET) {
     throw new Error('JWT_SECRET must be different from REFRESH_TOKEN_SECRET in production');
   }
-  const insecureOrigins = env.CORS_ALLOWED_ORIGINS.filter((origin) => origin.startsWith('http://'));
+  const insecureOrigins = env.CORS_ALLOWED_ORIGINS.filter((origin) => {
+    try {
+      const url = new URL(origin);
+      return url.protocol !== 'https:' && !isLocalhost(url.hostname);
+    } catch {
+      return false;
+    }
+  });
   if (insecureOrigins.length > 0) {
     throw new Error(`CORS_ALLOWED_ORIGINS must use HTTPS in production. Insecure origins: ${insecureOrigins.join(', ')}`);
   }

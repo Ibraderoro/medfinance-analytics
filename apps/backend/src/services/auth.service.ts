@@ -464,7 +464,6 @@ export class AuthService {
 
     await query('DELETE FROM refresh_tokens WHERE token_hash = $1', [tokenHash]);
     await this.redis.setex(`${REFRESH_REVOKED_PREFIX}${tokenHash}`, Math.max(60, refreshExpiryToDays(env.REFRESH_TOKEN_EXPIRES_IN) * 24 * 60 * 60), '1');
-    await this.redis.setex(`${REFRESH_REVOKED_PREFIX}${tokenHash}`, Math.max(60, refreshExpiryToDays(env.REFRESH_TOKEN_EXPIRES_IN) * 24 * 60 * 60), '1');
     await this.auditService.log({
       action: 'refresh_success',
       entityType: 'user',
