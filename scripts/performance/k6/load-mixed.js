@@ -110,7 +110,11 @@ function runRoute(route, sessions, adminCookie, loginUsers) {
 export function setup() {
   const users = getUsers();
   const sessions = users
-    .map((user) => ({ ...loginSession(user), weight: Number(user.weight) > 0 ? Number(user.weight) : 1 }))
+    .map((user) => {
+      const session = loginSession(user);
+      if (!session?.cookie) return null;
+      return { ...session, weight: Number(user.weight) > 0 ? Number(user.weight) : 1 };
+    })
     .filter(Boolean);
 
   if (sessions.length === 0 && __ENV.PERF_AUTH_COOKIE) {
