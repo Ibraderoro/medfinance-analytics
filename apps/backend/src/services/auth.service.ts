@@ -20,6 +20,14 @@ interface UserRow {
   role: string;
   organization_id: string;
   is_active: boolean;
+  mfa_required?: boolean;
+  step_up_required?: boolean;
+}
+
+interface AuthRequestContext {
+  ipAddress?: string;
+  userAgent?: string;
+  deviceId?: string;
 }
 
 type UserIdentity = Pick<UserRow, 'id' | 'email' | 'role' | 'organization_id'>;
@@ -36,6 +44,36 @@ interface InvitationRow {
   revoked_at: string | null;
 }
 
+interface OidcState {
+  userId: string;
+  email: string;
+  provider: string;
+  organizationId: string;
+  nonce: string;
+  codeVerifier: string;
+}
+
+interface OidcTokenPayload extends jwt.JwtPayload {
+  sub: string;
+  email?: string;
+  email_verified?: boolean;
+  nonce?: string;
+  azp?: string;
+}
+
+interface JsonWebKey {
+  kid?: string;
+  kty?: string;
+  alg?: string;
+  use?: string;
+  key_ops?: string[];
+  n?: string;
+  e?: string;
+  crv?: string;
+  x?: string;
+  y?: string;
+}
+
 interface InvitationTokenPayload extends jwt.JwtPayload {
   typ: 'organization_invite';
   jti: string;
@@ -50,6 +88,8 @@ const MFA_MAX_ATTEMPTS = 5;
 const OIDC_REQUEST_TIMEOUT_MS = 10_000;
 const REFRESH_REVOKED_PREFIX = 'auth:refresh:revoked:';
 const INVITATION_TOKEN_TTL_HOURS = 72;
+const OIDC_JWKS_CACHE_TTL_SECONDS = 60 * 60;
+const SUSPICIOUS_LOGIN_WINDOW_SECONDS = 30 * 24 * 60 * 60;
 const GENERIC_INVITE_ERROR = 'Invalid or expired invitation';
 
 function authError(message: string): AppError {
@@ -136,6 +176,10 @@ function hashInvitationToken(token: string): string {
   return hmacToken(token, env.JWT_SECRET);
 }
 
+function hashRecoveryCode(code: string): string {
+  return hmacToken(code.trim().toUpperCase(), env.JWT_SECRET);
+}
+
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
@@ -164,6 +208,38 @@ function constantTimeEqual(left: string, right: string): boolean {
   }
 
   return crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function base64Url(input: Buffer): string {
+  return input.toString('base64url');
+}
+
+function sha256Base64Url(value: string): string {
+  return base64Url(crypto.createHash('sha256').update(value).digest());
+}
+
+function parseJwtSegment<T>(token: string, segmentIndex: number): T {
+  const segment = token.split('.')[segmentIndex];
+  if (!segment) throw authError('OIDC ID token is malformed');
+  try {
+    return JSON.parse(Buffer.from(segment, 'base64url').toString('utf8')) as T;
+  } catch (err) {
+    throw authError(appendErrorMessage('OIDC ID token is malformed', err));
+  }
+}
+
+function resolveJwksUri(issuer: string): string {
+  const configured = (env as typeof env & { OIDC_JWKS_URI?: string }).OIDC_JWKS_URI;
+  if (configured) return configured;
+  return `${issuer.replace(/\/$/, '')}/.well-known/jwks.json`;
+}
+
+function normalizeAuthContext(context?: AuthRequestContext): Required<AuthRequestContext> {
+  return {
+    ipAddress: context?.ipAddress?.slice(0, 128) ?? 'unknown',
+    userAgent: context?.userAgent?.slice(0, 512) ?? 'unknown',
+    deviceId: context?.deviceId?.slice(0, 128) ?? crypto.randomUUID(),
+  };
 }
 
 function refreshExpiryToDays(expiresIn: string): number {
@@ -368,13 +444,29 @@ export class AuthService {
     }
 
     const state = crypto.randomUUID();
+    const nonce = crypto.randomUUID();
+    const codeVerifier = base64Url(crypto.randomBytes(32));
+    const codeChallenge = sha256Base64Url(codeVerifier);
     await this.redis.setex(
       `auth:sso:state:${state}`,
       MFA_TTL_SECONDS,
-      JSON.stringify({ userId: user.id, email: user.email, provider, organizationId: user.organization_id }),
+      JSON.stringify({ userId: user.id, email: user.email, provider, organizationId: user.organization_id, nonce, codeVerifier }),
     );
 
-    return { provider, state, status: 'sso_initiated' as const };
+    const authorizationUrl = env.OIDC_ISSUER && env.OIDC_CLIENT_ID && env.OIDC_REDIRECT_URI
+      ? `${env.OIDC_ISSUER.replace(/\/$/, '')}/authorize?${new URLSearchParams({
+        response_type: 'code',
+        client_id: env.OIDC_CLIENT_ID,
+        redirect_uri: env.OIDC_REDIRECT_URI,
+        scope: 'openid email profile',
+        state,
+        nonce,
+        code_challenge: codeChallenge,
+        code_challenge_method: 'S256',
+      }).toString()}`
+      : undefined;
+
+    return { provider, state, nonce, codeChallenge, codeChallengeMethod: 'S256' as const, authorizationUrl, status: 'sso_initiated' as const };
   }
 
   async completeOidcLogin(state: string, code: string) {
@@ -388,30 +480,40 @@ export class AuthService {
       throw authError('Invalid or expired SSO state');
     }
 
-    const pending = JSON.parse(rawState) as { userId: string; email: string; provider: string; organizationId: string };
+    const pending = JSON.parse(rawState) as Partial<OidcState>;
+    const hasReplayBinding = Boolean(pending.nonce && pending.codeVerifier);
+    if (hasReplayBinding) await this.redis.del(stateKey);
     if (pending.provider !== 'oidc') {
       throw authError('Invalid SSO provider for OIDC callback');
     }
 
-    const tokenPayload = await fetchOidcJson<{ access_token?: string }>(env.OIDC_TOKEN_URL, {
+    const tokenRequestBody = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code,
+      client_id: env.OIDC_CLIENT_ID,
+      client_secret: env.OIDC_CLIENT_SECRET,
+      redirect_uri: env.OIDC_REDIRECT_URI,
+    });
+    if (pending.codeVerifier) tokenRequestBody.set('code_verifier', pending.codeVerifier);
+
+    const tokenPayload = await fetchOidcJson<{ access_token?: string; id_token?: string; token_type?: string }>(env.OIDC_TOKEN_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type: 'authorization_code',
-        code,
-        client_id: env.OIDC_CLIENT_ID,
-        client_secret: env.OIDC_CLIENT_SECRET,
-        redirect_uri: env.OIDC_REDIRECT_URI,
-      }),
+      body: tokenRequestBody,
     }, 'OIDC token exchange failed');
     if (!tokenPayload.access_token) {
       throw authError('OIDC token exchange failed: missing access token');
     }
 
+    const issuer = resolveOidcIssuer();
+    const idToken = tokenPayload.id_token && pending.nonce
+      ? await this.validateOidcIdToken(tokenPayload.id_token, issuer, pending.nonce)
+      : null;
+
     const userInfo = await fetchOidcJson<{ sub?: string; email?: string; email_verified?: boolean }>(env.OIDC_USERINFO_URL, {
       headers: { Authorization: `Bearer ${tokenPayload.access_token}` },
     }, 'OIDC userinfo fetch failed');
-    if (!userInfo.sub || !userInfo.email) {
+    if (!userInfo.sub || (idToken && userInfo.sub !== idToken.sub) || !userInfo.email) {
       throw authError('OIDC user identity did not match pending SSO session');
     }
     if (userInfo.email_verified !== true) {
@@ -423,7 +525,6 @@ export class AuthService {
       throw authError('OIDC userinfo email did not match pending login');
     }
 
-    const issuer = resolveOidcIssuer();
     const [user] = await query<UserIdentity & { is_active: boolean }>(
       `SELECT id, email, role, organization_id, is_active
        FROM users
@@ -437,8 +538,8 @@ export class AuthService {
       throw authError('OIDC user identity did not match linked account');
     }
 
-    await this.redis.del(stateKey);
-    await query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [user.id]);
+    if (!hasReplayBinding) await this.redis.del(stateKey);
+    await this.recordSuccessfulLogin(user);
     await this.auditService.log({
       action: 'oidc_login_success',
       entityType: 'user',
@@ -451,15 +552,19 @@ export class AuthService {
     return this.generateTokenPair(user);
   }
 
-  async login(email: string, password: string, organizationId: string): Promise<{
+  async login(email: string, password: string, organizationId: string, context?: AuthRequestContext): Promise<{
     status: 'success' | 'mfa_required';
     accessToken?: string;
     refreshToken?: string;
     tempToken?: string;
   }> {
     const [user] = await query<UserRow>(
-      `SELECT id, email, password_hash, first_name, last_name, role, organization_id, is_active
-       FROM users WHERE email = $1 AND organization_id = $2`,
+      `SELECT u.id, u.email, u.password_hash, u.first_name, u.last_name, u.role, u.organization_id, u.is_active,
+              COALESCE(p.mfa_enforced, false) AS mfa_required,
+              COALESCE(p.step_up_required_for_billing, false) AS step_up_required
+       FROM users u
+       LEFT JOIN organization_auth_policies p ON p.organization_id = u.organization_id
+       WHERE u.email = $1 AND u.organization_id = $2`,
       [email, organizationId],
     );
 
@@ -472,7 +577,8 @@ export class AuthService {
       throw authError('Invalid credentials');
     }
 
-    if (user.role === 'admin') {
+    const suspicious = await this.detectSuspiciousLogin(user, context);
+    if (user.role === 'admin' || user.mfa_required === true || user.step_up_required === true || suspicious) {
       const tempToken = crypto.randomUUID();
       const mfaCode = this.generateMfaCode();
       const mfaKey = `auth:mfa:pending:${tempToken}`;
@@ -484,6 +590,8 @@ export class AuthService {
           codeHash: hashMfaCode(tempToken, mfaCode),
           organizationId: user.organization_id,
           attempts: 0,
+          stepUp: suspicious || user.step_up_required === true,
+          context: normalizeAuthContext(context),
         }),
       );
 
@@ -501,12 +609,12 @@ export class AuthService {
       }
 
       await this.auditService.log({
-        action: 'admin_mfa_required',
+        action: user.role === 'admin' ? 'admin_mfa_required' : 'mfa_required',
         entityType: 'user',
         entityId: user.id,
         performedBy: user.id,
         organizationId: user.organization_id,
-        metadata: { email: user.email, delivery: delivery.method },
+        metadata: { email: user.email, delivery: delivery.method, suspicious },
       });
 
       logger.info('Admin MFA challenge delivered', {
@@ -521,7 +629,7 @@ export class AuthService {
       };
     }
 
-    await query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [user.id]);
+    await this.recordSuccessfulLogin(user, context);
 
     await this.auditService.log({
       action: 'login_success',
@@ -538,6 +646,26 @@ export class AuthService {
     };
   }
 
+  async generateRecoveryCodes(user: UserIdentity) {
+    const codes = Array.from({ length: 10 }, () => `${crypto.randomBytes(4).toString('hex')}-${crypto.randomBytes(4).toString('hex')}`.toUpperCase());
+    await query('DELETE FROM user_recovery_codes WHERE user_id = $1 AND used_at IS NULL', [user.id]);
+    for (const code of codes) {
+      await query(
+        'INSERT INTO user_recovery_codes (user_id, organization_id, code_hash) VALUES ($1, $2, $3)',
+        [user.id, user.organization_id, hashRecoveryCode(code)],
+      );
+    }
+    await this.auditService.log({
+      action: 'recovery_codes_rotated',
+      entityType: 'user',
+      entityId: user.id,
+      performedBy: user.id,
+      organizationId: user.organization_id,
+      metadata: { count: codes.length },
+    });
+    return { codes };
+  }
+
   async verifyMfa(tempToken: string, code: string) {
     const key = `auth:mfa:pending:${tempToken}`;
     const raw = await this.redis.get(key);
@@ -546,11 +674,24 @@ export class AuthService {
       throw authError('Invalid or expired MFA token');
     }
 
-    const parsed = JSON.parse(raw) as { userId: string; codeHash?: string; code?: string; organizationId: string; attempts?: number };
+    const parsed = JSON.parse(raw) as { userId: string; codeHash?: string; code?: string; organizationId: string; attempts?: number; context?: AuthRequestContext };
     const expectedHash = parsed.codeHash ?? (parsed.code ? hashMfaCode(tempToken, parsed.code) : '');
     const providedHash = hashMfaCode(tempToken, code);
 
     if (!expectedHash || !constantTimeEqual(expectedHash, providedHash)) {
+      const recovered = await this.consumeRecoveryCode(parsed.userId, code);
+      if (recovered) {
+        await this.redis.del(key);
+        const [user] = await query<UserIdentity & { is_active: boolean }>(
+          'SELECT id, email, role, organization_id, is_active FROM users WHERE id = $1',
+          [parsed.userId],
+        );
+        if (!user || !user.is_active) throw authError('User not found or inactive');
+        await this.recordSuccessfulLogin(user, parsed.context);
+        await this.auditService.log({ action: 'mfa_recovery_code_used', entityType: 'user', entityId: user.id, performedBy: user.id, organizationId: user.organization_id, metadata: {} });
+        return this.generateTokenPair(user, parsed.context);
+      }
+
       const attempts = (parsed.attempts ?? 0) + 1;
       if (attempts >= MFA_MAX_ATTEMPTS) {
         await this.redis.del(key);
@@ -576,7 +717,7 @@ export class AuthService {
       throw authError('User not found or inactive');
     }
 
-    await query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [user.id]);
+    await this.recordSuccessfulLogin(user, parsed.context);
 
     await this.auditService.log({
       action: 'admin_mfa_verified',
@@ -590,7 +731,7 @@ export class AuthService {
     return this.generateTokenPair(user);
   }
 
-  async refresh(refreshToken: string) {
+  async refresh(refreshToken: string, context?: AuthRequestContext) {
     const tokenHash = hashRefreshToken(refreshToken);
     const revoked = await this.redis.get(`${REFRESH_REVOKED_PREFIX}${tokenHash}`);
     if (revoked) {
@@ -646,7 +787,7 @@ export class AuthService {
       metadata: { email: user.email },
     });
 
-    return this.generateTokenPair(user);
+    return this.generateTokenPair(user, context);
   }
 
   async logout(refreshToken: string) {
@@ -798,17 +939,99 @@ export class AuthService {
     return invite;
   }
 
+  private async consumeRecoveryCode(userId: string, code: string): Promise<boolean> {
+    if (!/^[A-Fa-f0-9]{8}-?[A-Fa-f0-9]{8}$/.test(code.trim())) return false;
+    const [row] = await query<{ id: string }>(
+      `UPDATE user_recovery_codes
+       SET used_at = NOW()
+       WHERE id = (
+         SELECT id FROM user_recovery_codes
+         WHERE user_id = $1 AND code_hash = $2 AND used_at IS NULL
+         ORDER BY created_at ASC
+         LIMIT 1
+       )
+       RETURNING id`,
+      [userId, hashRecoveryCode(code)],
+    );
+    return Boolean(row);
+  }
+
+  private async getJwks(issuer: string, kid?: string, forceRefresh = false): Promise<JsonWebKey[]> {
+    const jwksUri = resolveJwksUri(issuer);
+    const cacheKey = `auth:oidc:jwks:${hmacToken(jwksUri, env.JWT_SECRET)}`;
+    if (!forceRefresh) {
+      const cached = await this.redis.get(cacheKey);
+      if (cached) {
+        const keys = JSON.parse(cached) as JsonWebKey[];
+        if (!kid || keys.some((key) => key.kid === kid)) return keys;
+      }
+    }
+
+    const jwks = await fetchOidcJson<{ keys?: JsonWebKey[] }>(jwksUri, {}, 'OIDC JWKS fetch failed');
+    const keys = (jwks.keys ?? []).filter((key) => key.kty === 'RSA' && (key.use === undefined || key.use === 'sig') && (!key.key_ops || key.key_ops.includes('verify')));
+    if (keys.length === 0) throw authError('OIDC JWKS did not contain signing keys');
+    await this.redis.setex(cacheKey, OIDC_JWKS_CACHE_TTL_SECONDS, JSON.stringify(keys));
+    return keys;
+  }
+
+  private async validateOidcIdToken(idToken: string, issuer: string, nonce: string): Promise<OidcTokenPayload> {
+    const header = parseJwtSegment<{ alg?: string; kid?: string }>(idToken, 0);
+    if (header.alg !== 'RS256' || !header.kid) throw authError('OIDC ID token must be signed with an RS256 JWKS key');
+    let keys = await this.getJwks(issuer, header.kid);
+    let jwk = keys.find((key) => key.kid === header.kid);
+    if (!jwk) {
+      keys = await this.getJwks(issuer, header.kid, true);
+      jwk = keys.find((key) => key.kid === header.kid);
+    }
+    if (!jwk) throw authError('OIDC signing key was not found in JWKS');
+    const publicKey = crypto.createPublicKey({ key: jwk as crypto.JsonWebKey, format: 'jwk' }).export({ type: 'spki', format: 'pem' });
+    const verified = jwt.verify(idToken, publicKey, { algorithms: ['RS256'], issuer, audience: env.OIDC_CLIENT_ID }) as OidcTokenPayload;
+    if (!verified.sub || verified.nonce !== nonce) throw authError('OIDC ID token nonce validation failed');
+    if (verified.azp && verified.azp !== env.OIDC_CLIENT_ID) throw authError('OIDC ID token authorized party mismatch');
+    if (verified.email_verified === false) throw authError('OIDC email must be verified');
+    return verified;
+  }
+
+  private async detectSuspiciousLogin(user: UserIdentity, context?: AuthRequestContext): Promise<boolean> {
+    if (!context?.ipAddress) return false;
+    const normalized = normalizeAuthContext(context);
+    const key = `auth:login:last:${user.id}`;
+    const previous = await this.redis.get(key).catch(() => null);
+    await this.redis.setex(key, SUSPICIOUS_LOGIN_WINDOW_SECONDS, JSON.stringify(normalized)).catch(() => undefined);
+    if (!previous) return false;
+    try {
+      const parsed = JSON.parse(previous) as Required<AuthRequestContext>;
+      return parsed.ipAddress !== 'unknown' && normalized.ipAddress !== 'unknown' && parsed.ipAddress !== normalized.ipAddress;
+    } catch {
+      return false;
+    }
+  }
+
+  private async recordSuccessfulLogin(user: UserIdentity, context?: AuthRequestContext): Promise<void> {
+    const normalized = normalizeAuthContext(context);
+    await query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [user.id]);
+    await query(
+      `INSERT INTO auth_sessions (user_id, organization_id, device_id, ip_address, user_agent, last_seen_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())
+       ON CONFLICT (user_id, device_id) DO UPDATE
+       SET ip_address = EXCLUDED.ip_address, user_agent = EXCLUDED.user_agent, last_seen_at = NOW(), revoked_at = NULL`,
+      [user.id, user.organization_id, normalized.deviceId, normalized.ipAddress, normalized.userAgent],
+    ).catch(() => undefined);
+  }
+
   private generateMfaCode(): string {
     return crypto.randomInt(100000, 1000000).toString();
   }
 
-  private async generateTokenPair(user: UserIdentity) {
+  private async generateTokenPair(user: UserIdentity, context?: AuthRequestContext) {
     const accessToken = jwt.sign(
       {
         id: user.id,
         email: user.email,
         role: user.role,
         organization_id: user.organization_id,
+        amr: ['pwd', 'mfa'],
+        auth_time: Math.floor(Date.now() / 1000),
       },
       env.JWT_SECRET,
       {
@@ -832,6 +1055,7 @@ export class AuthService {
       'INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)',
       [user.id, tokenHash, expiresAt.toISOString()],
     );
+    await this.recordSuccessfulLogin(user, context).catch(() => undefined);
 
     return { accessToken, refreshToken: plainRefreshToken };
   }

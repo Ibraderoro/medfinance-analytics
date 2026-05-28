@@ -1060,3 +1060,48 @@ describe('AuthService invitation onboarding', () => {
     );
   });
 });
+
+// Enterprise auth hardening edge cases.
+describe('AuthService enterprise auth hardening', () => {
+  const service = new AuthService();
+
+  it('requires step-up MFA for a non-admin user when a suspicious login is detected', async () => {
+    const hash = await bcrypt.hash('password123', 10);
+    mockQuery
+      .mockResolvedValueOnce([{
+        id: 'viewer-uuid',
+        email: 'viewer@example.com',
+        password_hash: hash,
+        first_name: 'Vi',
+        last_name: 'Ewer',
+        role: 'viewer',
+        organization_id: 'org-uuid',
+        is_active: true,
+      }])
+      .mockResolvedValueOnce([]);
+    mockRedisGet.mockResolvedValueOnce(JSON.stringify({ ipAddress: '203.0.113.10', userAgent: 'old', deviceId: 'old-device' }));
+    mockRedisSetex.mockResolvedValue('OK');
+
+    const result = await service.login('viewer@example.com', 'password123', 'org-uuid', {
+      ipAddress: '198.51.100.20',
+      userAgent: 'new-browser',
+      deviceId: 'new-device',
+    });
+
+    expect(result.status).toBe('mfa_required');
+    const mfaPayload = JSON.parse(mockRedisSetex.mock.calls.find((call) => String(call[0]).startsWith('auth:mfa:pending:'))?.[2] as string) as { stepUp?: boolean };
+    expect(mfaPayload.stepUp).toBe(true);
+  });
+
+  it('stores only hashed backup recovery codes', async () => {
+    mockQuery.mockResolvedValue([]);
+    const result = await service.generateRecoveryCodes({ id: 'user-uuid', email: 'user@example.com', role: 'viewer', organization_id: 'org-uuid' });
+
+    expect(result.codes).toHaveLength(10);
+    expect(mockQuery).toHaveBeenCalledWith(
+      'INSERT INTO user_recovery_codes (user_id, organization_id, code_hash) VALUES ($1, $2, $3)',
+      expect.arrayContaining(['user-uuid', 'org-uuid', expect.stringMatching(/^[a-f0-9]{64}$/)]),
+    );
+    expect(JSON.stringify(mockQuery.mock.calls)).not.toContain(result.codes[0]);
+  });
+});

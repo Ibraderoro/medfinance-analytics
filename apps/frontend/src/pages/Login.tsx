@@ -27,9 +27,29 @@ export function LoginPage() {
     email: emailPattern.test(email.trim()) ? null : 'Enter a valid email address.',
     organizationId: uuidPattern.test(organizationId.trim()) ? null : 'Organization ID must be a valid UUID.',
     password: pendingMfaToken || password.length >= 8 ? null : 'Password must be at least 8 characters.',
-    mfaCode: !pendingMfaToken || /^\d{6}$/.test(mfaCode.trim()) ? null : 'Enter the 6-digit verification code.',
+    mfaCode: !pendingMfaToken || (/^\d{6}$/.test(mfaCode.trim()) || /^[A-Fa-f0-9]{8}-?[A-Fa-f0-9]{8}$/.test(mfaCode.trim())) ? null : 'Enter the 6-digit verification code or recovery code.',
   }), [email, organizationId, password, pendingMfaToken, mfaCode]);
   const hasValidationErrors = Object.values(fieldErrors).some(Boolean);
+
+  const startSso = async () => {
+    setError(null);
+    setIsSubmitting(true);
+    try {
+      const response = await authApi.initiateOidc(email.trim(), organizationId.trim());
+      const data = response.data?.data as { authorizationUrl?: string; state?: string } | undefined;
+      if (data?.authorizationUrl) {
+        window.location.assign(data.authorizationUrl);
+        return;
+      }
+      setError('SSO is initiated. Continue with your identity provider using the returned state.');
+    } catch (err: unknown) {
+      const isAxiosError = (e: unknown): e is { response?: { data?: { error?: { message?: string } } } } =>
+        typeof e === 'object' && e !== null && 'response' in e;
+      setError(isAxiosError(err) ? err.response?.data?.error?.message ?? 'Unable to start SSO.' : 'Unable to start SSO.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -97,7 +117,7 @@ export function LoginPage() {
         {pendingMfaToken && (
           <label>
             <span>Verification code</span>
-            <input ref={mfaInputRef} type="text" inputMode="numeric" pattern="[0-9]{6}" value={mfaCode} onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))} required maxLength={6} autoComplete="one-time-code" style={{ width: '100%', padding: '0.65rem', marginTop: 4 }} />
+            <input ref={mfaInputRef} type="text" inputMode="numeric" pattern="([0-9]{6}|[A-Fa-f0-9]{8}-?[A-Fa-f0-9]{8})" value={mfaCode} onChange={(e) => setMfaCode(e.target.value.replace(/[^A-Fa-f0-9-]/g, '').slice(0, 17))} required maxLength={17} autoComplete="one-time-code" style={{ width: '100%', padding: '0.65rem', marginTop: 4 }} />
             {mfaCode && fieldErrors.mfaCode && <small className={styles.error}>{fieldErrors.mfaCode}</small>}
           </label>
         )}
@@ -107,6 +127,11 @@ export function LoginPage() {
         <button type="submit" disabled={hasValidationErrors || isSubmitting} style={{ padding: '0.7rem', fontWeight: 600 }}>
           {isSubmitting ? (pendingMfaToken ? 'Verifying…' : 'Signing in…') : (pendingMfaToken ? 'Verify code' : 'Sign in')}
         </button>
+        {!pendingMfaToken && (
+          <button type="button" disabled={Boolean(fieldErrors.email || fieldErrors.organizationId) || isSubmitting} onClick={startSso} style={{ padding: '0.7rem' }}>
+            Continue with enterprise SSO
+          </button>
+        )}
         {pendingMfaToken && (
           <button type="button" disabled={isSubmitting} onClick={() => { setPendingMfaToken(null); setMfaCode(''); setError(null); }} style={{ padding: '0.7rem' }}>
             Use a different account
