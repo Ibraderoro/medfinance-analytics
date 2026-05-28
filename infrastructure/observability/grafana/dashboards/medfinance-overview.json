@@ -1,0 +1,41 @@
+{
+  "id": null,
+  "uid": "medfinance-overview",
+  "title": "MedFinance API Overview",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "HTTP Requests Total",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+      "targets": [{ "expr": "http_requests_total", "refId": "A" }]
+    },
+    {
+      "type": "stat",
+      "title": "HTTP Error Rate",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
+      "targets": [{ "expr": "http_error_rate", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "API p95 Latency (ms)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [{ "expr": "http_request_duration_p95_ms", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "DB p95 Query Latency (ms)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "targets": [{ "expr": "db_query_duration_p95_ms", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Redis p95 Operation Latency (ms)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [{ "expr": "redis_operation_duration_p95_ms", "refId": "A" }]
+    }
+  ]
+}

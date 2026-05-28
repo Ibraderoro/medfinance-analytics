@@ -232,3 +232,20 @@ if (env.ERROR_RATE_ALERT_THRESHOLD < 0 || env.ERROR_RATE_ALERT_THRESHOLD > 1) {
 if (env.AUDIT_EXPORT_SIGNING_SECRET === refreshTokenSecret) {
   throw new Error('AUDIT_EXPORT_SIGNING_SECRET must be different from REFRESH_TOKEN_SECRET');
 }
+
+
+if (env.isProduction()) {
+  if (env.JWT_SECRET === env.REFRESH_TOKEN_SECRET) {
+    throw new Error('JWT_SECRET must be different from REFRESH_TOKEN_SECRET in production');
+  }
+  const insecureOrigins = env.CORS_ALLOWED_ORIGINS.filter((origin) => origin.startsWith('http://'));
+  if (insecureOrigins.length > 0) {
+    throw new Error(`CORS_ALLOWED_ORIGINS must use HTTPS in production. Insecure origins: ${insecureOrigins.join(', ')}`);
+  }
+
+  const weakSecretMarkers = ['changeme', 'default', 'example', 'secret'];
+  const hasWeakSecret = weakSecretMarkers.some((m) => env.JWT_SECRET.toLowerCase().includes(m) || env.REFRESH_TOKEN_SECRET.toLowerCase().includes(m));
+  if (hasWeakSecret) {
+    throw new Error('JWT_SECRET/REFRESH_TOKEN_SECRET appear weak or default-like; rotate secrets before production startup');
+  }
+}

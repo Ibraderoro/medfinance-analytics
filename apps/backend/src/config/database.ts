@@ -1,6 +1,7 @@
 import { Pool, PoolClient, QueryResultRow } from 'pg';
 import { env } from './env';
 import { logger } from '../utils/logger';
+import { metricsService } from '../services/metrics.service';
 import { AppError, tenantContextError } from '../middleware/errorHandler';
 import { getCurrentTenantContext } from '../middleware/tenantContext';
 
@@ -150,6 +151,7 @@ export async function query<T extends QueryResultRow>(
     client.release();
   }
   const duration = Date.now() - start;
+  metricsService.recordDbQuery(duration);
   logger.debug('Query executed', {
     duration,
     rows: res.rowCount,

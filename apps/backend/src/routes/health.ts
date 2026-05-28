@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { PoolClient } from 'pg';
 import { getPool } from '../config/database';
-import { getRedis } from '../config/redis';
+import { getRedis, timedRedis } from '../config/redis';
 import { metricsService } from '../services/metrics.service';
 
 export const healthRouter = Router();
@@ -29,7 +29,7 @@ healthRouter.get('/ready', async (req: Request, res: Response) => {
   }
 
   try {
-    await getRedis().ping();
+    await timedRedis('health:ping', () => getRedis().ping());
     checks.redis = 'ok';
   } catch {
     checks.redis = 'error';
