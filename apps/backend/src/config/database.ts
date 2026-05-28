@@ -157,12 +157,5 @@ export async function query<T extends QueryResultRow>(
     });
     client.release();
   }
-  const duration = Date.now() - start;
-  metricsService.recordDbQuery(duration);
-  logger.debug('Query executed', {
-    duration,
-    rows: res.rowCount,
-    hasParams: Boolean(params?.length),
-  });
   return res.rows;
 }

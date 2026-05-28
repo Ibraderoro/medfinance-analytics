@@ -238,9 +238,15 @@ if (env.isProduction()) {
   if (env.JWT_SECRET === env.REFRESH_TOKEN_SECRET) {
     throw new Error('JWT_SECRET must be different from REFRESH_TOKEN_SECRET in production');
   }
-  const insecureOrigins = env.CORS_ALLOWED_ORIGINS.filter((origin) => origin.startsWith('http://'));
-  if (insecureOrigins.length > 0) {
-    throw new Error(`CORS_ALLOWED_ORIGINS must use HTTPS in production. Insecure origins: ${insecureOrigins.join(', ')}`);
+  const badOrigins = env.CORS_ALLOWED_ORIGINS.filter((origin) => {
+    try {
+      return new URL(origin).protocol !== 'https:';
+    } catch {
+      return true;
+    }
+  });
+  if (badOrigins.length > 0) {
+    throw new Error(`CORS_ALLOWED_ORIGINS must be valid HTTPS origins in production. Invalid origins: ${badOrigins.join(', ')}`);
   }
 
   const weakSecretMarkers = ['changeme', 'default', 'example', 'secret'];

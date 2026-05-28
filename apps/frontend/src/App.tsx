@@ -59,11 +59,20 @@ function useAuthSession() {
 
 
 function useThemeMode() {
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('theme_mode') as 'light' | 'dark') || 'light');
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    try {
+      const storedTheme = localStorage.getItem('theme_mode');
+      return storedTheme === 'light' || storedTheme === 'dark' ? storedTheme : 'light';
+    } catch {
+      return 'light';
+    }
+  });
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('theme_mode', theme);
+    try {
+      localStorage.setItem('theme_mode', theme);
+    } catch {}
   }, [theme]);
 
   return { theme, toggleTheme: () => setTheme((t) => (t === 'light' ? 'dark' : 'light')) };

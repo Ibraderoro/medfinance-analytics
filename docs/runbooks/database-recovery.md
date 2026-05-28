@@ -17,7 +17,7 @@ Recover PostgreSQL service after corruption, accidental deletion, failed migrati
 1. Confirm API readiness.
 
 ```bash
-curl -sS https://<prod-api-host>/api/v1/health/ready | jq .
+curl -sS https://<prod-api-host>/health/ready | jq .
 ```
 
 2. Check database connectivity.
@@ -101,7 +101,7 @@ SELECT COUNT(*) FROM financial_transactions;
 ## Post-Recovery Validation
 
 ```bash
-curl -fsS https://<prod-api-host>/api/v1/health/ready
+curl -fsS https://<prod-api-host>/health/ready
 npm run test:integration --workspace=apps/backend
 ```
 
