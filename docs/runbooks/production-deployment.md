@@ -2,7 +2,7 @@
 
 ## Proposed Production Architecture
 
-MedFinance now uses an incremental, small-team friendly deployment architecture instead of SSHing into a VM and running mutable Docker Compose updates.
+MedFinance now uses an incremental, small-team-friendly deployment architecture instead of SSHing into a VM and running mutable Docker Compose updates.
 
 ```text
 GitHub Actions

@@ -62,6 +62,32 @@ describe('schema compatibility checks', () => {
     });
   });
 
+  it('treats empty schema compatibility env vars as unset', () => {
+    process.env.APP_SCHEMA_MIN_VERSION = '';
+    process.env.APP_SCHEMA_MAX_VERSION = '';
+
+    expect(resolveSchemaCompatibilityWindow(19)).toEqual({
+      minimumVersion: 19,
+      maximumVersion: 19,
+    });
+  });
+
+  it('defaults each empty schema compatibility bound independently', () => {
+    process.env.APP_SCHEMA_MIN_VERSION = '';
+    process.env.APP_SCHEMA_MAX_VERSION = '20';
+    expect(resolveSchemaCompatibilityWindow(19)).toEqual({
+      minimumVersion: 19,
+      maximumVersion: 20,
+    });
+
+    process.env.APP_SCHEMA_MIN_VERSION = '18';
+    process.env.APP_SCHEMA_MAX_VERSION = '';
+    expect(resolveSchemaCompatibilityWindow(19)).toEqual({
+      minimumVersion: 18,
+      maximumVersion: 19,
+    });
+  });
+
   it('supports explicit expand/contract compatibility windows', () => {
     process.env.APP_SCHEMA_MIN_VERSION = '18';
     process.env.APP_SCHEMA_MAX_VERSION = '20';

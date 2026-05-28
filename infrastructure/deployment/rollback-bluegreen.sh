@@ -32,13 +32,16 @@ set_env_value() {
   fi
 }
 
-CURRENT_COLOR="$(get_env_value ACTIVE_COLOR)"
+CURRENT_COLOR="$(get_env_value ACTIVE_COLOR | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
 if [[ "$CURRENT_COLOR" == "blue" ]]; then
   TARGET_COLOR="green"
   TARGET_VERSION="$(get_env_value GREEN_RELEASE_VERSION)"
-else
+elif [[ "$CURRENT_COLOR" == "green" ]]; then
   TARGET_COLOR="blue"
   TARGET_VERSION="$(get_env_value BLUE_RELEASE_VERSION)"
+else
+  echo "Invalid ACTIVE_COLOR in runtime state: ${CURRENT_COLOR:-<empty>}. Expected blue or green." >&2
+  exit 1
 fi
 [[ -n "$VERSION" ]] && TARGET_VERSION="$VERSION"
 [[ -n "$TARGET_VERSION" ]] || { echo "No rollback target version recorded" >&2; exit 1; }
@@ -62,6 +65,7 @@ compose up -d --no-deps --force-recreate edge
 wait_for_edge
 node "$SCRIPT_DIR/../../scripts/deployment/verify-deployment.js" \
   --url "$PUBLIC_URL/api/v1/health/ready" \
+  --expected-version "$TARGET_VERSION" \
   --timeout-ms 120000
 
 ROLLBACK_FILE="$STATE_DIR/releases/rollback-$(date -u +%Y%m%dT%H%M%SZ).json"

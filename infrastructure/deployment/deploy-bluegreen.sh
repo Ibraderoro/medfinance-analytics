@@ -38,8 +38,9 @@ done
 log() { printf '▶ %s\n' "$*"; }
 fail() { printf '✖ %s\n' "$*" >&2; exit 1; }
 
-[[ -n "$ENVIRONMENT" ]] || fail "--environment is required"
+[[ "$ENVIRONMENT" =~ ^(staging|production)$ ]] || fail "--environment must be either staging or production"
 [[ -n "$VERSION" ]] || fail "--version is required"
+[[ "$VERSION" =~ ^[A-Za-z0-9._-]+$ ]] || fail "--version may only contain letters, numbers, dots, dashes, and underscores"
 [[ -n "$BACKEND_IMAGE" ]] || fail "--backend-image is required"
 [[ -n "$FRONTEND_IMAGE" ]] || fail "--frontend-image is required"
 [[ -n "$PUBLIC_URL" ]] || fail "--public-url is required"
@@ -120,7 +121,9 @@ compose() {
 }
 
 wait_for_service_health() {
-  local service="$1" timeout_seconds="${2:-180}" deadline=$((SECONDS + timeout_seconds))
+  local service="$1"
+  local timeout_seconds="${2:-180}"
+  local deadline=$((SECONDS + timeout_seconds))
   while (( SECONDS < deadline )); do
     local cid status
     cid="$(compose ps -q "$service" 2>/dev/null || true)"

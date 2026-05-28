@@ -50,10 +50,12 @@ async function main() {
         } catch {
           payload = undefined;
         }
-        if (expectedVersion && payload?.release?.version && payload.release.version !== expectedVersion) {
-          lastError = `release version mismatch: expected ${expectedVersion}, got ${payload.release.version}`;
-        } else if (payload?.status && !['ready', 'alive', 'ok'].includes(payload.status)) {
-          lastError = `unexpected health status: ${payload.status}`;
+        const releaseVersion = payload?.release?.version;
+        const status = payload?.status;
+        if (expectedVersion && releaseVersion !== expectedVersion) {
+          lastError = `release version mismatch: expected ${expectedVersion}, got ${releaseVersion ?? '<missing>'}`;
+        } else if (status === undefined || !['ready', 'alive', 'ok'].includes(status)) {
+          lastError = `unexpected or missing health status: ${status ?? '<missing>'}`;
         } else {
           console.log(`Deployment verification succeeded for ${url}`);
           return;

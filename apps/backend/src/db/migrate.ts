@@ -5,11 +5,11 @@
  * Application startup must never call this module to mutate the database.
  * Run it from CI/CD or an operations job before rolling application instances.
  */
+import 'dotenv/config';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import { PoolClient } from 'pg';
-import { disconnectDatabase, getPool } from '../config/database';
+import { Pool, PoolClient } from 'pg';
 import {
   getCurrentDatabaseSchemaVersion,
   listForwardMigrationFiles,
@@ -21,6 +21,54 @@ const MIGRATIONS_DIR = resolveMigrationsDir();
 const MIGRATION_LOCK_KEY = 42424220240501;
 const DEFAULT_MIGRATION_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_LOCK_TIMEOUT_MS = 30 * 1000;
+
+let migrationPool: Pool | undefined;
+
+function optionalBooleanEnv(key: string, defaultValue: boolean): boolean {
+  const raw = process.env[key];
+  if (raw === undefined || raw === '') {
+    return defaultValue;
+  }
+  return raw.toLowerCase() !== 'false' && raw !== '0';
+}
+
+function parseIntEnv(key: string, defaultValue: number): number {
+  const raw = process.env[key] ?? String(defaultValue);
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`${key} must be a valid integer`);
+  }
+  return parsed;
+}
+
+function getPool(): Pool {
+  if (!migrationPool) {
+    const databaseUrl = process.env.DATABASE_URL;
+    if (!databaseUrl) {
+      throw new Error('DATABASE_URL is required for migration commands');
+    }
+
+    const pgSsl = optionalBooleanEnv('PG_SSL', process.env.NODE_ENV === 'production');
+    migrationPool = new Pool({
+      connectionString: databaseUrl,
+      ssl: pgSsl
+        ? { rejectUnauthorized: optionalBooleanEnv('PG_SSL_REJECT_UNAUTHORIZED', process.env.NODE_ENV === 'production') }
+        : undefined,
+      max: parseIntEnv('PG_POOL_MAX', 5),
+      idleTimeoutMillis: parseIntEnv('PG_IDLE_TIMEOUT_MS', 30_000),
+      connectionTimeoutMillis: parseIntEnv('PG_CONNECTION_TIMEOUT_MS', 5_000),
+    });
+  }
+  return migrationPool;
+}
+
+async function disconnectMigrationDatabase(): Promise<void> {
+  if (!migrationPool) {
+    return;
+  }
+  await migrationPool.end();
+  migrationPool = undefined;
+}
 
 type AppliedMigration = {
   filename: string;
@@ -262,7 +310,7 @@ export async function preflight(options = readOptionsFromEnv()): Promise<void> {
 }
 
 export async function status(): Promise<void> {
-  const currentVersion = await getCurrentDatabaseSchemaVersion();
+  const currentVersion = await getCurrentDatabaseSchemaVersion(getPool());
   const codeVersion = Math.max(0, ...listForwardMigrationFiles(MIGRATIONS_DIR).map(parseMigrationVersion));
   console.log(`Database schema version: ${currentVersion}`);
   console.log(`Code schema version: ${codeVersion}`);
@@ -296,12 +344,12 @@ async function run(): Promise<void> {
 if (require.main === module) {
   run()
     .then(async () => {
-      await disconnectDatabase();
+      await disconnectMigrationDatabase();
       process.exit(0);
     })
     .catch(async (err) => {
       console.error('Migration failed:', err);
-      await disconnectDatabase().catch(() => undefined);
+      await disconnectMigrationDatabase().catch(() => undefined);
       process.exit(1);
     });
 }

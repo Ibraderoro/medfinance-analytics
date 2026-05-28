@@ -1,6 +1,15 @@
 import fs from 'fs';
 import path from 'path';
-import { getPool } from '../config/database';
+import { QueryResult, QueryResultRow } from 'pg';
+
+type Queryable = {
+  query<T extends QueryResultRow = QueryResultRow>(text: string, params?: unknown[]): Promise<QueryResult<T>>;
+};
+
+async function getDefaultPool(): Promise<Queryable> {
+  const database = await import('../config/database');
+  return database.getPool();
+}
 
 export type SchemaVersionCompatibility = {
   compatible: boolean;
@@ -56,8 +65,10 @@ export function resolveSchemaCompatibilityWindow(latestCodeVersion = getLatestCo
   minimumVersion: number;
   maximumVersion: number;
 } {
-  const minimumVersion = Number.parseInt(process.env.APP_SCHEMA_MIN_VERSION ?? String(latestCodeVersion), 10);
-  const maximumVersion = Number.parseInt(process.env.APP_SCHEMA_MAX_VERSION ?? String(latestCodeVersion), 10);
+  const minRaw = process.env.APP_SCHEMA_MIN_VERSION;
+  const maxRaw = process.env.APP_SCHEMA_MAX_VERSION;
+  const minimumVersion = Number.parseInt(minRaw && minRaw.trim() !== '' ? minRaw : String(latestCodeVersion), 10);
+  const maximumVersion = Number.parseInt(maxRaw && maxRaw.trim() !== '' ? maxRaw : String(latestCodeVersion), 10);
 
   if (!Number.isFinite(minimumVersion) || !Number.isFinite(maximumVersion)) {
     throw new Error('APP_SCHEMA_MIN_VERSION and APP_SCHEMA_MAX_VERSION must be valid integers when set');
@@ -103,8 +114,9 @@ export function evaluateSchemaCompatibility(
   };
 }
 
-export async function getCurrentDatabaseSchemaVersion(): Promise<number> {
-  const table = await getPool().query<{ exists: boolean }>(
+export async function getCurrentDatabaseSchemaVersion(client?: Queryable): Promise<number> {
+  const db = client ?? await getDefaultPool();
+  const table = await db.query<{ exists: boolean }>(
     `SELECT EXISTS (
        SELECT 1
        FROM information_schema.tables
@@ -117,7 +129,7 @@ export async function getCurrentDatabaseSchemaVersion(): Promise<number> {
     return 0;
   }
 
-  const result = await getPool().query<{ version: number | string | null }>(
+  const result = await db.query<{ version: number | string | null }>(
     `SELECT COALESCE(MAX(CAST(SUBSTRING(filename FROM '^(\\d+)') AS INTEGER)), 0) AS version
      FROM schema_migrations`,
   );
