@@ -1,0 +1,111 @@
+# Production blue/green runtime for the small-SaaS deployment path.
+# Only the edge service publishes a host port. Backend/frontend containers stay on
+# the private Compose network and reach managed Postgres/Redis through injected URLs.
+services:
+  edge:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    environment:
+      ACTIVE_COLOR: ${ACTIVE_COLOR:-blue}
+      CSP_CONNECT_SRC: ${CSP_CONNECT_SRC:-}
+    volumes:
+      - ./nginx-bluegreen.conf.template:/etc/nginx/nginx.conf.template:ro
+    command:
+      - /bin/sh
+      - -c
+      - envsubst '$$ACTIVE_COLOR $$CSP_CONNECT_SRC' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf && nginx -g 'daemon off;'
+    ports:
+      - "${EDGE_HTTP_BIND:-0.0.0.0}:${EDGE_HTTP_PORT:-80}:80"
+    depends_on:
+      backend_blue:
+        condition: service_started
+      backend_green:
+        condition: service_started
+      frontend_blue:
+        condition: service_started
+      frontend_green:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - public
+      - private
+
+  backend_blue: &backend
+    image: ${BACKEND_BLUE_IMAGE:?BACKEND_BLUE_IMAGE must be an immutable image digest}
+    restart: unless-stopped
+    env_file:
+      - ${DEPLOY_ENV_FILE:-/opt/medfinance/secrets/app.env}
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      RELEASE_VERSION: ${BLUE_RELEASE_VERSION:-unknown}
+      RELEASE_COLOR: blue
+      RELEASE_GIT_SHA: ${RELEASE_GIT_SHA:-unknown}
+      PG_SSL: ${PG_SSL:-true}
+      REDIS_TLS: ${REDIS_TLS:-true}
+      REQUIRE_SECURE_TRANSPORT: ${REQUIRE_SECURE_TRANSPORT:-true}
+    expose:
+      - "3001"
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/api/v1/health/ready',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 30s
+    networks:
+      - private
+
+  backend_green:
+    <<: *backend
+    image: ${BACKEND_GREEN_IMAGE:?BACKEND_GREEN_IMAGE must be an immutable image digest}
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      RELEASE_VERSION: ${GREEN_RELEASE_VERSION:-unknown}
+      RELEASE_COLOR: green
+      RELEASE_GIT_SHA: ${RELEASE_GIT_SHA:-unknown}
+      PG_SSL: ${PG_SSL:-true}
+      REDIS_TLS: ${REDIS_TLS:-true}
+      REQUIRE_SECURE_TRANSPORT: ${REQUIRE_SECURE_TRANSPORT:-true}
+
+  frontend_blue: &frontend
+    image: ${FRONTEND_BLUE_IMAGE:?FRONTEND_BLUE_IMAGE must be an immutable image digest}
+    restart: unless-stopped
+    expose:
+      - "80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 15s
+    networks:
+      - private
+
+  frontend_green:
+    <<: *frontend
+    image: ${FRONTEND_GREEN_IMAGE:?FRONTEND_GREEN_IMAGE must be an immutable image digest}
+
+  migration:
+    image: ${MIGRATION_IMAGE:?MIGRATION_IMAGE must be an immutable backend image digest}
+    restart: "no"
+    env_file:
+      - ${DEPLOY_ENV_FILE:-/opt/medfinance/secrets/app.env}
+    environment:
+      NODE_ENV: production
+      PG_SSL: ${PG_SSL:-true}
+      REDIS_TLS: ${REDIS_TLS:-true}
+      REQUIRE_SECURE_TRANSPORT: ${REQUIRE_SECURE_TRANSPORT:-true}
+      MIGRATION_TIMEOUT_MS: ${MIGRATION_TIMEOUT_MS:-600000}
+      MIGRATION_LOCK_TIMEOUT_MS: ${MIGRATION_LOCK_TIMEOUT_MS:-30000}
+    networks:
+      - private
+
+networks:
+  public:
+  private:

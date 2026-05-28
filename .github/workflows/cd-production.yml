@@ -27,25 +27,19 @@ jobs:
         -r
         ./
 
-  deploy-production:
-    name: Deploy to Production
+  validate:
+    name: Validate release candidate
     needs: vulnerability-scan
     runs-on: ubuntu-latest
-    environment: production
     permissions:
-      contents: write
-      packages: write
-    concurrency:
-      group: deploy-production
-      cancel-in-progress: false
-
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           ref: ${{ github.event.inputs.version || github.ref }}
-
+          persist-credentials: false
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '20'
           cache: 'npm'
@@ -89,93 +83,149 @@ jobs:
       - name: Verify external provider evidence gate
         run: npm run production:external-evidence:check
 
+  build-images:
+    name: Build immutable images
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      backend-image: ${{ steps.manifest.outputs.backend_image }}
+      frontend-image: ${{ steps.manifest.outputs.frontend_image }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.inputs.version || github.ref }}
+          persist-credentials: false
+      - name: Set image metadata
+        id: meta
+        env:
+          RAW_VERSION: ${{ github.event.inputs.version || github.ref_name }}
+        run: |
+          version="$RAW_VERSION"
+          if [[ ! "$version" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            echo "Invalid deployment version '${RAW_VERSION}'. Only letters, numbers, dots, dashes, and underscores are allowed." >&2
+            exit 1
+          fi
+          namespace="ghcr.io/${GITHUB_REPOSITORY,,}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "namespace=${namespace}" >> "$GITHUB_OUTPUT"
+
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435
 
       - name: Log in to container registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract version tag
-        id: meta
-        run: |
-          VERSION="${{ github.event.inputs.version || github.ref_name }}"
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-
       - name: Build and push backend image
-        uses: docker/build-push-action@v5
+        id: backend
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25
         with:
           context: .
           file: infrastructure/docker/backend/Dockerfile.prod
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}/backend:latest
-            ghcr.io/${{ github.repository }}/backend:${{ steps.meta.outputs.version }}
+            ${{ steps.meta.outputs.namespace }}/backend:${{ steps.meta.outputs.version }}
+            ${{ steps.meta.outputs.namespace }}/backend:sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Build and push frontend image
-        uses: docker/build-push-action@v5
+        id: frontend
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25
         with:
           context: .
           file: infrastructure/docker/frontend/Dockerfile.prod
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}/frontend:latest
-            ghcr.io/${{ github.repository }}/frontend:${{ steps.meta.outputs.version }}
+            ${{ steps.meta.outputs.namespace }}/frontend:${{ steps.meta.outputs.version }}
+            ${{ steps.meta.outputs.namespace }}/frontend:sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Deploy to production server
-        uses: appleboy/ssh-action@029f5b4aeeeb58fdfe1410a5d17f967dacf36262
-        with:
-          host: ${{ secrets.PROD_HOST }}
-          username: ${{ secrets.PROD_USER }}
-          key: ${{ secrets.PROD_SSH_KEY }}
-          script: |
-            cd /opt/medfinance
-            docker compose pull
-            docker compose up -d postgres redis
-            docker compose run --rm backend node apps/backend/dist/db/migrate.js
-            docker compose up -d --remove-orphans
-
-      - name: Verify production readiness with retries
+      - name: Build release manifest
+        id: manifest
         env:
-          PROD_HOST: ${{ secrets.PROD_HOST }}
+          DEPLOY_ENVIRONMENT: production
+          RELEASE_VERSION: ${{ steps.meta.outputs.version }}
+          BACKEND_IMAGE: ${{ steps.meta.outputs.namespace }}/backend@${{ steps.backend.outputs.digest }}
+          FRONTEND_IMAGE: ${{ steps.meta.outputs.namespace }}/frontend@${{ steps.frontend.outputs.digest }}
         run: |
-          if [ -z "$PROD_HOST" ]; then
-            echo "PROD_HOST is required for readiness checks" >&2
-            exit 1
-          fi
+          npm run release:manifest
+          npm run release:manifest:check -- --file release-manifest.json
+          echo "backend_image=${BACKEND_IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "frontend_image=${FRONTEND_IMAGE}" >> "$GITHUB_OUTPUT"
 
-          host="${PROD_HOST#https://}"
-          host="${host#http://}"
-          host="${host%/}"
-          url="https://${host}/api/v1/health/ready"
-          max_attempts=8
-          delay=5
+      - name: Upload release manifest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: production-release-manifest
+          path: release-manifest.json
+          if-no-files-found: error
 
-          for attempt in $(seq 1 "$max_attempts"); do
-            echo "Readiness check attempt ${attempt}/${max_attempts}"
-            if curl --fail --silent --show-error --max-time 10 "$url"; then
-              echo "Production readiness check succeeded"
-              exit 0
-            fi
+  deploy-production:
+    name: Health-gated blue/green deploy
+    needs: build-images
+    runs-on: [self-hosted, medfinance-production]
+    environment: production
+    permissions:
+      contents: write
+      packages: read
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.inputs.version || github.ref }}
+          persist-credentials: false
+      - name: Download release manifest
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: production-release-manifest
 
-            if [ "$attempt" -eq "$max_attempts" ]; then
-              echo "Production readiness check failed after ${max_attempts} attempts" >&2
-              exit 1
-            fi
+      - name: Validate release manifest
+        run: npm run release:manifest:check -- --file release-manifest.json
 
-            sleep "$delay"
-            delay=$((delay * 2 > 60 ? 60 : delay * 2))
-          done
+      - name: Log in to container registry on deploy host
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Deploy pinned release
+        env:
+          PROD_PUBLIC_URL: ${{ vars.PROD_PUBLIC_URL }}
+          PROD_DEPLOY_BASE_DIR: ${{ vars.PROD_DEPLOY_BASE_DIR }}
+          PROD_SECRET_ENV_FILE: ${{ vars.PROD_SECRET_ENV_FILE }}
+        run: |
+          : "${PROD_PUBLIC_URL:?Set PROD_PUBLIC_URL environment variable in GitHub Environments}"
+          bash infrastructure/deployment/deploy-bluegreen.sh \
+            --environment production \
+            --version "${{ needs.build-images.outputs.version }}" \
+            --backend-image "${{ needs.build-images.outputs.backend-image }}" \
+            --frontend-image "${{ needs.build-images.outputs.frontend-image }}" \
+            --public-url "$PROD_PUBLIC_URL" \
+            --base-dir "${PROD_DEPLOY_BASE_DIR:-/opt/medfinance}" \
+            --env-file "${PROD_SECRET_ENV_FILE:-/opt/medfinance/secrets/app.env}"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631
         if: startsWith(github.ref, 'refs/tags/')
         with:
           generate_release_notes: true
+          files: release-manifest.json

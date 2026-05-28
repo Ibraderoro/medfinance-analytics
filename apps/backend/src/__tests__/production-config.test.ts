@@ -29,16 +29,18 @@ describe('production configuration manifests', () => {
     },
   );
 
-  it('keeps production deploy script aligned with required backend secrets and compose services', () => {
-    const deployScript = readRepoFile('infrastructure/scripts/deploy.sh');
-    const compose = readRepoFile('docker-compose.yml');
+  it('keeps production deployment on immutable blue/green services with private backend networking', () => {
+    const deployScript = readRepoFile('infrastructure/deployment/deploy-bluegreen.sh');
+    const compose = readRepoFile('infrastructure/deployment/docker-compose.bluegreen.yml');
 
-    for (const secretName of requiredBackendSecrets) {
-      expect(deployScript).toContain(secretName);
-    }
-
-    expect(compose).toMatch(/^  nginx:/m);
-    expect(deployScript).toContain('backend frontend nginx');
+    expect(deployScript).toContain('@sha256:');
+    expect(deployScript).toContain('node apps/backend/dist/db/migrate.js preflight');
+    expect(deployScript).toContain('rollback_edge');
+    expect(compose).toMatch(/^  edge:/m);
+    expect(compose).toMatch(/^  backend_blue:/m);
+    expect(compose).toMatch(/^  backend_green:/m);
+    expect(compose).not.toMatch(/backend_(blue|green):[\s\S]*?ports:/);
+    expect(deployScript).toContain('DATABASE_URL must be injected through');
   });
 
   it('templates the edge nginx config before startup so CSP env vars are parse-safe', () => {

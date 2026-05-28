@@ -6,10 +6,19 @@ import { metricsService } from '../services/metrics.service';
 
 export const healthRouter = Router();
 
+function releaseMetadata() {
+  return {
+    version: process.env.RELEASE_VERSION ?? 'unknown',
+    color: process.env.RELEASE_COLOR ?? 'unknown',
+    gitSha: process.env.GITHUB_SHA ?? process.env.RELEASE_GIT_SHA ?? 'unknown',
+  };
+}
+
 healthRouter.get('/live', (_req: Request, res: Response) => {
   res.status(200).json({
     status: 'alive',
     timestamp: new Date().toISOString(),
+    release: releaseMetadata(),
   });
 });
 
@@ -44,6 +53,7 @@ healthRouter.get('/ready', async (req: Request, res: Response) => {
     status: allHealthy ? 'ready' : 'not_ready',
     timestamp: new Date().toISOString(),
     services: checks,
+    release: releaseMetadata(),
   });
 });
 
