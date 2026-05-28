@@ -438,18 +438,32 @@ export class AuthService {
       throw authError('Refresh token has been revoked');
     }
 
-    const [row] = await query<{ user_id: string; expires_at: string }>(
-      'SELECT user_id, expires_at FROM refresh_tokens WHERE token_hash = $1',
+    const [row] = await query<{ user_id: string; expires_at: string; organization_id: string | null }>(
+      `SELECT rt.user_id, rt.expires_at, u.organization_id
+       FROM refresh_tokens rt
+       LEFT JOIN users u ON u.id = rt.user_id
+       WHERE rt.token_hash = $1`,
       [tokenHash],
     );
 
     if (!row || new Date(row.expires_at) < new Date()) {
-      await this.auditService.log({
-        action: 'refresh_failed',
-        entityType: 'auth',
-        organizationId: 'system',
-        metadata: { reason: 'invalid_or_expired_refresh_token' },
-      });
+      if (row?.organization_id) {
+        try {
+          await this.auditService.log({
+            action: 'refresh_failed',
+            entityType: 'auth',
+            organizationId: row.organization_id,
+            performedBy: row.user_id,
+            metadata: { reason: 'invalid_or_expired_refresh_token' },
+          });
+        } catch (error) {
+          logger.warn('Refresh failure audit log write failed', {
+            userId: row.user_id,
+            organizationId: row.organization_id,
+            message: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
       throw authError('Invalid or expired refresh token');
     }
 

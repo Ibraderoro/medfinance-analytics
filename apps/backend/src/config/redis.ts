@@ -58,7 +58,7 @@ export async function invalidateFinancialCache(organizationId: string): Promise<
   for (const pattern of patterns) {
     let cursor = '0';
     do {
-      const [nextCursor, batch] = await timedRedis('redis:scan', () => redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100));
+      const [nextCursor, batch] = await timedRedis('scan', () => redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100));
       cursor = nextCursor;
       batch.forEach((key) => keys.add(key));
     } while (cursor !== '0');

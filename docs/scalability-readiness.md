@@ -78,9 +78,7 @@
 - **Stricter pagination**: protects system but may require client-side UX changes for large exports.
 
 ## Next suggested implementation steps
-1. ✅ **Completed**: Pagination standard extended to compliance list endpoints (audit log, regulatory alerts).
-2. ✅ **Completed**: Added tenant+severity+due-date and tenant+performed_at composite indexes.
-3. Introduce `webhook_jobs` stream worker with retry/dead-letter for webhook reliability.
-4. Apply pagination standard to remaining list endpoints where missing (e.g., financial endpoints if unbounded).
-5. Add additional composite indexes for other query paths based on observed access patterns.
-6. Add pool and queue depth dashboards/alerts for operational visibility.
+1. Extend pagination standard to financial/compliance list endpoints.
+2. Add tenant+severity+due-date and tenant+performed_at composite indexes where missing.
+3. Introduce `webhook_jobs` stream worker with retry/dead-letter.
+4. Add pool and queue depth dashboards/alerts.

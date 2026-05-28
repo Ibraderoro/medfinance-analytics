@@ -152,8 +152,8 @@ services:
     image: grafana/grafana:11.1.3
     restart: unless-stopped
     environment:
-      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:?GRAFANA_ADMIN_USER must be set}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD must be set}
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-}
     volumes:
       - ./infrastructure/observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./infrastructure/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro

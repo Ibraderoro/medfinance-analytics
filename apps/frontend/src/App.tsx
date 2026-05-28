@@ -61,7 +61,8 @@ function useAuthSession() {
 function useThemeMode() {
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     try {
-      return (localStorage.getItem('theme_mode') as 'light' | 'dark') || 'light';
+      const storedTheme = localStorage.getItem('theme_mode');
+      return storedTheme === 'light' || storedTheme === 'dark' ? storedTheme : 'light';
     } catch {
       return 'light';
     }
@@ -71,9 +72,7 @@ function useThemeMode() {
     document.documentElement.setAttribute('data-theme', theme);
     try {
       localStorage.setItem('theme_mode', theme);
-    } catch {
-      // Swallow storage errors in restricted environments
-    }
+    } catch {}
   }, [theme]);
 
   return { theme, toggleTheme: () => setTheme((t) => (t === 'light' ? 'dark' : 'light')) };

@@ -43,7 +43,7 @@ describe('App routing and auth session coverage', () => {
 
     render(<App />);
 
-    expect(screen.getByText('Checking secure session…')).toBeInTheDocument();
+    expect(screen.getByText('Checking secure session')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText('Protected shell')).toBeInTheDocument());
     expect(refreshMock).toHaveBeenCalledTimes(1);
   });
