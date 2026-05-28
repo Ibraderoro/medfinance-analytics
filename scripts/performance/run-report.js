@@ -15,23 +15,60 @@ function latestFile(prefix) {
 
 function readJson(filePath) {
   if (!filePath) return null;
-  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch (error) {
+    console.warn(`Unable to read JSON artifact ${filePath}: ${error.message}`);
+    return null;
+  }
+}
+
+function numberFromEnv(name, fallback) {
+  const value = Number.parseFloat(process.env[name]);
+  return Number.isFinite(value) ? value : fallback;
 }
 
 function evaluateApiBench(apiBench) {
   if (!apiBench?.results) return [];
+  const p95TargetMs = numberFromEnv('API_BENCH_P95_MS', 250);
+  const p99TargetMs = numberFromEnv('API_BENCH_P99_MS', 600);
+  const non2xxRateTarget = numberFromEnv('API_BENCH_NON2XX_RATE', 0.01);
   const findings = [];
   for (const row of apiBench.results) {
     if (row.skipped) {
       findings.push({ level: 'warn', message: `Skipped benchmark: ${row.endpoint} (${row.reason})` });
       continue;
     }
-    if (row.latencyMs?.p95 > 250) findings.push({ level: 'fail', message: `${row.endpoint} p95 ${row.latencyMs.p95}ms exceeds 250ms target` });
-    if (row.latencyMs?.p99 > 600) findings.push({ level: 'fail', message: `${row.endpoint} p99 ${row.latencyMs.p99}ms exceeds 600ms target` });
+    if (row.latencyMs?.p95 > p95TargetMs) findings.push({ level: 'fail', message: `${row.endpoint} p95 ${row.latencyMs.p95}ms exceeds ${p95TargetMs}ms target` });
+    if (row.latencyMs?.p99 > p99TargetMs) findings.push({ level: 'fail', message: `${row.endpoint} p99 ${row.latencyMs.p99}ms exceeds ${p99TargetMs}ms target` });
     const reqs = Number(row.requests) || 0;
     const non2xxRate = reqs > 0 ? Number(row.non2xx || 0) / reqs : 0;
-    if (non2xxRate > 0.01) findings.push({ level: 'fail', message: `${row.endpoint} non-2xx rate ${(non2xxRate * 100).toFixed(2)}% exceeds 1% target` });
+    if (non2xxRate > non2xxRateTarget) findings.push({ level: 'fail', message: `${row.endpoint} non-2xx rate ${(non2xxRate * 100).toFixed(2)}% exceeds ${(non2xxRateTarget * 100).toFixed(2)}% target` });
   }
+  return findings;
+}
+
+function evaluateK6Results(k6Results) {
+  const findings = [];
+  const httpReqFailedRateTarget = numberFromEnv('K6_HTTP_REQ_FAILED_RATE', 0.01);
+
+  for (const [name, result] of Object.entries(k6Results)) {
+    if (!result) continue;
+
+    const httpReqFailedRate = Number(result.metrics?.http_req_failed?.values?.rate ?? 0);
+    if (httpReqFailedRate > httpReqFailedRateTarget) {
+      findings.push({
+        level: 'fail',
+        message: `${name} http_req_failed rate ${(httpReqFailedRate * 100).toFixed(2)}% exceeds ${(httpReqFailedRateTarget * 100).toFixed(2)}% target`,
+      });
+    }
+
+    const checkFails = Number(result.metrics?.checks?.values?.fails ?? 0);
+    if (checkFails > 0) {
+      findings.push({ level: 'fail', message: `${name} has ${checkFails} failed k6 checks` });
+    }
+  }
+
   return findings;
 }
 
@@ -47,9 +84,17 @@ const soakPath = latestFile('k6-soak-');
 const apiBench = readJson(apiBenchPath);
 const dbAnalysis = readJson(dbPath);
 const redisCheck = readJson(redisPath);
+const k6Results = {
+  'k6 load smoke': readJson(loadSmokePath),
+  'k6 load peak': readJson(loadPeakPath),
+  'k6 stress step': readJson(stressStepPath),
+  'k6 stress spike': readJson(stressSpikePath),
+  'k6 soak': readJson(soakPath),
+};
 
 const findings = [
   ...evaluateApiBench(apiBench),
+  ...evaluateK6Results(k6Results),
 ];
 
 if (dbAnalysis?.results?.some((result) => result.status !== 0)) {

@@ -18,11 +18,45 @@ function redisArgs(extra = []) {
   return args.concat(extra);
 }
 
+function sanitizeRedisArgs(args) {
+  const sanitized = [];
+  let redactNext = false;
+
+  for (const arg of args) {
+    if (redactNext) {
+      sanitized.push('<REDACTED>');
+      redactNext = false;
+      continue;
+    }
+
+    if (arg === '-a' || arg === '--password') {
+      sanitized.push(arg);
+      redactNext = true;
+      continue;
+    }
+
+    if (arg.startsWith('-a=')) {
+      sanitized.push('-a=<REDACTED>');
+      continue;
+    }
+
+    if (arg.startsWith('--password=')) {
+      sanitized.push('--password=<REDACTED>');
+      continue;
+    }
+
+    sanitized.push(arg);
+  }
+
+  return sanitized;
+}
+
 function run(command, args, description) {
   const result = spawnSync(command, args, { encoding: 'utf8' });
+  const sanitizedArgs = sanitizeRedisArgs(args);
   return {
     description,
-    command: [command, ...args].join(' '),
+    command: [command, ...sanitizedArgs].join(' '),
     status: result.status,
     stdout: result.stdout || '',
     stderr: result.stderr || '',

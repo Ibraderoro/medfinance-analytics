@@ -69,6 +69,7 @@ For DB/Redis analysis:
 
 ## Implementation notes
 
+- k6 load scripts require the `k6` CLI to be installed and available on `PATH`; npm scripts invoke it through `scripts/performance/k6-runner.js` so timestamped artifact paths work across platforms.
 - Scripts write outputs to `artifacts/performance/`.
 - k6 scripts enforce threshold-based pass/fail for latency, error-rate, and minimum throughput.
 - Database analysis captures top statements and explain plans for key query patterns.
