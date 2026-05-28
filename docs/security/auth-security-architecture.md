@@ -11,7 +11,7 @@ MedFinance keeps the existing first-party JWT architecture for API authorization
 * **JWKS and key rotation:** ID-token verification fetches only signing-capable RSA JWKS keys, caches them, and refetches on key-id misses so IdP rotations are accepted without deployment.
 * **Replay protection:** SSO state is one-time use, MFA challenges are short-lived and attempt-limited, refresh tokens rotate on every refresh, and revoked token hashes are cached to detect replay.
 * **Device/session tracking:** `auth_sessions` records user, tenant, device ID, IP, user agent, first seen, last seen, and revocation state.
-* **Suspicious login detection:** Recent login context (IP, User-Agent, and device) is compared per user. A change in any signal triggers an MFA challenge before session issuance.
+* **Suspicious login detection:** Recent login IP context is compared per user. A changed source IP triggers an MFA challenge before session issuance.
 * **Backup recovery codes:** Users can generate one-time recovery codes. Only HMAC hashes are stored; successful use marks a code consumed.
 
 ## 2. Backend changes
