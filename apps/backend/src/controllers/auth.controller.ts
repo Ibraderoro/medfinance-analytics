@@ -33,8 +33,8 @@ export async function register(req: Request, res: Response, next: NextFunction):
       res.status(403).json({ success: false, error: { message: 'Self-service registration is disabled', code: 'AUTH_REGISTRATION_DISABLED' }, data: null });
       return;
     }
-    const { email, password, firstName, lastName, organizationId } = req.body as { email: string; password: string; firstName: string; lastName: string; role?: string; organizationId: string };
-    const tokens = await service.register(email, password, firstName, lastName, organizationId, 'viewer');
+    const { email, password, firstName, lastName, invitationToken } = req.body as { email: string; password: string; firstName: string; lastName: string; invitationToken: string };
+    const tokens = await service.register(email, password, firstName, lastName, invitationToken);
     setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
     res.success({ session: 'created' }, 201);
   } catch (err) { next(err); }
@@ -144,5 +144,58 @@ export async function completeOidc(req: Request, res: Response, next: NextFuncti
     const tokens = await service.completeOidcLogin(state, code);
     setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
     res.success({ session: 'created' });
+  } catch (err) { next(err); }
+}
+
+
+export async function createInvitation(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const user = (req as Request & { user?: { id: string; email: string; role: string; organization_id: string } }).user;
+    if (!user) {
+      res.status(401).json({ success: false, error: { message: 'Unauthorized', code: 'AUTH_REQUIRED' }, data: null });
+      return;
+    }
+    const { email, role, expiresInHours } = req.body as { email: string; role?: string; expiresInHours?: number };
+    const invite = await service.createInvitation(user, email, role ?? 'viewer', expiresInHours);
+    res.success(invite, 201);
+  } catch (err) { next(err); }
+}
+
+export async function verifyInvitation(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const headerToken = req.header('x-invitation-token');
+    const bodyToken = (req.body as { token?: unknown } | undefined)?.token;
+    const token = typeof headerToken === 'string' ? headerToken.trim() : (typeof bodyToken === 'string' ? bodyToken.trim() : '');
+    if (!token) {
+      res.status(400).json({ success: false, error: { message: 'Invitation token is required', code: 'AUTH_INVITE_TOKEN_REQUIRED' }, data: null });
+      return;
+    }
+    const invite = await service.verifyInvitation(token);
+    res.success(invite);
+  } catch (err) { next(err); }
+}
+
+export async function acceptInvitation(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    if (!env.ALLOW_SELF_SERVICE_REGISTRATION) {
+      res.status(403).json({ success: false, error: { message: 'Self-service registration is disabled', code: 'AUTH_REGISTRATION_DISABLED' }, data: null });
+      return;
+    }
+    const { token, email, password, firstName, lastName } = req.body as { token: string; email: string; password: string; firstName: string; lastName: string };
+    const tokens = await service.acceptInvitation(token, email, password, firstName, lastName);
+    setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
+    res.success({ session: 'created' }, 201);
+  } catch (err) { next(err); }
+}
+
+export async function revokeInvitation(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const user = (req as Request & { user?: { id: string; email: string; role: string; organization_id: string } }).user;
+    if (!user) {
+      res.status(401).json({ success: false, error: { message: 'Unauthorized', code: 'AUTH_REQUIRED' }, data: null });
+      return;
+    }
+    await service.revokeInvitation(user, req.params.id);
+    res.success({ revoked: true });
   } catch (err) { next(err); }
 }

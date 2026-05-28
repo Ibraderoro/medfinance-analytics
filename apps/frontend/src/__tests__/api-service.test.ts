@@ -11,6 +11,7 @@ const axiosCreate = jest.fn((config: unknown) => {
     },
     get: jest.fn(),
     post: jest.fn(),
+    delete: jest.fn(),
   };
 });
 
@@ -85,10 +86,16 @@ describe('api service', () => {
 
   it('exposes typed API helpers for each backend resource', async () => {
     const api = await import('../services/api');
-    const client = api.apiClient as unknown as { get: jest.Mock; post: jest.Mock };
+    const client = api.apiClient as unknown as { get: jest.Mock; post: jest.Mock; delete: jest.Mock };
+
+    const registerPayload = { email: 'user@example.com', password: 'pw', firstName: 'A', lastName: 'B', invitationToken: 'invite-token' };
+    const createInvitePayload = { email: 'new@example.com', role: 'viewer' as const, expiresInHours: 24 };
 
     api.authApi.login('user@example.com', 'pw', 'org-1');
-    api.authApi.register({ email: 'user@example.com', password: 'pw', firstName: 'A', lastName: 'B', organizationId: 'org-1' });
+    api.authApi.register(registerPayload);
+    api.authApi.verifyInvitation('invite-token');
+    api.authApi.createInvitation(createInvitePayload);
+    api.authApi.revokeInvitation('invite-id');
     api.authApi.refresh();
     api.authApi.logout();
     api.authApi.verifyMfa('temp', '123456');
@@ -107,6 +114,10 @@ describe('api service', () => {
     api.billingApi.createSubscription('pro');
 
     expect(client.post).toHaveBeenCalledWith('/auth/login', { email: 'user@example.com', password: 'pw', organizationId: 'org-1' });
+    expect(client.post).toHaveBeenCalledWith('/auth/register', registerPayload);
+    expect(client.get).toHaveBeenCalledWith('/auth/invitations/verify', { headers: { 'x-invitation-token': 'invite-token' } });
+    expect(client.post).toHaveBeenCalledWith('/auth/invitations', createInvitePayload);
+    expect(client.delete).toHaveBeenCalledWith('/auth/invitations/invite-id');
     expect(client.get).toHaveBeenCalledWith('/financials/revenue', { params: { startDate: '2026-01-01', endDate: '2026-01-31' } });
     expect(client.post).toHaveBeenCalledWith('/billing/subscription', { plan: 'pro' });
   });
