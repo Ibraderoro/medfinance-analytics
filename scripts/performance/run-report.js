@@ -18,8 +18,7 @@ function readJson(filePath) {
   try {
     return JSON.parse(fs.readFileSync(filePath, 'utf8'));
   } catch (error) {
-    console.warn(`Unable to read JSON artifact ${filePath}: ${error.message}`);
-    return null;
+    throw new Error(`Unable to read JSON artifact ${filePath}: ${error.message}`);
   }
 }
 
