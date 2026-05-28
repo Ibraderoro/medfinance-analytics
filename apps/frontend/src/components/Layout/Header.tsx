@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { authApi } from '../../services/api';
 import styles from './Header.module.css';
 
-export function Header() {
+export function Header({ theme = 'light', onToggleTheme = () => undefined }: { theme?: 'light' | 'dark'; onToggleTheme?: () => void }) {
   const navigate = useNavigate();
 
   const logout = async () => {
@@ -23,9 +23,8 @@ export function Header() {
       </div>
       <nav className={styles.nav}>
         <span className={styles.badge}>CFO Dashboard</span>
-        <button type="button" onClick={() => void logout()} aria-label="Log out of your secure session" style={{ marginLeft: 12, padding: '0.4rem 0.65rem' }}>
-          Logout
-        </button>
+        <button type="button" className={styles.themeButton} onClick={onToggleTheme} aria-label="Toggle dark mode">{theme === 'light' ? '🌙 Dark' : '☀️ Light'}</button>
+        <button type="button" className={styles.logoutButton} onClick={() => void logout()} aria-label="Log out of your secure session">Logout</button>
       </nav>
     </header>
   );

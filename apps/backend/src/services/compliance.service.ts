@@ -9,6 +9,8 @@ interface PaginationOptions {
 interface AlertOptions {
   severity?: string;
   organizationId: string;
+  page: number;
+  limit: number;
 }
 
 export class ComplianceService {
@@ -63,7 +65,10 @@ export class ComplianceService {
   }
 
   async getRegulatoryAlerts(opts: AlertOptions) {
-    return query<Record<string, unknown>>(
+    const offset = (opts.page - 1) * opts.limit;
+
+    const [rows, countResult] = await Promise.all([
+      query<Record<string, unknown>>(
       `SELECT
          id,
          title,
@@ -82,8 +87,24 @@ export class ComplianceService {
            WHEN 'medium' THEN 3
            ELSE 4
          END,
-         due_date ASC`,
-      [opts.organizationId, opts.severity ?? null],
-    );
+         due_date ASC
+       LIMIT $3 OFFSET $4`,
+      [opts.organizationId, opts.severity ?? null, opts.limit, offset],
+    ),
+      query<{ count: string }>(
+        `SELECT COUNT(*) AS count
+         FROM regulatory_alerts
+         WHERE organization_id = $1
+           AND ($2::text IS NULL OR severity = $2)`,
+        [opts.organizationId, opts.severity ?? null],
+      ),
+    ]);
+
+    return {
+      items: rows,
+      total: parseInt(countResult[0]?.count ?? '0', 10),
+      page: opts.page,
+      limit: opts.limit,
+    };
   }
 }

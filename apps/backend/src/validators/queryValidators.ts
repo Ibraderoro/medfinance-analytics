@@ -70,6 +70,14 @@ export const alertsValidator = [
     .optional()
     .isIn(['low', 'medium', 'high', 'critical'])
     .withMessage('severity must be one of: low, medium, high, critical'),
+  query('page')
+    .optional()
+    .isInt({ min: 1, max: 10000 })
+    .withMessage('page must be an integer between 1 and 10000'),
+  query('limit')
+    .optional()
+    .isInt({ min: 1, max: 100 })
+    .withMessage('limit must be an integer between 1 and 100'),
 ];
 
 export const complianceStatusValidator = [
