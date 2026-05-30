@@ -1,6 +1,7 @@
 import { Pool, PoolClient, QueryResultRow } from 'pg';
 import { env } from './env';
 import { logger } from '../utils/logger';
+import { metricsService } from '../services/metrics.service';
 import { AppError, tenantContextError } from '../middleware/errorHandler';
 import { getCurrentTenantContext } from '../middleware/tenantContext';
 
@@ -15,6 +16,9 @@ const TENANT_ENFORCED_TABLES = [
   'regulatory_alerts',
   'audit_log',
   'audit_logs',
+  'organization_invitations',
+  'organization_domains',
+  'auth_sessions',
 ];
 
 function requiresTenantContext(queryText: string): boolean {
@@ -138,10 +142,17 @@ export async function query<T extends QueryResultRow>(
     } else {
       res = await client.query<T>(text, params);
     }
+    logger.debug('Query executed', {
+      duration: Date.now() - start,
+      rows: res.rowCount,
+      hasParams: Boolean(params?.length),
+    });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => undefined);
     throw error;
   } finally {
+    const duration = Date.now() - start;
+    metricsService.recordDbQuery(duration);
     await client.query('RESET ALL').catch((resetError) => {
       logger.warn('PostgreSQL session reset failed before release', {
         message: resetError instanceof Error ? resetError.message : String(resetError),
@@ -149,11 +160,5 @@ export async function query<T extends QueryResultRow>(
     });
     client.release();
   }
-  const duration = Date.now() - start;
-  logger.debug('Query executed', {
-    duration,
-    rows: res.rowCount,
-    hasParams: Boolean(params?.length),
-  });
   return res.rows;
 }

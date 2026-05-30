@@ -3,10 +3,10 @@ import { Header } from './Header';
 import { Sidebar } from './Sidebar';
 import styles from './Layout.module.css';
 
-export function Layout() {
+export function Layout({ theme = 'light', onToggleTheme = () => undefined }: { theme?: 'light' | 'dark'; onToggleTheme?: () => void }) {
   return (
     <div className={styles.root}>
-      <Header />
+      <Header theme={theme} onToggleTheme={onToggleTheme} />
       <div className={styles.body}>
         <Sidebar />
         <main className={styles.main}>

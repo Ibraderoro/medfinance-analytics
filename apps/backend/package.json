@@ -16,7 +16,9 @@
     "clean": "rm -rf dist",
     "seed": "node -r ts-node/register src/db/seed.ts",
     "test:integration": "jest --config jest.integration.config.json --runInBand",
-    "typecheck": "tsc --project tsconfig.json --noEmit"
+    "typecheck": "tsc --project tsconfig.json --noEmit",
+    "migrate:preflight": "node -r ts-node/register src/db/migrate.ts preflight",
+    "migrate:status": "node -r ts-node/register src/db/migrate.ts status"
   },
   "dependencies": {
     "@medfinance/shared": "*",

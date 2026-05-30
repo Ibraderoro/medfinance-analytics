@@ -65,6 +65,7 @@ type OidcConfig = {
   OIDC_CLIENT_ID: string;
   OIDC_CLIENT_SECRET: string;
   OIDC_REDIRECT_URI: string;
+  OIDC_JWKS_URI: string;
 };
 
 function isLocalhost(hostname: string): boolean {
@@ -134,6 +135,9 @@ function validateOidcConfig(config: OidcConfig): OidcConfig {
   for (const key of ['OIDC_ISSUER', 'OIDC_TOKEN_URL', 'OIDC_USERINFO_URL', 'OIDC_REDIRECT_URI'] as const) {
     requireSecureUrl(key, config[key]);
   }
+  if (config.OIDC_JWKS_URI) {
+    requireSecureUrl('OIDC_JWKS_URI', config.OIDC_JWKS_URI);
+  }
 
   return config;
 }
@@ -148,6 +152,7 @@ const oidcConfig = validateOidcConfig({
   OIDC_CLIENT_ID: optionalEnv('OIDC_CLIENT_ID'),
   OIDC_CLIENT_SECRET: optionalEnv('OIDC_CLIENT_SECRET'),
   OIDC_REDIRECT_URI: optionalEnv('OIDC_REDIRECT_URI'),
+  OIDC_JWKS_URI: optionalEnv('OIDC_JWKS_URI'),
 });
 
 export const env = {
@@ -231,4 +236,27 @@ if (env.ERROR_RATE_ALERT_THRESHOLD < 0 || env.ERROR_RATE_ALERT_THRESHOLD > 1) {
 
 if (env.AUDIT_EXPORT_SIGNING_SECRET === refreshTokenSecret) {
   throw new Error('AUDIT_EXPORT_SIGNING_SECRET must be different from REFRESH_TOKEN_SECRET');
+}
+
+
+if (env.isProduction()) {
+  if (env.JWT_SECRET === env.REFRESH_TOKEN_SECRET) {
+    throw new Error('JWT_SECRET must be different from REFRESH_TOKEN_SECRET in production');
+  }
+  const badOrigins = env.CORS_ALLOWED_ORIGINS.filter((origin) => {
+    try {
+      return new URL(origin).protocol !== 'https:';
+    } catch {
+      return true;
+    }
+  });
+  if (badOrigins.length > 0) {
+    throw new Error(`CORS_ALLOWED_ORIGINS must be valid HTTPS origins in production. Invalid origins: ${badOrigins.join(', ')}`);
+  }
+
+  const weakSecretMarkers = ['changeme', 'default', 'example', 'secret'];
+  const hasWeakSecret = weakSecretMarkers.some((m) => env.JWT_SECRET.toLowerCase().includes(m) || env.REFRESH_TOKEN_SECRET.toLowerCase().includes(m));
+  if (hasWeakSecret) {
+    throw new Error('JWT_SECRET/REFRESH_TOKEN_SECRET appear weak or default-like; rotate secrets before production startup');
+  }
 }

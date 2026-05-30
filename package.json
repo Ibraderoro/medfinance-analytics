@@ -28,7 +28,22 @@
     "staging:drills:run": "node scripts/run-staging-drills.js",
     "production:gates:check": "npm run coverage:prod && npm run test:integration && npm run production:external-evidence:check && npm run production:security-evidence:check && npm run production:e2e-evidence:check && npm run staging:drills:check",
     "security:check-lockfile-qs": "node scripts/check-lockfile-qs-version.js",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "perf:api:bench": "node scripts/performance/run-api-bench.js",
+    "perf:load:smoke": "node scripts/performance/k6-runner.js smoke load-mixed",
+    "perf:load:peak": "node scripts/performance/k6-runner.js peak load-mixed",
+    "perf:stress:step": "node scripts/performance/k6-runner.js stress-step stress-step",
+    "perf:stress:spike": "node scripts/performance/k6-runner.js stress-spike stress-spike",
+    "perf:soak": "node scripts/performance/k6-runner.js soak soak-peak",
+    "perf:db:analyze": "node scripts/performance/run-db-analysis.js",
+    "perf:redis:check": "node scripts/performance/run-redis-check.js",
+    "perf:report": "node scripts/performance/run-report.js",
+    "migrate:preflight": "npm run migrate:preflight --workspace=apps/backend",
+    "migrate:status": "npm run migrate:status --workspace=apps/backend",
+    "migrate:rollback": "npm run migrate:rollback --workspace=apps/backend",
+    "release:manifest": "node scripts/deployment/build-release-manifest.js",
+    "release:manifest:check": "node scripts/deployment/validate-release-manifest.js",
+    "deploy:verify": "node scripts/deployment/verify-deployment.js"
   },
   "engines": {
     "node": ">=20.19.0",
@@ -38,10 +53,12 @@
     "@typescript-eslint/eslint-plugin": "^7.13.0",
     "@typescript-eslint/parser": "^7.13.0",
     "eslint": "^8.57.0",
-    "typescript": "^5.4.5"
+    "typescript": "^5.4.5",
+    "autocannon": "^7.15.0"
   },
   "overrides": {
     "ws": "8.20.1",
-    "qs": "^6.15.2"
+    "qs": "^6.15.2",
+    "uuid": "11.1.1"
   }
 }

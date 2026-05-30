@@ -45,11 +45,19 @@ apiClient.interceptors.response.use(
 
 export const authApi = {
   login: (email: string, password: string, organizationId: string) => apiClient.post('/auth/login', { email, password, organizationId }),
-  register: (data: { email: string; password: string; firstName: string; lastName: string; organizationId: string; role?: string }) => apiClient.post('/auth/register', data),
+  register: (data: { email: string; password: string; firstName: string; lastName: string; invitationToken: string }) => apiClient.post('/auth/register', data),
+  verifyInvitation: (token: string) => apiClient.get('/auth/invitations/verify', { headers: { 'x-invitation-token': token } }),
+  createInvitation: (data: { email: string; role: 'analyst' | 'viewer'; expiresInHours?: number }) => apiClient.post('/auth/invitations', data),
+  revokeInvitation: (id: string) => apiClient.delete(`/auth/invitations/${id}`),
   refresh: () => apiClient.post('/auth/refresh', {}),
   logout: () => apiClient.post('/auth/logout', {}),
   verifyMfa: (tempToken: string, code: string) => apiClient.post('/auth/mfa/verify', { tempToken, code }),
+  initiateOidc: (email: string, organizationId: string) => apiClient.post('/auth/oidc/initiate', { email, organizationId }),
+  completeOidc: (state: string, code: string) => apiClient.post('/auth/oidc/callback', { state, code }),
+  generateRecoveryCodes: () => apiClient.post('/auth/recovery-codes', {}),
 };
+
+export const completeOidc = (state: string, code: string) => authApi.completeOidc(state, code);
 
 export const financialsApi = {
   getKpis: (year?: number) => apiClient.get('/financials/kpis', { params: { year } }),

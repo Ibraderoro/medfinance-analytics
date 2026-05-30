@@ -76,7 +76,8 @@ describe('Dashboard KPIs and compliance rendering', () => {
     render(<Dashboard />);
 
     expect(screen.getByRole('alert')).toHaveTextContent('Dashboard temporarily unavailable. Please refresh.');
-    expect(screen.getAllByText(/No Data Available/).length).toBeGreaterThan(0);
+    expect(screen.getByText('No revenue data')).toBeInTheDocument();
+    expect(screen.getByText('No forecast available')).toBeInTheDocument();
   });
 
 
@@ -107,7 +108,9 @@ describe('Dashboard KPIs and compliance rendering', () => {
 
     render(<Dashboard />);
 
-    expect(screen.getAllByText('Loading…').length).toBeGreaterThanOrEqual(3);
+    expect(screen.getByText('Loading revenue trends')).toBeInTheDocument();
+    expect(screen.getByText('Loading compliance posture')).toBeInTheDocument();
+    expect(screen.getByText('Building forecast model')).toBeInTheDocument();
     expect(screen.getAllByText('No Data Available').length).toBeGreaterThanOrEqual(3);
   });
 

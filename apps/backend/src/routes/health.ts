@@ -1,15 +1,24 @@
 import { Router, Request, Response } from 'express';
 import { PoolClient } from 'pg';
 import { getPool } from '../config/database';
-import { getRedis } from '../config/redis';
+import { getRedis, timedRedis } from '../config/redis';
 import { metricsService } from '../services/metrics.service';
 
 export const healthRouter = Router();
+
+function releaseMetadata() {
+  return {
+    version: process.env.RELEASE_VERSION ?? 'unknown',
+    color: process.env.RELEASE_COLOR ?? 'unknown',
+    gitSha: process.env.GITHUB_SHA ?? process.env.RELEASE_GIT_SHA ?? 'unknown',
+  };
+}
 
 healthRouter.get('/live', (_req: Request, res: Response) => {
   res.status(200).json({
     status: 'alive',
     timestamp: new Date().toISOString(),
+    release: releaseMetadata(),
   });
 });
 
@@ -29,7 +38,7 @@ healthRouter.get('/ready', async (req: Request, res: Response) => {
   }
 
   try {
-    await getRedis().ping();
+    await timedRedis('health:ping', () => getRedis().ping());
     checks.redis = 'ok';
   } catch {
     checks.redis = 'error';
@@ -44,6 +53,7 @@ healthRouter.get('/ready', async (req: Request, res: Response) => {
     status: allHealthy ? 'ready' : 'not_ready',
     timestamp: new Date().toISOString(),
     services: checks,
+    release: releaseMetadata(),
   });
 });
 

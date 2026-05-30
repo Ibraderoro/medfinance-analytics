@@ -48,7 +48,7 @@ const corsOptions: CorsOptions = {
 
 const csrfProtection = (req: Request, res: Response, next: NextFunction): void => {
   const isWebhook = req.path === '/api/v1/billing/webhook' && req.method === 'POST';
-  const isAuthBootstrapRoute = req.method === 'POST' && (req.path === '/api/v1/auth/login' || req.path === '/api/v1/auth/register');
+  const isAuthBootstrapRoute = req.method === 'POST' && (req.path === '/api/v1/auth/login' || req.path === '/api/v1/auth/register' || req.path === '/api/v1/auth/invitations/accept');
 
   const cookies = parseCookies(req.headers.cookie);
   const hadCsrfCookie = Boolean(cookies[csrfCookieName]);
@@ -73,6 +73,9 @@ const csrfProtection = (req: Request, res: Response, next: NextFunction): void =
 app.disable('x-powered-by');
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'same-site' },
+  crossOriginOpenerPolicy: { policy: 'same-origin' },
+  referrerPolicy: { policy: 'no-referrer' },
+  permittedCrossDomainPolicies: { permittedPolicies: 'none' },
   hsts: env.isProduction(),
   contentSecurityPolicy: {
     useDefaults: true,
@@ -83,6 +86,10 @@ app.use(helmet({
     },
   },
 }));
+app.use((_, res, next) => {
+  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=(), payment=(), usb=()');
+  next();
+});
 app.use(cors(corsOptions));
 app.use(compression({ filter: (req, res) => (res.getHeader('Content-Type') === 'text/event-stream' ? false : compression.filter(req, res)) }));
 app.use(rateLimiter);

@@ -44,10 +44,18 @@ export class AuditService {
     admin_endpoint_access: 'READ',
     oidc_login_success: 'READ',
     admin_mfa_required: 'READ',
+    mfa_required: 'READ',
+    mfa_recovery_code_used: 'UPDATE',
+    recovery_codes_rotated: 'UPDATE',
     login_success: 'READ',
     admin_mfa_verified: 'READ',
+    refresh_failed: 'READ',
     refresh_success: 'READ',
     logout_success: 'READ',
+    invite_created: 'CREATE',
+    invite_accepted: 'UPDATE',
+    invite_accept_failed: 'READ',
+    invite_revoked: 'UPDATE',
   };
 
   private normalizeAuditAction(action: string): 'CREATE' | 'READ' | 'UPDATE' | 'DELETE' {

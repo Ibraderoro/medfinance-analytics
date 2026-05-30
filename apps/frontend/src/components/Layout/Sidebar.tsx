@@ -7,6 +7,7 @@ const navItems = [
   { to: '/forecasting', label: 'Forecasting', icon: '📈' },
   { to: '/compliance', label: 'Compliance', icon: '🛡️' },
   { to: '/billing', label: 'Billing', icon: '💳' },
+  { to: '/admin/invitations', label: 'Invites', icon: '✉️' },
 ];
 
 export function Sidebar() {
