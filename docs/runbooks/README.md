@@ -45,7 +45,7 @@ docker compose logs --tail=200 redis
 # Health checks
 curl -fsS http://localhost:3001/api/v1/health/live
 curl -fsS http://localhost:3001/api/v1/health/ready
-curl -fsS http://localhost:3001/api/v1/health/metrics
+curl -fsS http://localhost:3001/api/v1/internal/observability/metrics
 ```
 
 ## Operational Principles

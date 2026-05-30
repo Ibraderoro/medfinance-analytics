@@ -1,6 +1,6 @@
 # Observability dashboard queries
 
-Use these example PromQL queries against `/api/v1/health/metrics` scrape target:
+Use these example PromQL queries against `/api/v1/internal/observability/metrics` scrape target:
 
 - Request count
   - `sum(http_requests_total)`

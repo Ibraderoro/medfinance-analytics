@@ -7,6 +7,7 @@ import { complianceRouter } from './compliance';
 import { insightsRouter } from './insights';
 import { billingRouter } from './billing';
 import { adminRouter } from './admin';
+import { observabilityRouter } from './observability';
 
 export const router = Router();
 
@@ -18,3 +19,4 @@ router.use('/compliance', complianceRouter);
 router.use('/insights', insightsRouter);
 router.use('/billing', billingRouter);
 router.use('/admin', adminRouter);
+router.use('/internal/observability', observabilityRouter);

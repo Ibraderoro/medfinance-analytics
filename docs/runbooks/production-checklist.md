@@ -43,7 +43,7 @@
 ```bash
 curl -fsS https://<prod-api-host>/api/v1/health/live
 curl -fsS https://<prod-api-host>/api/v1/health/ready
-curl -fsS https://<prod-api-host>/api/v1/health/metrics | head
+curl -fsS https://<prod-api-host>/api/v1/internal/observability/metrics | head
 ```
 
 - [ ] Smoke test login.

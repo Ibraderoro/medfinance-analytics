@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { PoolClient } from 'pg';
 import { getPool } from '../config/database';
 import { getRedis, timedRedis } from '../config/redis';
-import { metricsService } from '../services/metrics.service';
+import { enforceOperationalAccess } from '../middleware/operationalAccess';
 
 export const healthRouter = Router();
 
@@ -18,11 +18,10 @@ healthRouter.get('/live', (_req: Request, res: Response) => {
   res.status(200).json({
     status: 'alive',
     timestamp: new Date().toISOString(),
-    release: releaseMetadata(),
   });
 });
 
-healthRouter.get('/ready', async (req: Request, res: Response) => {
+healthRouter.get('/ready', enforceOperationalAccess('health_ready'), async (req: Request, res: Response) => {
   const checks: Record<string, string> = {};
   const isShuttingDown = Boolean(req.app.locals.isShuttingDown);
 
@@ -57,18 +56,6 @@ healthRouter.get('/ready', async (req: Request, res: Response) => {
   });
 });
 
-healthRouter.get('/metrics', (_req: Request, res: Response) => {
-  res.type('text/plain').status(200).send(metricsService.toPrometheus());
-});
-
-healthRouter.get('/metrics/summary', (_req: Request, res: Response) => {
-  res.status(200).json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    metrics: metricsService.getSnapshot(),
-  });
-});
-
 healthRouter.get('/', (req: Request, res: Response) => {
-  res.redirect(302, `${req.baseUrl}/ready`);
+  res.redirect(302, `${req.baseUrl}/live`);
 });

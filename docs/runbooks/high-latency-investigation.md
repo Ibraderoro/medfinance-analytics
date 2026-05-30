@@ -23,7 +23,7 @@ Check dashboards:
 ## API Latency
 
 ```bash
-curl -fsS https://<prod-api-host>/api/v1/health/metrics | grep -E 'http_request_duration|http_error_rate'
+curl -fsS https://<prod-api-host>/api/v1/internal/observability/metrics | grep -E 'http_request_duration|http_error_rate'
 ```
 
 Investigate:
