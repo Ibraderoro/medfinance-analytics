@@ -33,58 +33,62 @@ describe('operational access middleware', () => {
     delete process.env.OPS_ENDPOINT_AUTH_TOKEN;
   });
 
-  it('allows allowlisted requests when optional auth is disabled', () => {
+  async function loadMiddleware() {
+    return import('../middleware/operationalAccess');
+  }
+
+  it('allows allowlisted requests when optional auth is disabled', async () => {
     process.env.OPS_ALLOWLIST_CIDRS = '127.0.0.1/32';
     process.env.OPS_ENDPOINT_AUTH_ENABLED = 'false';
 
-    const { enforceOperationalAccess } = require('../middleware/operationalAccess');
+    const { enforceOperationalAccess } = await loadMiddleware();
     const middleware = enforceOperationalAccess('metrics_prometheus');
     const res = makeResponse();
     const next = jest.fn();
 
-    middleware(makeRequest({ ip: '127.0.0.1' }), res, next);
+    middleware(makeRequest({ ip: '127.0.0.1' }) as never, res as never, next);
 
     expect(next).toHaveBeenCalledTimes(1);
     expect(res.status).not.toHaveBeenCalled();
   });
 
-  it('denies requests from IPs outside the operational allowlist', () => {
+  it('denies requests from IPs outside the operational allowlist', async () => {
     process.env.OPS_ALLOWLIST_CIDRS = '127.0.0.1/32';
     process.env.OPS_ENDPOINT_AUTH_ENABLED = 'false';
 
-    const { enforceOperationalAccess } = require('../middleware/operationalAccess');
+    const { enforceOperationalAccess } = await loadMiddleware();
     const middleware = enforceOperationalAccess('health_ready');
     const res = makeResponse();
     const next = jest.fn();
 
-    middleware(makeRequest({ ip: '203.0.113.12' }), res, next);
+    middleware(makeRequest({ ip: '203.0.113.12' }) as never, res as never, next);
 
     expect(next).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(403);
   });
 
-  it('denies allowlisted requests when token auth is enabled and missing', () => {
+  it('denies allowlisted requests when token auth is enabled and missing', async () => {
     process.env.OPS_ALLOWLIST_CIDRS = '127.0.0.1/32';
     process.env.OPS_ENDPOINT_AUTH_ENABLED = 'true';
     process.env.OPS_ENDPOINT_AUTH_TOKEN = 'super-secret-ops-token';
 
-    const { enforceOperationalAccess } = require('../middleware/operationalAccess');
+    const { enforceOperationalAccess } = await loadMiddleware();
     const middleware = enforceOperationalAccess('metrics_summary');
     const res = makeResponse();
     const next = jest.fn();
 
-    middleware(makeRequest({ ip: '127.0.0.1' }), res, next);
+    middleware(makeRequest({ ip: '127.0.0.1' }) as never, res as never, next);
 
     expect(next).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(403);
   });
 
-  it('allows allowlisted requests with a valid bearer token when auth is enabled', () => {
+  it('allows allowlisted requests with a valid bearer token when auth is enabled', async () => {
     process.env.OPS_ALLOWLIST_CIDRS = '127.0.0.1/32';
     process.env.OPS_ENDPOINT_AUTH_ENABLED = 'true';
     process.env.OPS_ENDPOINT_AUTH_TOKEN = 'super-secret-ops-token';
 
-    const { enforceOperationalAccess } = require('../middleware/operationalAccess');
+    const { enforceOperationalAccess } = await loadMiddleware();
     const middleware = enforceOperationalAccess('metrics_summary');
     const res = makeResponse();
     const next = jest.fn();
@@ -93,8 +97,8 @@ describe('operational access middleware', () => {
       makeRequest({
         ip: '127.0.0.1',
         headers: { authorization: ['Bearer', 'super-secret-ops-token'].join(' ') },
-      }),
-      res,
+      }) as never,
+      res as never,
       next,
     );
 
