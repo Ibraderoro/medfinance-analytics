@@ -16,7 +16,7 @@ Define expectations, common commands, escalation paths, and handoff practices fo
 
 ```bash
 curl -fsS https://<prod-api-host>/api/v1/health/ready
-curl -fsS https://<prod-api-host>/api/v1/health/metrics | head
+curl -fsS https://<prod-api-host>/api/v1/internal/observability/metrics | head
 ```
 
 Review:

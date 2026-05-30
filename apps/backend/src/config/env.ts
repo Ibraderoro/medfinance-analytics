@@ -58,6 +58,13 @@ function parseCorsOrigins(raw: string): string[] {
     .filter((origin) => origin.length > 0);
 }
 
+function parseCsv(raw: string): string[] {
+  return raw
+    .split(',')
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+}
+
 type OidcConfig = {
   OIDC_ISSUER: string;
   OIDC_TOKEN_URL: string;
@@ -193,6 +200,14 @@ export const env = {
   CORS_ALLOWED_ORIGINS: parseCorsOrigins(
     optionalEnv('CORS_ALLOWED_ORIGINS', 'http://localhost:3000'),
   ),
+  OPS_ALLOWLIST_CIDRS: parseCsv(
+    optionalEnv(
+      'OPS_ALLOWLIST_CIDRS',
+      '127.0.0.1/32,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16',
+    ),
+  ),
+  OPS_ENDPOINT_AUTH_ENABLED: optionalBooleanEnv('OPS_ENDPOINT_AUTH_ENABLED', false),
+  OPS_ENDPOINT_AUTH_TOKEN: optionalEnv('OPS_ENDPOINT_AUTH_TOKEN'),
 
   LOG_LEVEL: optionalEnv('LOG_LEVEL', 'info'),
   ERROR_RATE_ALERT_THRESHOLD: parseFloatEnv('ERROR_RATE_ALERT_THRESHOLD', 0.05),
@@ -218,6 +233,10 @@ export const env = {
 
 if (env.ANALYTICS_SAMPLE_RATE < 0 || env.ANALYTICS_SAMPLE_RATE > 1) {
   throw new Error('ANALYTICS_SAMPLE_RATE must be between 0 and 1');
+}
+
+if (env.OPS_ENDPOINT_AUTH_ENABLED && env.OPS_ENDPOINT_AUTH_TOKEN.length < 16) {
+  throw new Error('OPS_ENDPOINT_AUTH_TOKEN must be at least 16 characters when OPS_ENDPOINT_AUTH_ENABLED=true');
 }
 
 if (env.REQUIRE_SECURE_TRANSPORT && env.isProduction()) {

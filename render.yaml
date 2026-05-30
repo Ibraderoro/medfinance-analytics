@@ -58,3 +58,9 @@ services:
         value: 7d
       - key: CORS_ALLOWED_ORIGINS
         value: https://your-frontend-domain.com
+      - key: OPS_ALLOWLIST_CIDRS
+        value: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+      - key: OPS_ENDPOINT_AUTH_ENABLED
+        value: "true"
+      - key: OPS_ENDPOINT_AUTH_TOKEN
+        sync: false

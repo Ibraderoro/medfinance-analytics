@@ -54,8 +54,8 @@ ENVIRONMENT=staging ./infrastructure/scripts/migrate.sh
 
 ```bash
 curl -fsS https://<staging-api-host>/api/v1/health/live
-curl -fsS https://<staging-api-host>/api/v1/health/ready
-curl -fsS https://<staging-api-host>/api/v1/health/metrics | head
+curl -fsS http://<staging-internal-backend>:3001/api/v1/health/ready
+curl -fsS http://<staging-internal-backend>:3001/api/v1/internal/observability/metrics | head
 ```
 
 6. Run smoke tests.
@@ -112,8 +112,8 @@ ENVIRONMENT=production RELEASE_SHA=<release-sha> ./infrastructure/scripts/deploy
 
 ```bash
 curl -fsS https://<prod-api-host>/api/v1/health/live
-curl -fsS https://<prod-api-host>/api/v1/health/ready
-curl -fsS https://<prod-api-host>/api/v1/health/metrics | head
+curl -fsS http://<prod-internal-backend>:3001/api/v1/health/ready
+curl -fsS http://<prod-internal-backend>:3001/api/v1/internal/observability/metrics | head
 ```
 
 7. Monitor for at least 30 minutes after production deployment.

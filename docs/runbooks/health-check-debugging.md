@@ -10,15 +10,15 @@ Debug liveness, readiness, and metrics endpoints used by load balancers, orchest
 |---|---|---|
 | `/api/v1/health/live` | Process liveness | Backend process can serve HTTP. |
 | `/api/v1/health/ready` | Dependency readiness | Backend, PostgreSQL, Redis, and shutdown state are healthy. |
-| `/api/v1/health/metrics` | Prometheus metrics | Text exposition format returned. |
-| `/api/v1/health/metrics/summary` | JSON metrics snapshot | Runtime metrics returned. |
+| `/api/v1/internal/observability/metrics` | Prometheus metrics | Text exposition format returned. |
+| `/api/v1/internal/observability/metrics/summary` | JSON metrics snapshot | Runtime metrics returned. |
 
 ## Debug Commands
 
 ```bash
 curl -v https://<prod-api-host>/api/v1/health/live
-curl -v https://<prod-api-host>/api/v1/health/ready
-curl -v https://<prod-api-host>/api/v1/health/metrics | head -40
+curl -v http://<prod-internal-backend>:3001/api/v1/health/ready
+curl -v http://<prod-internal-backend>:3001/api/v1/internal/observability/metrics | head -40
 ```
 
 ## Readiness Failure Matrix
