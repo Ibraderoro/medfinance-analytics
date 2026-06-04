@@ -145,7 +145,7 @@ sequenceDiagram
 | Domain | Method | Endpoint | Purpose |
 |---|---|---|---|
 | Health | GET | `/api/v1/health/live` | Process liveness |
-| Health | GET | `/api/v1/health/ready` | Dependency readiness |
+| Health | GET | `/api/v1/health/ready` | Internal dependency readiness; allowlisted operational access only |
 | Financials | GET | `/api/v1/financials/summary` | Revenue/expense/net summary |
 | Forecasting | GET | `/api/v1/forecasting/forecast` | Trend-based forecast payload |
 | Compliance | GET | `/api/v1/compliance/status` | Compliance control status |
@@ -154,8 +154,13 @@ sequenceDiagram
 ### API examples
 
 ```bash
-# Health readiness
-curl -i http://localhost:3001/api/v1/health/ready
+# Public liveness through the edge
+curl -i http://localhost/api/v1/health/live
+```
+
+```bash
+# Internal readiness from an allowlisted network or container
+curl -i http://backend:3001/api/v1/health/ready
 ```
 
 ```bash
@@ -227,7 +232,7 @@ flowchart TD
 | Logs | Request logs, contextual metadata, error stacks |
 | Metrics | Route health, dependency readiness, business performance signals |
 | Traces | Request path instrumentation and correlation IDs |
-| Health probes | `/health/live` and `/health/ready` for orchestration and SRE automation |
+| Health probes | Public `/api/v1/health/live`; internal allowlisted `/api/v1/health/ready` for dependency readiness |
 
 ### Operational intent
 - Detect dependency degradation (Postgres/Redis) before user impact escalates.
@@ -362,9 +367,10 @@ docker compose up -d
 ```
 
 Services:
-- Frontend: `http://localhost:3000`
-- Backend API: `http://localhost:3001/api/v1`
-- Health checks: `GET /api/v1/health/live`, `GET /api/v1/health/ready`
+- Public edge and frontend: `http://localhost` (or `NGINX_HTTP_PORT`)
+- Backend API: private Docker network only; use the edge `/api/v1/*` routes for browser/API traffic.
+- Public health check: `GET /api/v1/health/live`
+- Internal readiness/observability: `GET /api/v1/health/ready`, `GET /api/v1/internal/observability/metrics`, `GET /api/v1/internal/observability/metrics/summary`, and `GET /api/v1/internal/observability/status` from allowlisted operational networks only.
 
 ### Staging setup (recommended baseline)
 
@@ -372,9 +378,72 @@ Services:
 2. Apply environment variables from `.env.example` and backend cloud guide.
 3. Run migrations before exposing traffic.
 4. Execute smoke checks:
-   - `/api/v1/health/live`
-   - `/api/v1/health/ready`
+   - Public: `/api/v1/health/live`
+   - Internal allowlisted network: `/api/v1/health/ready`
 5. Run staging drill and evidence scripts.
+
+
+---
+
+## Operational Endpoint Security
+
+### 1. Security architecture
+
+MedFinance separates public application traffic from operational telemetry:
+
+- **Public liveness only:** `/api/v1/health/live` is intentionally public and returns minimal process state for load balancers and uptime monitors.
+- **Internal readiness:** `/api/v1/health/ready` performs PostgreSQL/Redis dependency checks and is restricted by operational controls.
+- **Internal observability:** Prometheus metrics and operator summaries live under `/api/v1/internal/observability/*`, never under public health routes.
+- **Defense in depth:** Nginx blocks operational paths on the public listener, Docker keeps backend/exporter ports off the host, and backend middleware enforces IP allowlisting plus optional bearer-token auth.
+- **Prometheus-safe model:** Prometheus scrapes `backend:3001` on the internal `observability` Docker network at `/api/v1/internal/observability/metrics`. Keep the Prometheus container CIDR in `OPS_ALLOWLIST_CIDRS`. If `OPS_ENDPOINT_AUTH_ENABLED=true`, configure Prometheus to send the same bearer token before enabling it.
+
+### 2. Infrastructure changes
+
+- The default Compose stack publishes only the Nginx edge HTTP port.
+- Backend, frontend, Redis exporter, and cAdvisor use Docker `expose` instead of host `ports`.
+- The `private` and `observability` Docker networks are marked `internal: true` to prevent accidental host/public exposure of metrics and dependency services.
+- Backend containers join `observability` so Prometheus can scrape metrics directly without traversing the public edge.
+- Nginx exposes an internal-only listener on port `8080` inside Docker for allowlisted operational access, but that port is not published to the host.
+
+### 3. Backend middleware changes
+
+Operational endpoints use `enforceOperationalAccess(scope)`:
+
+- Checks the normalized client IP against `OPS_ALLOWLIST_CIDRS`.
+- Optionally requires `Authorization: Bearer <OPS_ENDPOINT_AUTH_TOKEN>` or `x-ops-auth-token` when `OPS_ENDPOINT_AUTH_ENABLED=true`.
+- Uses timing-safe token comparison.
+- Emits structured audit logs for denied attempts and granted operational responses, including scope, path, IP, auth requirement, and status code.
+
+### 4. Nginx updates
+
+- Public listener (`:80`) proxies `/api/v1/health/live` and normal `/api/*` traffic.
+- Public listener returns `404` for `/api/v1/health/ready`, legacy health metrics paths, and `/api/v1/internal/observability/*`.
+- Internal listener (`:8080`) applies Nginx `allow`/`deny` CIDR checks and proxies only readiness plus internal observability routes.
+- Denied public operational requests are written to `/var/log/nginx/operational-denied.log`; internal operational access is written to `/var/log/nginx/operational-access.log`.
+
+### 5. Documentation / operations
+
+Important environment variables:
+
+| Variable | Purpose |
+|---|---|
+| `OPS_ALLOWLIST_CIDRS` | Comma-separated IPv4/IPv6 CIDRs allowed to access readiness and observability endpoints. Include Docker/internal Prometheus networks. |
+| `OPS_ENDPOINT_AUTH_ENABLED` | Set to `true` to require bearer-token auth in addition to IP allowlisting. |
+| `OPS_ENDPOINT_AUTH_TOKEN` | Shared operational token; minimum 16 characters when auth is enabled. Store only in secret management. |
+
+Operator examples:
+
+```bash
+# Public liveness through edge
+curl -i http://localhost/api/v1/health/live
+
+# Internal metrics from an allowlisted operational container/network
+curl -i http://backend:3001/api/v1/internal/observability/metrics
+
+# Optional auth-enabled scrape/check
+curl -i -H "Authorization: Bearer ${OPS_ENDPOINT_AUTH_TOKEN}" \
+  http://backend:3001/api/v1/internal/observability/status
+```
 
 ### Production setup (recommended baseline)
 

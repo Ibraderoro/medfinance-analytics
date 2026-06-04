@@ -18,6 +18,10 @@ healthRouter.get('/live', (_req: Request, res: Response) => {
   res.status(200).json({
     status: 'alive',
     timestamp: new Date().toISOString(),
+    release: {
+      version: process.env.RELEASE_VERSION ?? 'unknown',
+      color: process.env.RELEASE_COLOR ?? 'unknown',
+    },
   });
 });
 

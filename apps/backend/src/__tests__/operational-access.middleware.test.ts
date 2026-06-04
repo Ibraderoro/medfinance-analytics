@@ -1,13 +1,16 @@
 type MockResponse = {
   status: jest.Mock;
   json: jest.Mock;
+  once: jest.Mock;
+  statusCode: number;
 };
 
 function makeResponse(): MockResponse {
   const status = jest.fn();
   const json = jest.fn();
   status.mockReturnValue({ json });
-  return { status, json };
+  const once = jest.fn();
+  return { status, json, once, statusCode: 200 };
 }
 
 function makeRequest(options: { ip: string; headers?: Record<string, string> }) {
@@ -50,6 +53,7 @@ describe('operational access middleware', () => {
 
     expect(next).toHaveBeenCalledTimes(1);
     expect(res.status).not.toHaveBeenCalled();
+    expect(res.once).toHaveBeenCalledWith('finish', expect.any(Function));
   });
 
   it('denies requests from IPs outside the operational allowlist', async () => {
@@ -104,5 +108,6 @@ describe('operational access middleware', () => {
 
     expect(next).toHaveBeenCalledTimes(1);
     expect(res.status).not.toHaveBeenCalled();
+    expect(res.once).toHaveBeenCalledWith('finish', expect.any(Function));
   });
 });
