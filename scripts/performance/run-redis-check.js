@@ -79,7 +79,7 @@ const summary = {
   recommendations: [
     'Check INCR/PTTL/PEXPIRE commandstats during peak for rate limiter overhead.',
     'Watch evicted_keys, rejected_connections, blocked_clients, and allocator fragmentation ratio.',
-    'Correlate redis_exporter metrics with app-side redis_operation_duration_p95_ms.',
+    'Correlate redis_exporter metrics with app-side redis_client_operation_duration_seconds histogram p95.',
     'Validate cache invalidation scan/delete behavior under high key cardinality.',
   ],
   checks,

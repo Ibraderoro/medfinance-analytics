@@ -1,80 +1,56 @@
 import { NextFunction, Request, Response } from 'express';
-import { env } from '../config/env';
 import { logger } from '../utils/logger';
 import { metricsService } from '../services/metrics.service';
+import { runWithTraceContext } from '../observability/tracing';
 
-type SpanLike = {
-  setAttribute?: (key: string, value: string | number | boolean) => void;
-  addEvent?: (name: string, attributes?: Record<string, string | number | boolean>) => void;
-};
-
-let spanApi: {
-  trace: {
-    getSpan: (context: unknown) => SpanLike | undefined;
-    setSpan: (context: unknown, span: SpanLike) => unknown;
-  };
-  context: { active: () => unknown };
-} | null = null;
-
-function getOpenTelemetryApi(): typeof spanApi {
-  if (spanApi !== null) {
-    return spanApi;
-  }
-
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    spanApi = require('@opentelemetry/api');
-  } catch {
-    spanApi = null;
-  }
-
-  return spanApi;
+function normalizePath(path: string): string {
+  return path
+    .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/gi, ':id')
+    .replace(/\/\d+(?=\/|$)/g, '/:id');
 }
 
-function annotateActiveSpan(span: SpanLike | undefined, req: Request, res: Response, durationMs: number): void {
-  if (!span) return;
+function routeLabel(req: Request): string {
+  const routePath = typeof req.route?.path === 'string' ? req.route.path : undefined;
+  const baseUrl = req.baseUrl || '';
+  if (routePath) return normalizePath(`${baseUrl}${routePath}`.replace(/\/+/g, '/'));
+  return normalizePath(req.path || req.originalUrl || 'unknown');
+}
 
-  const requestUser = (req as Request & { user?: { id?: string; organization_id?: string } }).user;
-  span.setAttribute?.('http.request_id', req.requestId ?? 'missing');
-  span.setAttribute?.('http.method', req.method);
-  span.setAttribute?.('http.route', req.route?.path ?? req.path);
-  span.setAttribute?.('http.status_code', res.statusCode);
-  span.setAttribute?.('http.response_time_ms', Number(durationMs.toFixed(3)));
+function statusClass(statusCode: number): string {
+  return Number.isFinite(statusCode) && statusCode >= 100 ? `${Math.floor(statusCode / 100)}xx` : 'unknown';
+}
 
-  if (requestUser?.organization_id) span.setAttribute?.('tenant.organization_id', requestUser.organization_id);
-  if (requestUser?.id) span.setAttribute?.('enduser.id', requestUser.id);
-
-  if (res.statusCode >= 500) {
-    span.addEvent?.('http.request.failed', {
-      'request.id': req.requestId ?? 'missing',
-      'http.status_code': res.statusCode,
-      'http.response_time_ms': Number(durationMs.toFixed(3)),
-    });
-  }
+function outcome(statusCode: number): string {
+  if (statusCode >= 500) return 'error';
+  if (statusCode >= 400) return 'client_error';
+  return 'success';
 }
 
 export function observabilityMiddleware(req: Request, res: Response, next: NextFunction): void {
-  const start = process.hrtime.bigint();
-  const otel = getOpenTelemetryApi();
-  const activeSpan = otel?.trace.getSpan(otel.context.active());
+  runWithTraceContext(req, res, () => {
+    const start = process.hrtime.bigint();
 
-  res.on('finish', () => {
-    const durationMs = Number(process.hrtime.bigint() - start) / 1_000_000;
-    const isError = res.statusCode >= 500;
-    metricsService.recordRequest(durationMs, isError);
-
-    annotateActiveSpan(activeSpan, req, res, durationMs);
-
-    const snapshot = metricsService.getSnapshot();
-    if (snapshot.errorRate > env.ERROR_RATE_ALERT_THRESHOLD && snapshot.requestCount >= 20) {
-      logger.warn('Error rate exceeded threshold', {
-        requestId: req.requestId,
-        threshold: env.ERROR_RATE_ALERT_THRESHOLD,
-        errorRate: snapshot.errorRate,
-        requestCount: snapshot.requestCount,
+    res.on('finish', () => {
+      const durationMs = Number(process.hrtime.bigint() - start) / 1_000_000;
+      metricsService.recordRequest(durationMs, {
+        method: req.method,
+        route: routeLabel(req),
+        status_code: res.statusCode,
+        status_class: statusClass(res.statusCode),
+        outcome: outcome(res.statusCode),
       });
-    }
-  });
 
-  next();
+      if (res.statusCode >= 500) {
+        logger.warn('HTTP request completed with server error', {
+          requestId: req.requestId,
+          method: req.method,
+          route: routeLabel(req),
+          statusCode: res.statusCode,
+          durationMs: Number(durationMs.toFixed(3)),
+        });
+      }
+    });
+
+    next();
+  });
 }

@@ -1,53 +1,99 @@
-import { logger } from '../utils/logger';
+import { AsyncLocalStorage } from 'async_hooks';
+import { randomBytes } from 'crypto';
+import { Request, Response } from 'express';
 
-let sdk: { start: () => Promise<void>; shutdown: () => Promise<void> } | null = null;
+const TRACEPARENT_VERSION = '00';
+const SAMPLED_FLAG = '01';
+const NOT_SAMPLED_FLAG = '00';
+const TRACE_ID_BYTES = 16;
+const SPAN_ID_BYTES = 8;
+const TRACEPARENT_PATTERN = /^([\da-f]{2})-([\da-f]{32})-([\da-f]{16})-([\da-f]{2})$/i;
+
+export type TraceContext = {
+  traceId: string;
+  spanId: string;
+  parentSpanId?: string;
+  sampled: boolean;
+};
+
+const traceContextStorage = new AsyncLocalStorage<TraceContext>();
+
+function randomHex(bytes: number): string {
+  return randomBytes(bytes).toString('hex');
+}
+
+function isAllZero(value: string): boolean {
+  return /^0+$/.test(value);
+}
+
+function parseTraceparent(header: string | undefined): TraceContext | undefined {
+  if (!header) return undefined;
+  const match = TRACEPARENT_PATTERN.exec(header.trim());
+  if (!match) return undefined;
+
+  const [, , traceId, parentSpanId, flags] = match;
+  if (isAllZero(traceId) || isAllZero(parentSpanId)) return undefined;
+
+  return {
+    traceId: traceId.toLowerCase(),
+    spanId: randomHex(SPAN_ID_BYTES),
+    parentSpanId: parentSpanId.toLowerCase(),
+    sampled: (Number.parseInt(flags, 16) & 1) === 1,
+  };
+}
+
+function parseSamplingRatio(): number {
+  const raw = process.env.OTEL_TRACES_SAMPLER_ARG ?? process.env.TRACE_SAMPLE_RATE ?? '0.10';
+  const parsed = Number.parseFloat(raw);
+  if (!Number.isFinite(parsed)) return 0.1;
+  return Math.min(Math.max(parsed, 0), 1);
+}
+
+function shouldSample(): boolean {
+  return Math.random() < parseSamplingRatio();
+}
+
+export function getCurrentTraceContext(): TraceContext | undefined {
+  return traceContextStorage.getStore();
+}
+
+export function getTraceLogFields(): Record<string, string | boolean> {
+  const context = getCurrentTraceContext();
+  if (!context) return {};
+  return {
+    trace_id: context.traceId,
+    span_id: context.spanId,
+    trace_sampled: context.sampled,
+  };
+}
+
+export function getTraceparent(context = getCurrentTraceContext()): string | undefined {
+  if (!context) return undefined;
+  return `${TRACEPARENT_VERSION}-${context.traceId}-${context.spanId}-${context.sampled ? SAMPLED_FLAG : NOT_SAMPLED_FLAG}`;
+}
+
+export function runWithTraceContext<T>(req: Request, res: Response, callback: () => T): T {
+  const incoming = parseTraceparent(req.header('traceparent'));
+  const context: TraceContext = incoming ?? {
+    traceId: randomHex(TRACE_ID_BYTES),
+    spanId: randomHex(SPAN_ID_BYTES),
+    sampled: shouldSample(),
+  };
+
+  req.traceId = context.traceId;
+  req.spanId = context.spanId;
+  req.traceSampled = context.sampled;
+  const traceparent = getTraceparent(context);
+  if (traceparent) res.setHeader('traceparent', traceparent);
+  res.setHeader('x-trace-id', context.traceId);
+
+  return traceContextStorage.run(context, callback);
+}
 
 export async function startTracing(): Promise<void> {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { NodeSDK } = require('@opentelemetry/sdk-node');
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { Resource } = require('@opentelemetry/resources');
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
-
-    const traceEndpoint = process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT ?? process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
-    const traceHeaders = process.env.OTEL_EXPORTER_OTLP_HEADERS;
-
-    sdk = new NodeSDK({
-      resource: new Resource({ [SemanticResourceAttributes.SERVICE_NAME]: 'medfinance-backend' }),
-      traceExporter: new OTLPTraceExporter({
-        url: traceEndpoint,
-        headers: traceHeaders
-          ? Object.fromEntries(
-              traceHeaders
-                .split(',')
-                .map((header: string) => header.trim())
-                .filter(Boolean)
-                .map((header: string) => {
-                  const [key, ...rest] = header.split('=');
-                  return [key.trim(), rest.join('=').trim()];
-                }),
-            )
-          : undefined,
-      }),
-      instrumentations: [getNodeAutoInstrumentations()],
-    });
-
-    if (sdk) {
-      await sdk.start();
-    }
-  } catch (error) {
-    logger.warn('OpenTelemetry not started', { message: (error as Error).message });
-  }
+  return Promise.resolve();
 }
 
 export async function stopTracing(): Promise<void> {
-  if (!sdk) return;
-  await sdk.shutdown();
-  sdk = null;
+  return Promise.resolve();
 }

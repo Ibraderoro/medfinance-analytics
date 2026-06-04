@@ -13,9 +13,9 @@ curl -w '\nstatus=%{http_code} total=%{time_total} connect=%{time_connect} ttfb=
 
 Check dashboards:
 
-- `http_request_duration_p95_ms`
-- `db_query_duration_p95_ms`
-- `redis_operation_duration_p95_ms`
+- `histogram_quantile(0.95, sum by (le, route, method) (rate(http_server_request_duration_seconds_bucket[5m])))`
+- `histogram_quantile(0.95, sum by (le, operation) (rate(db_client_query_duration_seconds_bucket[5m])))`
+- `histogram_quantile(0.95, sum by (le, operation) (rate(redis_client_operation_duration_seconds_bucket[5m])))`
 - HTTP error rate
 - Container CPU/memory
 - PostgreSQL connections and locks
@@ -23,7 +23,7 @@ Check dashboards:
 ## API Latency
 
 ```bash
-curl -fsS https://<prod-api-host>/api/v1/internal/observability/metrics | grep -E 'http_request_duration|http_error_rate'
+curl -fsS https://<prod-api-host>/api/v1/internal/observability/metrics | grep -E 'http_server_request_duration_seconds|http_server_requests_total'
 ```
 
 Investigate:

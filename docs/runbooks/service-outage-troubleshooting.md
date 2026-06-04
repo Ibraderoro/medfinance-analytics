@@ -61,7 +61,7 @@ redis-cli -u <redis-url> PING
 
 ```bash
 docker stats --no-stream
-curl -fsS http://<prometheus-host>/api/v1/query?query=http_request_duration_p95_ms
+curl -fsS http://<prometheus-host>/api/v1/query?query=histogram_quantile(0.95,sum(rate(http_server_request_duration_seconds_bucket[5m])) by (le))
 ```
 
 ## Common Mitigations

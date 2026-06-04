@@ -1,7 +1,7 @@
 import { Pool, PoolClient, QueryResultRow } from 'pg';
 import { env } from './env';
 import { logger } from '../utils/logger';
-import { metricsService } from '../services/metrics.service';
+import { classifySqlOperation, metricsService } from '../services/metrics.service';
 import { AppError, tenantContextError } from '../middleware/errorHandler';
 import { getCurrentTenantContext } from '../middleware/tenantContext';
 
@@ -127,6 +127,8 @@ export async function query<T extends QueryResultRow>(
   ensureSafeQuery(text, params);
 
   const start = Date.now();
+  const operation = classifySqlOperation(text);
+  let queryStatus = 'success';
   const tenant = getCurrentTenantContext();
   if (!tenant?.organizationId && requiresTenantContext(text)) {
     throw tenantContextError('Tenant context is required for tenant-scoped tables');
@@ -148,11 +150,12 @@ export async function query<T extends QueryResultRow>(
       hasParams: Boolean(params?.length),
     });
   } catch (error) {
+    queryStatus = 'error';
     await client.query('ROLLBACK').catch(() => undefined);
     throw error;
   } finally {
     const duration = Date.now() - start;
-    metricsService.recordDbQuery(duration);
+    metricsService.recordDbQuery(duration, { operation, status: queryStatus, db_system: 'postgresql' });
     await client.query('RESET ALL').catch((resetError) => {
       logger.warn('PostgreSQL session reset failed before release', {
         message: resetError instanceof Error ? resetError.message : String(resetError),
