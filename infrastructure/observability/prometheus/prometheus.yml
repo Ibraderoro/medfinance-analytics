@@ -3,6 +3,8 @@ global:
   evaluation_interval: 15s
 
 scrape_configs:
+  # Scrape the backend directly on the internal observability Docker network.
+  # Do not route Prometheus metrics through the public Nginx listener.
   - job_name: medfinance-backend
     metrics_path: /api/v1/internal/observability/metrics
     static_configs:

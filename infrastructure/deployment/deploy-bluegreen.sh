@@ -139,7 +139,7 @@ wait_for_service_health() {
 
 verify_public_url() {
   node "$SCRIPT_DIR/../../scripts/deployment/verify-deployment.js" \
-    --url "$PUBLIC_URL/api/v1/health/ready" \
+    --url "$PUBLIC_URL/api/v1/health/live" \
     --expected-version "$VERSION" \
     --timeout-ms 180000
 }

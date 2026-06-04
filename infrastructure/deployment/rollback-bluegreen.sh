@@ -64,7 +64,7 @@ compose up -d "backend_$TARGET_COLOR" "frontend_$TARGET_COLOR"
 compose up -d --no-deps --force-recreate edge
 wait_for_edge
 node "$SCRIPT_DIR/../../scripts/deployment/verify-deployment.js" \
-  --url "$PUBLIC_URL/api/v1/health/ready" \
+  --url "$PUBLIC_URL/api/v1/health/live" \
   --expected-version "$TARGET_VERSION" \
   --timeout-ms 120000
 
