@@ -3,23 +3,21 @@ const originalEnv = {
   REFRESH_TOKEN_SECRET: process.env.REFRESH_TOKEN_SECRET,
   AUDIT_EXPORT_SIGNING_SECRET: process.env.AUDIT_EXPORT_SIGNING_SECRET,
   DATABASE_URL: process.env.DATABASE_URL,
+  TRACE_SAMPLE_RATE: process.env.TRACE_SAMPLE_RATE,
 };
 
 process.env.JWT_SECRET = process.env.JWT_SECRET ?? '12345678901234567890123456789012';
 process.env.REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET ?? '12345678901234567890123456789012';
 process.env.AUDIT_EXPORT_SIGNING_SECRET = process.env.AUDIT_EXPORT_SIGNING_SECRET ?? 'abcdefghijklmnopqrstuvwxyz123456';
 process.env.DATABASE_URL = process.env.DATABASE_URL ?? 'postgresql://user:pass@localhost:5432/test';
+process.env.TRACE_SAMPLE_RATE = '1';
 
 const mockRecordRequest = jest.fn();
-const mockGetSnapshot = jest.fn(() => ({ requestCount: 1, errorCount: 0, errorRate: 0, p95LatencyMs: 12 }));
 const mockWarn = jest.fn();
-const mockSetAttribute = jest.fn();
-const mockAddEvent = jest.fn();
 
 jest.mock('../services/metrics.service', () => ({
   metricsService: {
     recordRequest: (...args: unknown[]) => mockRecordRequest(...args),
-    getSnapshot: () => mockGetSnapshot(),
   },
 }));
 
@@ -27,19 +25,9 @@ jest.mock('../utils/logger', () => ({
   logger: { warn: (...args: unknown[]) => mockWarn(...args), info: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 
-jest.mock('@opentelemetry/api', () => ({
-  context: { active: () => ({}) },
-  trace: {
-    getSpan: () => ({
-      setAttribute: (...args: unknown[]) => mockSetAttribute(...args),
-      addEvent: (...args: unknown[]) => mockAddEvent(...args),
-    }),
-  },
-}), { virtual: true });
-
 import { observabilityMiddleware } from '../middleware/observability';
 
-describe('observability middleware APM span enrichment', () => {
+describe('observability middleware trace correlation and RED metrics', () => {
   afterAll(() => {
     const restore = (key: keyof typeof originalEnv): void => {
       const value = originalEnv[key];
@@ -51,54 +39,69 @@ describe('observability middleware APM span enrichment', () => {
     restore('REFRESH_TOKEN_SECRET');
     restore('AUDIT_EXPORT_SIGNING_SECRET');
     restore('DATABASE_URL');
+    restore('TRACE_SAMPLE_RATE');
   });
 
   beforeEach(() => {
     mockRecordRequest.mockReset();
-    mockGetSnapshot.mockClear();
     mockWarn.mockReset();
-    mockSetAttribute.mockReset();
-    mockAddEvent.mockReset();
   });
 
-  it('attaches request-id and tenant/user metadata to the active span', () => {
+  function responseDouble(statusCode: number) {
     const handlers: Record<string, () => void> = {};
+    const headers: Record<string, string> = {};
+    return {
+      handlers,
+      res: {
+        statusCode,
+        on: (event: string, cb: () => void) => { handlers[event] = cb; },
+        setHeader: (name: string, value: string) => { headers[name.toLowerCase()] = value; },
+      },
+      headers,
+    };
+  }
+
+  it('continues inbound trace context and records route/status RED labels', () => {
+    const incomingTraceId = '11111111111111111111111111111111';
+    const { handlers, res, headers } = responseDouble(200);
     const req = {
       method: 'GET',
-      path: '/api/v1/financials/summary',
-      route: { path: '/financials/summary' },
+      path: '/api/v1/financials/123',
+      originalUrl: '/api/v1/financials/123?limit=1',
+      baseUrl: '/api/v1/financials',
+      route: { path: '/:id' },
       requestId: 'req-123',
-      user: { id: 'u-1', organization_id: 'org-1' },
-    };
-    const res = {
-      statusCode: 200,
-      on: (event: string, cb: () => void) => { handlers[event] = cb; },
+      header: (name: string) => (name === 'traceparent' ? `00-${incomingTraceId}-2222222222222222-01` : undefined),
     };
 
     observabilityMiddleware(req as never, res as never, jest.fn());
     handlers.finish();
 
-    expect(mockRecordRequest).toHaveBeenCalled();
-    expect(mockSetAttribute).toHaveBeenCalledWith('http.request_id', 'req-123');
-    expect(mockSetAttribute).toHaveBeenCalledWith('tenant.organization_id', 'org-1');
-    expect(mockSetAttribute).toHaveBeenCalledWith('enduser.id', 'u-1');
-    expect(mockAddEvent).not.toHaveBeenCalled();
+    expect(headers['x-trace-id']).toBe(incomingTraceId);
+    expect(headers.traceparent).toMatch(new RegExp(`^00-${incomingTraceId}-[0-9a-f]{16}-01$`));
+    expect(mockRecordRequest).toHaveBeenCalledWith(expect.any(Number), expect.objectContaining({
+      method: 'GET',
+      route: '/api/v1/financials/:id',
+      status_code: 200,
+      status_class: '2xx',
+      outcome: 'success',
+    }));
   });
 
-  it('adds failure event to span when status is 5xx', () => {
-    const handlers: Record<string, () => void> = {};
-    const req = { method: 'POST', path: '/api/v1/billing/webhook', requestId: 'req-500' };
-    const res = {
-      statusCode: 500,
-      on: (event: string, cb: () => void) => { handlers[event] = cb; },
+  it('logs 5xx completions with request and route context', () => {
+    const { handlers, res } = responseDouble(500);
+    const req = {
+      method: 'POST',
+      path: '/api/v1/billing/webhook',
+      originalUrl: '/api/v1/billing/webhook',
+      requestId: 'req-500',
+      header: () => undefined,
     };
 
     observabilityMiddleware(req as never, res as never, jest.fn());
     handlers.finish();
 
-    expect(mockAddEvent).toHaveBeenCalledWith(
-      'http.request.failed',
-      expect.objectContaining({ 'request.id': 'req-500', 'http.status_code': 500 }),
-    );
+    expect(mockRecordRequest).toHaveBeenCalledWith(expect.any(Number), expect.objectContaining({ status_code: 500, outcome: 'error' }));
+    expect(mockWarn).toHaveBeenCalledWith('HTTP request completed with server error', expect.objectContaining({ requestId: 'req-500', statusCode: 500 }));
   });
 });

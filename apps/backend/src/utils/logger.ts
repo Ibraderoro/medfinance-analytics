@@ -1,7 +1,14 @@
 import winston from 'winston';
+import { getTraceLogFields } from '../observability/tracing';
 
 const { combine, timestamp, errors, json } = winston.format;
 const ALLOWED_LOG_LEVELS = new Set(['error', 'warn', 'info', 'http', 'verbose', 'debug', 'silly']);
+
+
+const traceCorrelation = winston.format((info) => {
+  Object.assign(info, getTraceLogFields());
+  return info;
+});
 
 function getValidatedLogLevel(value = process.env.LOG_LEVEL): string {
   return value && ALLOWED_LOG_LEVELS.has(value) ? value : 'info';
@@ -12,12 +19,13 @@ export const logger = winston.createLogger({
   format: combine(
     timestamp(),
     errors({ stack: true }),
+    traceCorrelation(),
     json(),
   ),
   defaultMeta: { service: 'medfinance-backend' },
   transports: [
     new winston.transports.Console({
-      format: combine(timestamp(), errors({ stack: true }), json()),
+      format: combine(timestamp(), errors({ stack: true }), traceCorrelation(), json()),
     }),
   ],
 });

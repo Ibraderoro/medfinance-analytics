@@ -1,24 +1,24 @@
 # Observability dashboard queries
 
-Use these example PromQL queries against `/api/v1/internal/observability/metrics` scrape target:
+Use these PromQL examples against the `/api/v1/internal/observability/metrics` scrape target. These queries are safe for multiple backend replicas because they aggregate counters and histograms across instances.
 
-- Request count
-  - `sum(http_requests_total)`
-- Error rate
-  - `sum(http_errors_total) / sum(http_requests_total)`
-- p95 latency (ms)
-  - `max(http_request_duration_p95_ms)`
+- Request rate
+  - `sum(rate(http_server_requests_total[5m]))`
+- 5xx error ratio
+  - `sum(rate(http_server_requests_total{outcome="error"}[5m])) / clamp_min(sum(rate(http_server_requests_total[5m])), 0.001)`
+- Route-level p95 latency
+  - `histogram_quantile(0.95, sum by (le, route, method) (rate(http_server_request_duration_seconds_bucket[5m])))`
+- PostgreSQL p95 query latency
+  - `histogram_quantile(0.95, sum by (le, operation) (rate(db_client_query_duration_seconds_bucket[5m])))`
+- Redis p95 operation latency
+  - `histogram_quantile(0.95, sum by (le, operation) (rate(redis_client_operation_duration_seconds_bucket[5m])))`
 
 Alert example:
 
-- `sum(http_errors_total) / sum(http_requests_total) > 0.05`
+- `sum(rate(http_server_requests_total{outcome="error"}[5m])) / clamp_min(sum(rate(http_server_requests_total[5m])), 0.001) > 0.02`
 
+## Trace and log correlation notes
 
-## APM correlation notes
-
-- The backend observability middleware enriches the active OpenTelemetry span with:
-  - `http.request_id` (from `req.requestId`, which is populated from `X-Request-Id` when provided, otherwise middleware-generated)
-  - `http.method`, `http.route`, `http.status_code`, `http.response_time_ms`
-  - `tenant.organization_id` and `enduser.id` when authenticated context exists
-- For 5xx responses, it emits an `http.request.failed` span event containing the request id and latency for rapid triage.
-- Configure exporter endpoints with `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` (or `OTEL_EXPORTER_OTLP_ENDPOINT`) and optional `OTEL_EXPORTER_OTLP_HEADERS`.
+- The backend accepts and emits W3C `traceparent` and `x-trace-id` headers.
+- JSON logs emitted during request handling include `trace_id`, `span_id`, and `trace_sampled`.
+- Configure production sampling with `OTEL_TRACES_SAMPLER=parentbased_traceidratio` and `OTEL_TRACES_SAMPLER_ARG=0.10` as a safe starting point.

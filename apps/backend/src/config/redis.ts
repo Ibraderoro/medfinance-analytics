@@ -12,12 +12,16 @@ export const CACHE_TTL = {
 
 export async function timedRedis<T>(operation: string, fn: () => Promise<T>): Promise<T> {
   const start = process.hrtime.bigint();
+  let status = 'success';
   try {
     return await fn();
+  } catch (error) {
+    status = 'error';
+    throw error;
   } finally {
     const durationMs = Number(process.hrtime.bigint() - start) / 1_000_000;
-    metricsService.recordRedisOperation(durationMs);
-    logger.debug('Redis operation completed', { operation, durationMs: Number(durationMs.toFixed(3)) });
+    metricsService.recordRedisOperation(durationMs, { operation, status, db_system: 'redis' });
+    logger.debug('Redis operation completed', { operation, status, durationMs: Number(durationMs.toFixed(3)) });
   }
 }
 

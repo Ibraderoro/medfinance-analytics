@@ -1,41 +1,83 @@
 {
   "id": null,
   "uid": "medfinance-overview",
-  "title": "MedFinance API Overview",
+  "title": "MedFinance API RED / Dependencies",
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "10s",
+  "templating": {
+    "list": [
+      { "name": "route", "type": "query", "datasource": { "type": "prometheus", "uid": "prometheus" }, "query": "label_values(http_server_requests_total, route)", "includeAll": true, "multi": true, "current": { "selected": true, "text": "All", "value": "$__all" } },
+      { "name": "method", "type": "query", "datasource": { "type": "prometheus", "uid": "prometheus" }, "query": "label_values(http_server_requests_total, method)", "includeAll": true, "multi": true, "current": { "selected": true, "text": "All", "value": "$__all" } }
+    ]
+  },
   "panels": [
     {
       "type": "stat",
-      "title": "HTTP Requests Total",
+      "title": "Request Rate",
       "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
-      "targets": [{ "expr": "http_requests_total", "refId": "A" }]
+      "targets": [{ "expr": "sum(rate(http_server_requests_total{route=~\"$route\",method=~\"$method\"}[5m]))", "refId": "A", "legendFormat": "rps" }],
+      "fieldConfig": { "defaults": { "unit": "reqps" }, "overrides": [] }
     },
     {
       "type": "stat",
-      "title": "HTTP Error Rate",
+      "title": "5xx Error Ratio",
       "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
-      "targets": [{ "expr": "http_error_rate", "refId": "A" }]
+      "targets": [{ "expr": "sum(rate(http_server_requests_total{outcome=\"error\",route=~\"$route\",method=~\"$method\"}[5m])) / clamp_min(sum(rate(http_server_requests_total{route=~\"$route\",method=~\"$method\"}[5m])), 0.001)", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 0.02 }] } }, "overrides": [] }
+    },
+    {
+      "type": "stat",
+      "title": "p95 Latency",
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 },
+      "targets": [{ "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{route=~\"$route\",method=~\"$method\"}[5m])))", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "s", "thresholds": { "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 1 }, { "color": "red", "value": 1.5 }] } }, "overrides": [] }
+    },
+    {
+      "type": "stat",
+      "title": "Availability SLO Burn (30d)",
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 },
+      "targets": [{ "expr": "1 - (sum(increase(http_server_requests_total{outcome=\"error\"}[30d])) / clamp_min(sum(increase(http_server_requests_total[30d])), 1))", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] }
     },
     {
       "type": "timeseries",
-      "title": "API p95 Latency (ms)",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
-      "targets": [{ "expr": "http_request_duration_p95_ms", "refId": "A" }]
-    },
-    {
-      "type": "timeseries",
-      "title": "DB p95 Query Latency (ms)",
+      "title": "RED: Requests by Route",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
-      "targets": [{ "expr": "db_query_duration_p95_ms", "refId": "A" }]
+      "targets": [{ "expr": "sum by (route, method) (rate(http_server_requests_total{route=~\"$route\",method=~\"$method\"}[5m]))", "refId": "A", "legendFormat": "{{method}} {{route}}" }]
     },
     {
       "type": "timeseries",
-      "title": "Redis p95 Operation Latency (ms)",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
-      "targets": [{ "expr": "redis_operation_duration_p95_ms", "refId": "A" }]
+      "title": "RED: p95 Latency by Route",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "targets": [{ "expr": "histogram_quantile(0.95, sum by (le, route, method) (rate(http_server_request_duration_seconds_bucket{route=~\"$route\",method=~\"$method\"}[5m])))", "refId": "A", "legendFormat": "{{method}} {{route}}" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "DB Query Rate / Errors",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "targets": [
+        { "expr": "sum by (operation, status) (rate(db_client_queries_total[5m]))", "refId": "A", "legendFormat": "{{operation}} {{status}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "DB p95 Query Latency",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "targets": [{ "expr": "histogram_quantile(0.95, sum by (le, operation) (rate(db_client_query_duration_seconds_bucket[5m])))", "refId": "A", "legendFormat": "{{operation}}" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Redis Operations / Errors",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 22 },
+      "targets": [{ "expr": "sum by (operation, status) (rate(redis_client_operations_total[5m]))", "refId": "A", "legendFormat": "{{operation}} {{status}}" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Redis p95 Latency",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 22 },
+      "targets": [{ "expr": "histogram_quantile(0.95, sum by (le, operation) (rate(redis_client_operation_duration_seconds_bucket[5m])))", "refId": "A", "legendFormat": "{{operation}}" }]
     }
   ]
 }

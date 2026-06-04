@@ -1,0 +1,66 @@
+groups:
+  - name: medfinance-api-slo
+    interval: 30s
+    rules:
+      - alert: MedFinanceHigh5xxErrorRate
+        expr: |
+          sum(rate(http_server_requests_total{outcome="error"}[5m]))
+            /
+          clamp_min(sum(rate(http_server_requests_total[5m])), 0.001) > 0.02
+        for: 10m
+        labels:
+          severity: page
+          service: medfinance-backend
+          slo: availability
+        annotations:
+          summary: MedFinance API 5xx error rate is above 2% for 10 minutes.
+          description: Investigate recent deploys, upstream dependencies, database health, and route-level error rates.
+      - alert: MedFinanceHighLatencyP95
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le, route, method) (rate(http_server_request_duration_seconds_bucket[5m]))
+          ) > 1.5
+        for: 10m
+        labels:
+          severity: ticket
+          service: medfinance-backend
+          slo: latency
+        annotations:
+          summary: MedFinance API p95 latency is above 1.5s by route.
+          description: Check the RED dashboard and correlate slow routes with DB and Redis latency.
+      - alert: MedFinanceDatabaseErrors
+        expr: |
+          sum(rate(db_client_queries_total{status="error"}[5m]))
+            /
+          clamp_min(sum(rate(db_client_queries_total[5m])), 0.001) > 0.01
+        for: 5m
+        labels:
+          severity: page
+          service: medfinance-backend
+          dependency: postgresql
+        annotations:
+          summary: PostgreSQL query error ratio is above 1%.
+          description: Review database logs, migrations, pool saturation, and tenant-context enforcement failures.
+      - alert: MedFinanceRedisErrors
+        expr: |
+          sum(rate(redis_client_operations_total{status="error"}[5m]))
+            /
+          clamp_min(sum(rate(redis_client_operations_total[5m])), 0.001) > 0.02
+        for: 5m
+        labels:
+          severity: ticket
+          service: medfinance-backend
+          dependency: redis
+        annotations:
+          summary: Redis operation error ratio is above 2%.
+          description: Review Redis availability, TLS/auth settings, eviction pressure, and network path health.
+      - alert: MedFinanceMetricsTargetDown
+        expr: up{job="medfinance-backend"} == 0
+        for: 2m
+        labels:
+          severity: page
+          service: medfinance-backend
+        annotations:
+          summary: Prometheus cannot scrape the MedFinance backend metrics endpoint.
+          description: Validate /api/v1/internal/observability/metrics, network policy, ops auth, and pod health.

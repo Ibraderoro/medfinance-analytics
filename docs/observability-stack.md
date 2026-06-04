@@ -3,7 +3,7 @@
 ## Components
 
 - **Structured logs**: Winston JSON logs with request context and correlation IDs.
-- **Tracing**: OpenTelemetry Node SDK with OTLP exporter.
+- **Tracing**: W3C trace context propagation with trace/log correlation; export via the platform OpenTelemetry collector/agent.
 - **Metrics**:
   - API metrics at `GET /api/v1/internal/observability/metrics` (internal-only)
   - DB query latency metrics
@@ -41,7 +41,8 @@ docker compose up -d --build
 
 The backend is configured with:
 
-- `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318`
+- `OTEL_TRACES_SAMPLER=parentbased_traceidratio`
+- `OTEL_TRACES_SAMPLER_ARG=0.10`
 
 Optional additions:
 
@@ -57,5 +58,9 @@ Optional additions:
   - audit logging for both allowed and denied operational endpoint access events
 - Nginx restricts `/api/v1/health/ready` and `/api/v1/internal/observability/*` to RFC1918/loopback sources.
 - Prometheus scraping is preserved through the private `observability` Docker network targeting backend directly.
-- Alert on `http_error_rate`, `http_request_duration_p95_ms`, and dependency health failures.
-- Correlate incidents using `x-request-id` present in logs and responses.
+- Alert on Prometheus histogram/counter queries from `http_server_requests_total`, `http_server_request_duration_seconds`, and dependency metrics.
+- Correlate incidents using `x-request-id`, `x-trace-id`, `trace_id`, and `span_id` present in logs and responses.
+
+## Production observability upgrade
+
+The production observability contract, metric names, alert rules, Grafana dashboard, SLO definitions, sampling guidance, and operational error taxonomy are maintained in [Production Observability Architecture](observability/production-observability.md).
