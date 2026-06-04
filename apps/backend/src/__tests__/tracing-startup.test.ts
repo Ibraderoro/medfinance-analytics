@@ -24,12 +24,12 @@ import { startTracing, stopTracing } from '../observability/tracing';
 
 describe('tracing startup lifecycle', () => {
   beforeEach(async () => {
+    await stopTracing();
     mockStart.mockClear();
     mockShutdown.mockClear();
     mockNodeSDK.mockClear();
     mockTraceExporter.mockClear();
     mockGetNodeAutoInstrumentations.mockClear();
-    await stopTracing();
   });
 
   it('initializes SDK and exporter once when called repeatedly', async () => {
