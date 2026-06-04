@@ -1,6 +1,9 @@
 import { AsyncLocalStorage } from 'async_hooks';
 import { randomBytes } from 'crypto';
 import { Request, Response } from 'express';
+import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
+import { NodeSDK } from '@opentelemetry/sdk-node';
 
 const TRACEPARENT_VERSION = '00';
 const SAMPLED_FLAG = '01';
@@ -17,6 +20,7 @@ export type TraceContext = {
 };
 
 const traceContextStorage = new AsyncLocalStorage<TraceContext>();
+let tracingSdk: NodeSDK | undefined;
 
 function randomHex(bytes: number): string {
   return randomBytes(bytes).toString('hex');
@@ -91,9 +95,17 @@ export function runWithTraceContext<T>(req: Request, res: Response, callback: ()
 }
 
 export async function startTracing(): Promise<void> {
-  return Promise.resolve();
+  if (tracingSdk) return;
+  tracingSdk = new NodeSDK({
+    traceExporter: new OTLPTraceExporter(),
+    instrumentations: [getNodeAutoInstrumentations()],
+  });
+  await tracingSdk.start();
 }
 
 export async function stopTracing(): Promise<void> {
-  return Promise.resolve();
+  if (!tracingSdk) return;
+  const sdk = tracingSdk;
+  tracingSdk = undefined;
+  await sdk.shutdown();
 }
