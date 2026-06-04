@@ -64,6 +64,7 @@ services:
       start_period: 30s
     networks:
       - private
+      - egress
 
   backend_green:
     <<: *backend
@@ -113,8 +114,12 @@ services:
       MIGRATION_LOCK_TIMEOUT_MS: ${MIGRATION_LOCK_TIMEOUT_MS:-30000}
     networks:
       - private
+      - egress
 
 networks:
   public:
   private:
     internal: true
+  # Non-internal egress path for production backends and one-shot migrations
+  # that use managed Postgres/Redis URLs outside the Compose project.
+  egress:
