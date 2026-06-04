@@ -10,6 +10,7 @@ services:
       CSP_CONNECT_SRC: ${CSP_CONNECT_SRC:-}
     volumes:
       - ./nginx-bluegreen.conf.template:/etc/nginx/nginx.conf.template:ro
+      - nginx_logs:/var/log/nginx
     command:
       - /bin/sh
       - -c
@@ -57,14 +58,13 @@ services:
     expose:
       - "3001"
     healthcheck:
-      test: ["CMD", "node", "-e", "const h={}; if(process.env.OPS_ENDPOINT_AUTH_ENABLED==='true'&&process.env.OPS_ENDPOINT_AUTH_TOKEN) h['x-ops-auth-token']=process.env.OPS_ENDPOINT_AUTH_TOKEN; require('http').get({hostname:'localhost',port:3001,path:'/api/v1/health/ready',headers:h},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      test: ["CMD", "node", "/app/scripts/healthcheck.js"]
       interval: 15s
       timeout: 5s
       retries: 8
       start_period: 30s
     networks:
       - private
-      - egress
 
   backend_green:
     <<: *backend
@@ -114,12 +114,10 @@ services:
       MIGRATION_LOCK_TIMEOUT_MS: ${MIGRATION_LOCK_TIMEOUT_MS:-30000}
     networks:
       - private
-      - egress
+
+volumes:
+  nginx_logs:
 
 networks:
   public:
   private:
-    internal: true
-  # Non-internal egress path for production backends and one-shot migrations
-  # that use managed Postgres/Redis URLs outside the Compose project.
-  egress:

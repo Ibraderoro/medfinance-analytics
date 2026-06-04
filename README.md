@@ -401,7 +401,7 @@ MedFinance separates public application traffic from operational telemetry:
 
 - The default Compose stack publishes only the Nginx edge HTTP port.
 - Backend, frontend, Redis exporter, and cAdvisor use Docker `expose` instead of host `ports`.
-- The `private` and `observability` Docker networks are marked `internal: true` to prevent accidental host/public exposure of metrics and dependency services.
+- The default Compose stack publishes only edge/localhost observability ports; backend, frontend, and exporter services remain unpublished to the host. The `observability` network is marked `internal: true`, while `private` remains non-internal so backend services can reach external APIs such as Stripe, OIDC providers, webhooks, and managed data stores.
 - Backend containers join `observability` so Prometheus can scrape metrics directly without traversing the public edge.
 - Nginx exposes an internal-only listener on port `8080` inside Docker for allowlisted operational access, but that port is not published to the host.
 
@@ -418,8 +418,8 @@ Operational endpoints use `enforceOperationalAccess(scope)`:
 
 - Public listener (`:80`) proxies `/api/v1/health/live` and normal `/api/*` traffic.
 - Public listener returns `404` for `/api/v1/health/ready`, legacy health metrics paths, and `/api/v1/internal/observability/*`.
-- Internal listener (`:8080`) applies Nginx `allow`/`deny` CIDR checks and proxies only readiness plus internal observability routes.
-- Denied public operational requests are written to `/var/log/nginx/operational-denied.log`; internal operational access is written to `/var/log/nginx/operational-access.log`.
+- Internal listener (`:8080`) applies Nginx `allow`/`deny` CIDR checks and proxies only readiness plus internal observability routes. Keep those Nginx `allow` directives synchronized with `OPS_ALLOWLIST_CIDRS` whenever the backend operational allowlist changes.
+- Denied public operational requests are written to `/var/log/nginx/operational-denied.log`; internal operational access is written to `/var/log/nginx/operational-access.log`. Compose deployments mount `/var/log/nginx` on a named `nginx_logs` volume so these audit files survive Nginx container restarts.
 
 ### 5. Documentation / operations
 
