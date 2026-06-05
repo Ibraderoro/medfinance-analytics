@@ -67,6 +67,54 @@ jobs:
 
       - name: Frontend e2e smoke test
         run: npm run test:e2e --workspace=apps/frontend
+  fullstack-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install Playwright browser
+        run: npm run test:e2e:install --workspace=apps/frontend
+
+      - name: Run full-stack docker E2E (shard ${{ matrix.shard }}/2)
+        env:
+          PLAYWRIGHT_SHARD: ${{ matrix.shard }}/2
+          PW_FULLSTACK_WORKERS: 2
+        run: npm run test:e2e:fullstack --workspace=apps/frontend
+
+      - name: Upload full-stack Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-fullstack-report-shard-${{ matrix.shard }}
+          path: |
+            apps/frontend/playwright-report/fullstack
+            apps/frontend/test-results/fullstack
+          if-no-files-found: ignore
   backend-integration:
     runs-on: ubuntu-latest
     timeout-minutes: 30

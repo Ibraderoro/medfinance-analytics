@@ -43,7 +43,8 @@
     "migrate:rollback": "npm run migrate:rollback --workspace=apps/backend",
     "release:manifest": "node scripts/deployment/build-release-manifest.js",
     "release:manifest:check": "node scripts/deployment/validate-release-manifest.js",
-    "deploy:verify": "node scripts/deployment/verify-deployment.js"
+    "deploy:verify": "node scripts/deployment/verify-deployment.js",
+    "test:e2e:fullstack": "npm run test:e2e:fullstack --workspace=apps/frontend"
   },
   "engines": {
     "node": ">=20.19.0",

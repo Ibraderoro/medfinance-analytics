@@ -13,7 +13,8 @@
     "clean": "rm -rf dist",
     "test:e2e": "node scripts/run-playwright-e2e.js",
     "test:e2e:install": "playwright install --with-deps chromium",
-    "typecheck": "tsc --project tsconfig.json --noEmit"
+    "typecheck": "tsc --project tsconfig.json --noEmit",
+    "test:e2e:fullstack": "node scripts/run-playwright-fullstack-e2e.js"
   },
   "dependencies": {
     "@medfinance/shared": "*",
