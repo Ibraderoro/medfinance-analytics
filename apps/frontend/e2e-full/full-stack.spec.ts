@@ -15,11 +15,27 @@ async function uiLogin(page: Page, email = 'demo@medfinance.test', organizationI
   await expect(page).toHaveURL(/\/dashboard$/);
 }
 
-async function apiLogin(request: APIRequestContext, email = 'demo@medfinance.test', organizationId = DEMO_ORG_ID): Promise<void> {
+function readCookieFromSetCookie(setCookie: string, name: string): string | undefined {
+  const [cookiePair] = setCookie.split(';');
+  const separatorIndex = cookiePair.indexOf('=');
+  if (separatorIndex === -1) return undefined;
+  const cookieName = cookiePair.slice(0, separatorIndex).trim();
+  if (cookieName !== name) return undefined;
+  return decodeURIComponent(cookiePair.slice(separatorIndex + 1));
+}
+
+async function apiLogin(request: APIRequestContext, email = 'demo@medfinance.test', organizationId = DEMO_ORG_ID): Promise<string> {
   const response = await request.post('/api/v1/auth/login', {
     data: { email, password: PASSWORD, organizationId },
   });
   expect(response.ok()).toBeTruthy();
+
+  const csrfToken = response.headersArray()
+    .filter((header) => header.name.toLowerCase() === 'set-cookie')
+    .map((header) => readCookieFromSetCookie(header.value, 'csrf_token'))
+    .find((value): value is string => Boolean(value));
+  expect(csrfToken).toBeTruthy();
+  return csrfToken;
 }
 
 test.describe('production-like full-stack E2E', () => {
@@ -81,8 +97,10 @@ test.describe('production-like full-stack E2E', () => {
 
     await expect(snapshotPromise).resolves.toContain('event: snapshot');
 
-    await apiLogin(request);
-    const eventResponse = await request.post('/api/v1/financials/live/events/transaction-added');
+    const csrfToken = await apiLogin(request);
+    const eventResponse = await request.post('/api/v1/financials/live/events/transaction-added', {
+      headers: { 'x-csrf-token': csrfToken },
+    });
     expect(eventResponse.ok()).toBeTruthy();
   });
 
@@ -93,8 +111,11 @@ test.describe('production-like full-stack E2E', () => {
     await expect(page.getByText(/free/i)).toBeVisible();
     await expect(page.getByText(/inactive/i)).toBeVisible();
 
-    await apiLogin(request);
-    const invalidPlan = await request.post('/api/v1/billing/subscription', { data: { plan: 'invalid' } });
+    const csrfToken = await apiLogin(request);
+    const invalidPlan = await request.post('/api/v1/billing/subscription', {
+      data: { plan: 'invalid' },
+      headers: { 'x-csrf-token': csrfToken },
+    });
     expect(invalidPlan.status()).toBe(400);
 
     const subscription = await request.get('/api/v1/billing/subscription');

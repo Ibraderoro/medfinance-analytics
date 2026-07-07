@@ -6,8 +6,9 @@ export default defineConfig({
   testDir: './e2e-full',
   timeout: 45_000,
   expect: { timeout: 10_000 },
-  fullyParallel: true,
-  workers: process.env.CI ? 2 : undefined,
+  fullyParallel: false,
+  workers: 1,
+  retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI
     ? [['list'], ['html', { outputFolder: 'playwright-report/full-stack', open: 'never' }], ['junit', { outputFile: 'test-results/full-stack-e2e.xml' }]]
     : [['list'], ['html', { outputFolder: 'playwright-report/full-stack', open: 'never' }]],

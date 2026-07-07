@@ -160,14 +160,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435
 
-      - name: Cache Docker layers
-        uses: actions/cache@v4
-        with:
-          path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-e2e-buildx-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-buildx-
-
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:
@@ -180,6 +172,8 @@ jobs:
         run: npm run test:e2e:install --workspace=apps/frontend
 
       - name: Run Docker-backed full-stack E2E
+        env:
+          E2E_PRESERVE_ON_FAILURE: 1
         run: npm run e2e:full-stack
 
       - name: Upload full-stack Playwright report
@@ -194,3 +188,7 @@ jobs:
       - name: Dump Docker logs on failure
         if: failure()
         run: docker compose -f docker-compose.e2e.yml logs --no-color
+
+      - name: Tear down Docker-backed full-stack E2E
+        if: always()
+        run: docker compose -f docker-compose.e2e.yml down --volumes --remove-orphans
