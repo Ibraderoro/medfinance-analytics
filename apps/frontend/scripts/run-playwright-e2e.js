@@ -31,7 +31,7 @@ if (!fs.existsSync(executablePath)) {
 
 const result = spawnSync(
   process.platform === 'win32' ? 'npx.cmd' : 'npx',
-  ['playwright', 'test', '--config=playwright.config.ts'],
+  ['playwright', 'test', ...(process.argv.slice(2).length ? process.argv.slice(2) : ['--config=playwright.config.ts'])],
   { stdio: 'inherit' },
 );
 

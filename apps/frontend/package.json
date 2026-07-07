@@ -13,7 +13,9 @@
     "clean": "rm -rf dist",
     "test:e2e": "node scripts/run-playwright-e2e.js",
     "test:e2e:install": "playwright install --with-deps chromium",
-    "typecheck": "tsc --project tsconfig.json --noEmit"
+    "typecheck": "tsc --project tsconfig.json --noEmit",
+    "test:e2e:mock": "node scripts/run-playwright-e2e.js --config=playwright.mock.config.ts",
+    "test:e2e:full": "playwright test --config=playwright.full-stack.config.ts"
   },
   "dependencies": {
     "@medfinance/shared": "*",
@@ -45,7 +47,7 @@
     "rolldown": "^1.0.0-rc.17",
     "ts-jest": "^29.1.4",
     "typescript": "^5.4.5",
-    "vite": "^7.3.2"
+    "vite": "^8.1.3"
   },
   "optionalDependencies": {
     "@rolldown/binding-linux-x64-gnu": "1.0.0-rc.17"

@@ -43,7 +43,10 @@
     "migrate:rollback": "npm run migrate:rollback --workspace=apps/backend",
     "release:manifest": "node scripts/deployment/build-release-manifest.js",
     "release:manifest:check": "node scripts/deployment/validate-release-manifest.js",
-    "deploy:verify": "node scripts/deployment/verify-deployment.js"
+    "deploy:verify": "node scripts/deployment/verify-deployment.js",
+    "test:e2e:mock": "npm run test:e2e:mock --workspace=apps/frontend",
+    "test:e2e:full": "npm run test:e2e:full --workspace=apps/frontend",
+    "e2e:full-stack": "bash scripts/e2e/run-full-stack-e2e.sh"
   },
   "engines": {
     "node": ">=20.19.0",
@@ -58,6 +61,7 @@
   },
   "overrides": {
     "ws": "8.20.1",
+    "form-data": "4.0.6",
     "qs": "^6.15.2",
     "uuid": "11.1.1"
   }
