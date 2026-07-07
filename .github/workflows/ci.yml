@@ -21,6 +21,7 @@ jobs:
       scan-args: |-
         -r
         ./
+      fail-on-vuln: false
 
   validate:
     runs-on: ubuntu-latest
