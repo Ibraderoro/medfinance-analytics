@@ -66,7 +66,7 @@ jobs:
         run: npm run test:e2e:install --workspace=apps/frontend
 
       - name: Frontend e2e smoke test
-        run: npm run test:e2e --workspace=apps/frontend
+        run: npm run test:e2e:mock --workspace=apps/frontend
   backend-integration:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -131,3 +131,66 @@ jobs:
 
       - name: Run backend Postgres/Redis integration tests
         run: npm run test:integration --workspace=apps/backend
+
+
+  full-stack-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    needs: validate
+    env:
+      COMPOSE_PROJECT_NAME: medfinance-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+      E2E_HTTP_PORT: 8080
+      E2E_BASE_URL: http://127.0.0.1:8080
+      DOCKER_BUILDKIT: 1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435
+
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-e2e-buildx-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-e2e-buildx-
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install Playwright browser
+        run: npm run test:e2e:install --workspace=apps/frontend
+
+      - name: Run Docker-backed full-stack E2E
+        run: npm run e2e:full-stack
+
+      - name: Upload full-stack Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-stack-e2e-report
+          path: |
+            apps/frontend/playwright-report/full-stack
+            apps/frontend/test-results
+
+      - name: Dump Docker logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.e2e.yml logs --no-color
