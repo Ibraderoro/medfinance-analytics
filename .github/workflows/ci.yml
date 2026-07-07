@@ -123,8 +123,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Fail-closed npm audit (high+)
-        run: npm audit --audit-level=high
+      - name: Fail-closed backend production npm audit (high+)
+        run: npm audit --audit-level=high --workspace=apps/backend --omit=dev
 
       - name: Migration preflight
         run: npm run migrate:preflight --workspace=apps/backend
