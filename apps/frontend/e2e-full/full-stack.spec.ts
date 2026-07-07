@@ -15,12 +15,11 @@ async function uiLogin(page: Page, email = 'demo@medfinance.test', organizationI
   await expect(page).toHaveURL(/\/dashboard$/);
 }
 
-async function apiLogin(request: APIRequestContext, email = 'demo@medfinance.test', organizationId = DEMO_ORG_ID): Promise<Record<string, string>> {
+async function apiLogin(request: APIRequestContext, email = 'demo@medfinance.test', organizationId = DEMO_ORG_ID): Promise<void> {
   const response = await request.post('/api/v1/auth/login', {
     data: { email, password: PASSWORD, organizationId },
   });
   expect(response.ok()).toBeTruthy();
-  return { cookie: response.headers()['set-cookie'] ?? '' };
 }
 
 test.describe('production-like full-stack E2E', () => {
@@ -41,18 +40,18 @@ test.describe('production-like full-stack E2E', () => {
   });
 
   test('validates migrated schema and seeded integration dataset through real services', async ({ request }) => {
-    const headers = await apiLogin(request);
+    await apiLogin(request);
 
     const health = await request.get('/api/v1/health/live');
     expect(health.ok()).toBeTruthy();
 
-    const kpis = await request.get('/api/v1/financials/kpis?year=2026', { headers });
+    const kpis = await request.get('/api/v1/financials/kpis?year=2026');
     expect(kpis.ok()).toBeTruthy();
     const kpiBody = await kpis.json() as ApiEnvelope<unknown[]>;
     expect(kpiBody.success).toBeTruthy();
     expect(kpiBody.data.length).toBeGreaterThan(0);
 
-    const compliance = await request.get('/api/v1/compliance/status', { headers });
+    const compliance = await request.get('/api/v1/compliance/status');
     expect(compliance.ok()).toBeTruthy();
     const complianceBody = await compliance.json() as ApiEnvelope<Array<{ regulation_code: string }>>;
     expect(complianceBody.data.map((item) => item.regulation_code).join(' ')).toMatch(/HIPAA|SOC2|HITRUST/);
@@ -82,8 +81,8 @@ test.describe('production-like full-stack E2E', () => {
 
     await expect(snapshotPromise).resolves.toContain('event: snapshot');
 
-    const headers = await apiLogin(request);
-    const eventResponse = await request.post('/api/v1/financials/live/events/transaction-added', { headers });
+    await apiLogin(request);
+    const eventResponse = await request.post('/api/v1/financials/live/events/transaction-added');
     expect(eventResponse.ok()).toBeTruthy();
   });
 
@@ -94,11 +93,11 @@ test.describe('production-like full-stack E2E', () => {
     await expect(page.getByText(/free/i)).toBeVisible();
     await expect(page.getByText(/inactive/i)).toBeVisible();
 
-    const headers = await apiLogin(request);
-    const invalidPlan = await request.post('/api/v1/billing/subscription', { headers, data: { plan: 'invalid' } });
+    await apiLogin(request);
+    const invalidPlan = await request.post('/api/v1/billing/subscription', { data: { plan: 'invalid' } });
     expect(invalidPlan.status()).toBe(400);
 
-    const subscription = await request.get('/api/v1/billing/subscription', { headers });
+    const subscription = await request.get('/api/v1/billing/subscription');
     const body = await subscription.json() as ApiEnvelope<{ plan: string; status: string }>;
     expect(body.data).toMatchObject({ plan: 'free', status: 'inactive' });
   });
