@@ -64,3 +64,43 @@ services:
         value: "true"
       - key: OPS_ENDPOINT_AUTH_TOKEN
         sync: false
+
+  - type: worker
+    name: medfinance-worker
+    runtime: docker
+    repo: https://github.com/your-org/medfinance-analytics
+    rootDir: .
+    dockerfilePath: apps/backend/Dockerfile
+    dockerContext: .
+    dockerCommand: node apps/backend/dist/worker.js
+    plan: starter
+    autoDeploy: false
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: info
+      - key: WORKER_HEALTH_PORT
+        value: 3002
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: PG_SSL
+        value: "true"
+      - key: PG_SSL_REJECT_UNAUTHORIZED
+        value: "true"
+      - key: REDIS_TLS
+        value: "true"
+      - key: REQUIRE_SECURE_TRANSPORT
+        value: "true"
+      - key: JWT_SECRET
+        sync: false
+      - key: REFRESH_TOKEN_SECRET
+        sync: false
+      - key: AUDIT_EXPORT_SIGNING_SECRET
+        sync: false
+      - key: STRIPE_PRO_PRICE_ID
+        sync: false
+      - key: STRIPE_ENTERPRISE_PRICE_ID
+        sync: false

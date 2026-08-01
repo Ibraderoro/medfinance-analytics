@@ -13,6 +13,7 @@ const mockQuery = jest.fn();
 const mockRedisSet = jest.fn(async (): Promise<string | null> => 'OK') as jest.Mock<Promise<string | null>, unknown[]>;
 const mockRedisGet = jest.fn(async (): Promise<string | null> => null) as jest.Mock<Promise<string | null>, unknown[]>;
 const mockRedisDel = jest.fn(async (): Promise<number> => 1) as jest.Mock<Promise<number>, unknown[]>;
+const mockEnqueueWebhookProcessing = jest.fn(async (): Promise<void> => undefined) as jest.Mock<Promise<void>, unknown[]>;
 
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
@@ -58,6 +59,10 @@ jest.mock('../config/redis', () => ({
     scan: async () => ['0', []],
     ping: async () => 'PONG',
   }),
+}));
+
+jest.mock('../queue/producers', () => ({
+  enqueueWebhookProcessing: (...args: unknown[]) => mockEnqueueWebhookProcessing(...args),
 }));
 
 import { app } from '../app';
@@ -216,6 +221,8 @@ describe('Critical route integration', () => {
     mockRedisGet.mockResolvedValue(null);
     mockRedisDel.mockReset();
     mockRedisDel.mockResolvedValue(1);
+    mockEnqueueWebhookProcessing.mockReset();
+    mockEnqueueWebhookProcessing.mockResolvedValue(undefined);
   });
 
   it('GET /financials/summary returns safe defaults with empty db', async () => {
@@ -302,11 +309,8 @@ describe('Critical route integration', () => {
     expect(result.body.data).toEqual({ session: 'refreshed' });
   });
 
-  it('POST /billing/webhook records Stripe event dedupe only after successful handling', async () => {
-    mockQuery
-      .mockResolvedValueOnce([{ id: 'evt_processed' }])
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([]);
+  it('POST /billing/webhook reserves the event and enqueues durable processing', async () => {
+    mockQuery.mockResolvedValueOnce([{ id: 'evt_processed' }]);
     const payload = Buffer.from(JSON.stringify({
       id: 'evt_processed',
       type: 'invoice.paid',
@@ -337,13 +341,23 @@ describe('Critical route integration', () => {
       expect.stringContaining('INSERT INTO stripe_webhook_events'),
       ['evt_processed', 'invoice.paid', 600],
     );
-    expect(mockQuery).toHaveBeenCalledWith(
-      expect.stringContaining('UPDATE stripe_webhook_events'),
-      ['evt_processed'],
-    );
+    // The actual business logic no longer runs inline in the HTTP handler —
+    // it's enqueued as a durable BullMQ job for the worker process to run.
+    expect(mockQuery).not.toHaveBeenCalledWith(expect.stringContaining('UPDATE stripe_webhook_events'), expect.anything());
+    expect(mockEnqueueWebhookProcessing).toHaveBeenCalledWith({
+      id: 'evt_processed',
+      type: 'invoice.paid',
+      data: {
+        object: {
+          customer: 'cus_processed',
+          subscription: 'sub_processed',
+          lines: { data: [{ price: { id: 'price_pro' } }] },
+        },
+      },
+    });
   });
 
-  it('POST /billing/webhook clears reserved dedupe when event handling fails', async () => {
+  it('POST /billing/webhook clears reserved dedupe when enqueueing fails', async () => {
     const payload = Buffer.from(JSON.stringify({
       id: 'evt_retryable_failure',
       type: 'invoice.paid',
@@ -357,8 +371,8 @@ describe('Critical route integration', () => {
     }));
     mockQuery
       .mockResolvedValueOnce([{ id: 'evt_retryable_failure' }])
-      .mockRejectedValueOnce(new Error('database unavailable'))
       .mockResolvedValueOnce([]);
+    mockEnqueueWebhookProcessing.mockRejectedValueOnce(new Error('queue unavailable'));
 
     const result = await rawPost('/api/v1/billing/webhook', payload, {
       'stripe-signature': stripeSignature(payload),

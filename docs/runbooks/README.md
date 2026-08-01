@@ -12,6 +12,7 @@ This directory contains operational runbooks for MedFinance Analytics production
 | [Rollback Procedures](./rollback.md) | Application, migration, frontend, and configuration rollback guidance. |
 | [Database Recovery](./database-recovery.md) | PostgreSQL backup, PITR, restore, and validation workflow. |
 | [Redis Recovery](./redis-recovery.md) | Redis degradation, cache rebuild, and rate-limit/session-impact handling. |
+| [Queue / Worker Recovery](./queue-worker-recovery.md) | BullMQ worker downtime, backlog, and dead-letter queue triage for webhook and analytics processing. |
 | [Incident Response](./incident-response.md) | Severity model, roles, communications, containment, and postmortems. |
 | [Service Outage Troubleshooting](./service-outage-troubleshooting.md) | API/frontend outage triage and dependency checks. |
 | [Health Check Debugging](./health-check-debugging.md) | `/health/live`, `/health/ready`, and metrics endpoint investigation. |

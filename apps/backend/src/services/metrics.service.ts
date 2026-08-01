@@ -44,6 +44,16 @@ const REDIS_DURATION: HistogramDefinition = {
   buckets: [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5],
 };
 
+const QUEUE_JOB_DURATION: HistogramDefinition = {
+  name: 'queue_job_duration_seconds',
+  help: 'BullMQ job processing duration in seconds by queue and outcome.',
+  buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60],
+};
+
+const HISTOGRAM_DEFINITIONS: HistogramDefinition[] = [HTTP_DURATION, DB_DURATION, REDIS_DURATION, QUEUE_JOB_DURATION];
+
+type GaugeState = { name: string; help: string; labels: Record<string, string>; value: number };
+
 function sanitizeLabelValue(value: LabelValue): string {
   const normalized = value === undefined || value === '' ? 'unknown' : String(value);
   return normalized.replace(/[\n\r\\"]/g, '_').slice(0, 180);
@@ -77,6 +87,7 @@ export function classifySqlOperation(text: string): string {
 class PrometheusMetricsService {
   private readonly counters = new Map<string, { name: string; help: string; labels: Record<string, string>; value: number }>();
   private readonly histograms = new Map<string, HistogramState>();
+  private readonly gauges = new Map<string, GaugeState>();
   private httpRequestCount = 0;
   private httpErrorCount = 0;
   private dbQueryCount = 0;
@@ -132,6 +143,35 @@ class PrometheusMetricsService {
     this.observeHistogram(REDIS_DURATION, durationMs / 1000, normalized);
   }
 
+  recordQueueJob(durationMs: number, labels: { queue: string; outcome: 'success' | 'failure' }): void {
+    const normalized = {
+      queue: sanitizeLabelValue(labels.queue),
+      outcome: sanitizeLabelValue(labels.outcome),
+    };
+    this.incrementCounter('queue_jobs_total', 'Total BullMQ jobs processed by queue and outcome.', normalized);
+    this.observeHistogram(QUEUE_JOB_DURATION, Math.max(durationMs, 0) / 1000, normalized);
+  }
+
+  recordQueueDeadLetter(labels: { queue: string }): void {
+    const normalized = { queue: sanitizeLabelValue(labels.queue) };
+    this.incrementCounter('queue_job_dead_letter_total', 'Total BullMQ jobs routed to a dead-letter queue after exhausting retries.', normalized);
+  }
+
+  recordQueueDepth(labels: { queue: string; state: string }, value: number): void {
+    const normalized = {
+      queue: sanitizeLabelValue(labels.queue),
+      state: sanitizeLabelValue(labels.state),
+    };
+    const name = 'queue_depth_current';
+    const key = `${name}|${labelsKey(normalized)}`;
+    this.gauges.set(key, {
+      name,
+      help: 'Current BullMQ job count by queue and state (waiting, active, delayed, failed, completed).',
+      labels: normalized,
+      value,
+    });
+  }
+
   getSnapshot(): MetricsSnapshot {
     return {
       httpRequestCount: this.httpRequestCount,
@@ -164,7 +204,7 @@ class PrometheusMetricsService {
     const renderedHistograms = new Set<string>();
     for (const [key, histogram] of this.histograms) {
       const name = key.split('|', 1)[0];
-      const definition = [HTTP_DURATION, DB_DURATION, REDIS_DURATION].find((item) => item.name === name);
+      const definition = HISTOGRAM_DEFINITIONS.find((item) => item.name === name);
       if (definition && !renderedHistograms.has(name)) {
         lines.push(`# HELP ${name} ${definition.help}`, `# TYPE ${name} histogram`);
         renderedHistograms.add(name);
@@ -175,6 +215,15 @@ class PrometheusMetricsService {
       lines.push(`${name}_bucket${renderLabels({ ...histogram.labels, le: '+Inf' })} ${histogram.count}`);
       lines.push(`${name}_sum${renderLabels(histogram.labels)} ${histogram.sum}`);
       lines.push(`${name}_count${renderLabels(histogram.labels)} ${histogram.count}`);
+    }
+
+    const renderedGauges = new Set<string>();
+    for (const gauge of this.gauges.values()) {
+      if (!renderedGauges.has(gauge.name)) {
+        lines.push(`# HELP ${gauge.name} ${gauge.help}`, `# TYPE ${gauge.name} gauge`);
+        renderedGauges.add(gauge.name);
+      }
+      lines.push(`${gauge.name}${renderLabels(gauge.labels)} ${gauge.value}`);
     }
 
     return `${lines.join('\n')}\n`;

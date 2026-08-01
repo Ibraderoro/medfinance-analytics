@@ -88,6 +88,25 @@ services:
       start_period: 5s
     networks: [e2e]
 
+  worker:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    command: ["node", "apps/backend/dist/worker.js"]
+    environment:
+      <<: *backend_env
+      WORKER_HEALTH_PORT: 3002
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "/app/scripts/healthcheck-worker.js"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+      start_period: 5s
+    networks: [e2e]
+
   frontend:
     build:
       context: .

@@ -97,6 +97,44 @@ services:
       - private
       - observability
 
+  worker:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    command: ["node", "apps/backend/dist/worker.js"]
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      WORKER_HEALTH_PORT: 3002
+      DATABASE_URL: postgresql://${POSTGRES_USER:-medfinance_user}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-medfinance}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+      REFRESH_TOKEN_SECRET: ${REFRESH_TOKEN_SECRET:?REFRESH_TOKEN_SECRET must be set}
+      AUDIT_EXPORT_SIGNING_SECRET: ${AUDIT_EXPORT_SIGNING_SECRET:?AUDIT_EXPORT_SIGNING_SECRET must be set}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    expose:
+      - "3002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      db_seed:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "/app/scripts/healthcheck-worker.js"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - private
+      - observability
+
   frontend:
     build:
       context: .

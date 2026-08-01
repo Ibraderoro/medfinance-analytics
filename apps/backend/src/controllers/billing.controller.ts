@@ -1,8 +1,10 @@
+import { randomUUID } from 'crypto';
 import { Request, Response, NextFunction } from 'express';
 import { AuthenticatedRequest, requireAuthenticatedUser } from '../middleware/auth';
 import { BillingService } from '../services/billing.service';
 import { StripeService } from '../services/stripe.service';
 import { getRedis } from '../config/redis';
+import { enqueueWebhookProcessing } from '../queue/producers';
 
 const billingService = new BillingService();
 const stripeService = new StripeService();
@@ -105,24 +107,27 @@ export async function handleStripeWebhook(
       reservedEventId = event.id;
     }
 
+    // Signature verification, dedupe, and the reservation above are the only
+    // work done inline. The actual business logic (`handleWebhookEvent`) runs
+    // as a durable, retried BullMQ job in the worker process — this handler's
+    // job is only to durably enqueue it (or, if enqueueing itself fails, to
+    // roll back the dedupe key/reservation so the event can be retried from
+    // scratch on Stripe's next delivery attempt).
     try {
-      await billingService.handleWebhookEvent(event);
-      if (reservedEventId) {
-        await billingService.markWebhookEventProcessed(reservedEventId);
-      }
+      await enqueueWebhookProcessing({ id: event.id ?? randomUUID(), type: event.type, data: event.data });
     } catch (err) {
       if (dedupKey) {
         try {
           await redis.del(dedupKey);
         } catch {
-          // Preserve the original webhook processing error so Stripe can retry the event.
+          // Preserve the original enqueue error so Stripe can retry the event.
         }
       }
       if (reservedEventId) {
         try {
           await billingService.releaseWebhookEventReservation(reservedEventId);
         } catch {
-          // Preserve the original webhook processing error so Stripe can retry the event.
+          // Preserve the original enqueue error so Stripe can retry the event.
         }
       }
       throw err;

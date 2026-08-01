@@ -51,4 +51,29 @@ describe('Prometheus metrics service', () => {
     expect(prometheus).not.toContain('p95_ms');
     expect(prometheus).not.toContain('duration_p95');
   });
+
+  it('records queue job outcomes and dead-letter counts', () => {
+    metricsService.recordQueueJob(120, { queue: 'billing.webhook-processing', outcome: 'success' });
+    metricsService.recordQueueJob(45, { queue: 'billing.webhook-processing', outcome: 'failure' });
+    metricsService.recordQueueDeadLetter({ queue: 'billing.webhook-processing' });
+
+    const prometheus = metricsService.toPrometheus();
+    expect(prometheus).toContain('# TYPE queue_jobs_total counter');
+    expect(prometheus).toContain('queue_jobs_total{outcome="success",queue="billing.webhook-processing"}');
+    expect(prometheus).toContain('queue_jobs_total{outcome="failure",queue="billing.webhook-processing"}');
+    expect(prometheus).toContain('# TYPE queue_job_duration_seconds histogram');
+    expect(prometheus).toContain('queue_job_duration_seconds_bucket');
+    expect(prometheus).toContain('# TYPE queue_job_dead_letter_total counter');
+    expect(prometheus).toContain('queue_job_dead_letter_total{queue="billing.webhook-processing"} 1');
+  });
+
+  it('renders queue depth as a gauge that overwrites to the latest value per queue/state', () => {
+    metricsService.recordQueueDepth({ queue: 'analytics.telemetry-persist', state: 'waiting' }, 3);
+    metricsService.recordQueueDepth({ queue: 'analytics.telemetry-persist', state: 'waiting' }, 7);
+
+    const prometheus = metricsService.toPrometheus();
+    expect(prometheus).toContain('# TYPE queue_depth_current gauge');
+    expect(prometheus).toContain('queue_depth_current{queue="analytics.telemetry-persist",state="waiting"} 7');
+    expect(prometheus).not.toContain('queue_depth_current{queue="analytics.telemetry-persist",state="waiting"} 3');
+  });
 });
