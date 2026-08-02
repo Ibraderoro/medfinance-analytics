@@ -22,12 +22,13 @@
     "coverage:prod": "npm test --workspaces --if-present -- --coverageReporters=json-summary --coverageReporters=text-summary && node scripts/check-production-coverage-targets.js",
     "staging:drills:check": "node scripts/check-staging-drill-gate.js",
     "production:external-evidence:check": "node scripts/check-external-provider-evidence.js",
-    "production:security-evidence:check": "node scripts/check-vulnerability-evidence.js && npm run security:check-lockfile-ws && npm run security:check-lockfile-qs",
+    "production:security-evidence:check": "node scripts/check-vulnerability-evidence.js && npm run security:check-lockfile-ws && npm run security:check-lockfile-qs && npm run security:check-lockfile-react-router",
     "production:e2e-evidence:check": "node scripts/check-playwright-e2e-evidence.js",
     "security:check-lockfile-ws": "node scripts/check-lockfile-ws-version.js",
     "staging:drills:run": "node scripts/run-staging-drills.js",
     "production:gates:check": "npm run coverage:prod && npm run test:integration && npm run production:external-evidence:check && npm run production:security-evidence:check && npm run production:e2e-evidence:check && npm run staging:drills:check",
     "security:check-lockfile-qs": "node scripts/check-lockfile-qs-version.js",
+    "security:check-lockfile-react-router": "node scripts/check-lockfile-react-router-version.js",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "perf:api:bench": "node scripts/performance/run-api-bench.js",
     "perf:load:smoke": "node scripts/performance/k6-runner.js smoke load-mixed",
@@ -55,14 +56,20 @@
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^7.13.0",
     "@typescript-eslint/parser": "^7.13.0",
+    "autocannon": "^7.15.0",
     "eslint": "^8.57.0",
-    "typescript": "^5.4.5",
-    "autocannon": "^7.15.0"
+    "typescript": "^5.4.5"
   },
   "overrides": {
-    "ws": "8.20.1",
+    "ws": "^8.20.2",
     "form-data": "4.0.6",
     "qs": "^6.15.2",
-    "uuid": "11.1.1"
+    "uuid": "11.1.1",
+    "braces": "^3.0.3",
+    "lodash": "^4.17.21",
+    "set-value": "^4.1.0",
+    "js-yaml": "^4.1.0",
+    "react-router": "7.18.2",
+    "react-router-dom": "7.18.2"
   }
 }
