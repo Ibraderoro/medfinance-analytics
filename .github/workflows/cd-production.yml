@@ -143,19 +143,24 @@ jobs:
         run: PERF_PROFILE=peak npm run perf:load:peak
 
       - name: API micro-benchmark
+        if: ${{ !cancelled() }}
         run: npm run perf:api:bench
 
       - name: Database performance analysis
+        if: ${{ !cancelled() }}
         run: npm run perf:db:analyze
 
       - name: Redis latency check
+        if: ${{ !cancelled() }}
         run: npm run perf:redis:check
 
       - name: Consolidated performance report
+        if: ${{ !cancelled() }}
         run: npm run perf:report
 
       - name: Restore performance baseline (read-only reference)
-        uses: actions/cache/restore@v4
+        if: ${{ !cancelled() }}
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: artifacts/performance/baseline.json
           key: perf-baseline-main-${{ github.run_id }}
@@ -163,11 +168,12 @@ jobs:
             perf-baseline-main-
 
       - name: Regression check vs latest known baseline
+        if: ${{ !cancelled() }}
         run: npm run perf:regression:check
 
       - name: Upload performance artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: perf-artifacts-release-${{ github.event.inputs.version || github.ref_name }}
           path: artifacts/performance/**

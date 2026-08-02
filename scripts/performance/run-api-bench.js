@@ -156,6 +156,10 @@ function summarize(entry) {
     assumptions: {
       readApiP95Ms: thresholds.apiBench.p95Ms,
       readApiP99Ms: thresholds.apiBench.p99Ms,
+      // Intentionally fixed, not sourced from perf-thresholds.json: this is
+      // descriptive metadata for the warm/cold api-bench profiles, not a k6
+      // profile — there's no single k6 readinessP95Ms (ci/smoke/peak/stress/soak
+      // each have their own) that correctly maps to it.
       readinessP95Ms: 80,
       errorRateMax: thresholds.apiBench.non2xxRate,
     },

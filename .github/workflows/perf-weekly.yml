@@ -22,12 +22,9 @@ jobs:
       RATE_LIMIT_AUTH_MAX: "20000"
       RATE_LIMIT_AUTH_WINDOW_MS: "60000"
       PERF_BASE_URL: http://127.0.0.1:3001/api/v1
-      DATABASE_URL: postgresql://medfinance_e2e:medfinance_e2e_password@127.0.0.1:5433/medfinance_e2e
       REDIS_HOST: 127.0.0.1
       REDIS_PORT: "6380"
-      REDIS_PASSWORD: medfinance_e2e_redis_password
       PERF_EMAIL: perf@medfinance.test
-      PERF_PASSWORD: PerfTest123!
       PERF_ORGANIZATION_ID: ff6a1c0f-6d3b-8388-6b12-4e2ad21f57c5
       # Keep the soak run short enough for a scheduled CI slot; the k6 script itself
       # still supports multi-hour soaks locally via the same env var.
@@ -38,7 +35,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 20
           cache: npm
@@ -50,6 +47,9 @@ jobs:
         uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435
 
       - name: Boot backend + worker for perf validation
+        env:
+          DATABASE_URL: postgresql://medfinance_e2e:medfinance_e2e_password@127.0.0.1:5433/medfinance_e2e
+          REDIS_PASSWORD: medfinance_e2e_redis_password
         run: docker compose -f docker-compose.e2e.yml up --build --wait --wait-timeout 180 backend worker
 
       - name: Install k6
@@ -61,22 +61,50 @@ jobs:
           sudo apt-get install -y k6
 
       # Informational only: this workflow never fails the run on threshold or
-      # regression findings, so `|| true` on every perf step and the final report.
+      # regression findings, so each perf step and the final report use
+      # continue-on-error rather than `|| true` — that keeps the job non-blocking
+      # while still capturing (and surfacing, below) genuine execution failures
+      # instead of silently swallowing them.
       - name: k6 step stress
-        run: npm run perf:stress:step || true
+        id: k6_step_stress
+        continue-on-error: true
+        env:
+          PERF_PASSWORD: PerfTest123!
+        run: npm run perf:stress:step
 
       - name: k6 spike stress
-        run: npm run perf:stress:spike || true
+        id: k6_spike_stress
+        continue-on-error: true
+        env:
+          PERF_PASSWORD: PerfTest123!
+        run: npm run perf:stress:spike
 
       - name: k6 soak
-        run: npm run perf:soak || true
+        id: k6_soak
+        continue-on-error: true
+        env:
+          PERF_PASSWORD: PerfTest123!
+        run: npm run perf:soak
 
       - name: Consolidated performance report
-        run: npm run perf:report || true
+        id: perf_report
+        continue-on-error: true
+        run: npm run perf:report
+
+      - name: Summarize weekly performance outcomes
+        if: always()
+        run: |
+          {
+            echo "## Weekly performance run outcomes"
+            echo "- k6 step stress: ${{ steps.k6_step_stress.outcome }}"
+            echo "- k6 spike stress: ${{ steps.k6_spike_stress.outcome }}"
+            echo "- k6 soak: ${{ steps.k6_soak.outcome }}"
+            echo "- Consolidated performance report: ${{ steps.perf_report.outcome }}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload performance artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: perf-artifacts-weekly-${{ github.run_id }}
           path: artifacts/performance/**

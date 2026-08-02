@@ -92,10 +92,27 @@ function evaluateThroughputMetric(scope, key, current, baseline) {
   return null;
 }
 
+function checkRequiredMetrics(scope, key, currentMetrics, findings) {
+  for (const metricName of ['p95', 'p99', 'throughput']) {
+    if (!Number.isFinite(currentMetrics[metricName])) {
+      findings.push({ level: 'fail', message: `${scope} ${key} is missing a valid current ${metricName} value` });
+    }
+  }
+}
+
+function checkMissingFromCurrent(scope, baselineKeys, currentKeys, findings) {
+  for (const key of baselineKeys) {
+    if (!currentKeys.has(key)) {
+      findings.push({ level: 'fail', message: `${scope} ${key} is present in baseline but missing from the current run` });
+    }
+  }
+}
+
 function compare(current, baseline) {
   const findings = [];
 
   for (const [key, currentMetrics] of Object.entries(current.apiBench)) {
+    checkRequiredMetrics('api-bench', key, currentMetrics, findings);
     const baselineMetrics = baseline.apiBench?.[key];
     if (!baselineMetrics) continue;
     for (const metricName of ['p95', 'p99']) {
@@ -105,8 +122,10 @@ function compare(current, baseline) {
     const throughputFinding = evaluateThroughputMetric('api-bench', key, currentMetrics.throughput, baselineMetrics.throughput);
     if (throughputFinding) findings.push(throughputFinding);
   }
+  checkMissingFromCurrent('api-bench', Object.keys(baseline.apiBench || {}), new Set(Object.keys(current.apiBench)), findings);
 
   for (const [scenario, currentMetrics] of Object.entries(current.k6)) {
+    checkRequiredMetrics('k6', scenario, currentMetrics, findings);
     const baselineMetrics = baseline.k6?.[scenario];
     if (!baselineMetrics) continue;
     for (const metricName of ['p95', 'p99']) {
@@ -116,6 +135,7 @@ function compare(current, baseline) {
     const throughputFinding = evaluateThroughputMetric('k6', scenario, currentMetrics.throughput, baselineMetrics.throughput);
     if (throughputFinding) findings.push(throughputFinding);
   }
+  checkMissingFromCurrent('k6', Object.keys(baseline.k6 || {}), new Set(Object.keys(current.k6)), findings);
 
   return findings;
 }
