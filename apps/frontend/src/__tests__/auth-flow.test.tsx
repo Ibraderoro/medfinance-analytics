@@ -29,7 +29,7 @@ describe('Auth flow', () => {
   });
 
   it('shows login API error', async () => {
-    render(<MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><LoginPage /></MemoryRouter>);
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
     await userEvent.type(screen.getByLabelText('Email'), 'a@a.com');
     await userEvent.type(screen.getByLabelText('Organization ID'), '550e8400-e29b-41d4-a716-446655440000');
     await userEvent.type(screen.getByLabelText('Password'), 'strongpass1');
@@ -41,7 +41,7 @@ describe('Auth flow', () => {
     (authApi.login as jest.Mock).mockResolvedValueOnce({ data: { success: true, data: { session: 'pending_mfa', tempToken: 'temp-123' } } });
     (authApi.verifyMfa as jest.Mock).mockResolvedValueOnce({ data: { success: true, data: { session: 'created' } } });
 
-    render(<MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><LoginPage /></MemoryRouter>);
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
     await userEvent.type(screen.getByLabelText('Email'), 'admin@example.com');
     await userEvent.type(screen.getByLabelText('Organization ID'), '550e8400-e29b-41d4-a716-446655440000');
     await userEvent.type(screen.getByLabelText('Password'), 'strongpass1');
@@ -55,7 +55,7 @@ describe('Auth flow', () => {
   });
 
   it('shows invite registration API error', async () => {
-    render(<MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><RegisterPage /></MemoryRouter>);
+    render(<MemoryRouter><RegisterPage /></MemoryRouter>);
     await userEvent.type(screen.getByLabelText(/Invitation token/), 'signed-invite-token');
     await userEvent.type(screen.getByLabelText('First Name'), 'Jane');
     await userEvent.type(screen.getByLabelText('Last Name'), 'Doe');
@@ -69,7 +69,7 @@ describe('Auth flow', () => {
   it('prefills the invited email when an invite token verifies', async () => {
     (authApi.verifyInvitation as jest.Mock).mockResolvedValueOnce({ data: { success: true, data: { email: 'invited@example.com' } } });
 
-    render(<MemoryRouter initialEntries={['/register?invite=verified-token']} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><RegisterPage /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={['/register?invite=verified-token']}><RegisterPage /></MemoryRouter>);
 
     expect(await screen.findByText('Invitation verified for invited@example.com.')).toBeInTheDocument();
     expect(screen.getByLabelText('Email')).toHaveValue('invited@example.com');
@@ -79,7 +79,7 @@ describe('Auth flow', () => {
   it('navigates to dashboard after successful invite registration', async () => {
     (authApi.register as jest.Mock).mockResolvedValueOnce({ data: { success: true, data: { session: 'created' } } });
 
-    render(<MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><RegisterPage /></MemoryRouter>);
+    render(<MemoryRouter><RegisterPage /></MemoryRouter>);
     await userEvent.type(screen.getByLabelText(/Invitation token/), 'signed-invite-token');
     await userEvent.type(screen.getByLabelText('First Name'), 'Jane');
     await userEvent.type(screen.getByLabelText('Last Name'), 'Doe');
@@ -94,7 +94,7 @@ describe('Auth flow', () => {
     (authApi.createInvitation as jest.Mock).mockResolvedValueOnce({ data: { success: true, data: {} } });
     (authApi.revokeInvitation as jest.Mock).mockRejectedValueOnce(new Error('network'));
 
-    render(<MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><AdminInvitesPage /></MemoryRouter>);
+    render(<MemoryRouter><AdminInvitesPage /></MemoryRouter>);
 
     await userEvent.type(screen.getByLabelText('Email'), 'new.user@example.com');
     await userEvent.click(screen.getByRole('button', { name: 'Create invitation' }));
@@ -106,7 +106,7 @@ describe('Auth flow', () => {
   });
 
   it('creates and revokes admin invitations', async () => {
-    render(<MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><AdminInvitesPage /></MemoryRouter>);
+    render(<MemoryRouter><AdminInvitesPage /></MemoryRouter>);
 
     await userEvent.type(screen.getByLabelText('Email'), 'new.user@example.com');
     await userEvent.selectOptions(screen.getByLabelText('Role'), 'analyst');
@@ -129,7 +129,7 @@ describe('Auth flow', () => {
     (authApi.createInvitation as jest.Mock).mockRejectedValueOnce({ response: { data: { error: { message: 'Admin required' } } } });
     (authApi.revokeInvitation as jest.Mock).mockRejectedValueOnce({ response: { data: { error: { message: 'Cannot revoke' } } } });
 
-    render(<MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><AdminInvitesPage /></MemoryRouter>);
+    render(<MemoryRouter><AdminInvitesPage /></MemoryRouter>);
 
     await userEvent.type(screen.getByLabelText('Email'), 'new.user@example.com');
     await userEvent.click(screen.getByRole('button', { name: 'Create invitation' }));

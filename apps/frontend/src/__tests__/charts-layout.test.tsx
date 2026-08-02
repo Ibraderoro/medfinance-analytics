@@ -72,7 +72,7 @@ describe('chart components', () => {
 
 describe('layout components', () => {
   it('Sidebar renders primary navigation with all five app links', () => {
-    const { getByRole, getByLabelText } = render(<MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><Sidebar /></MemoryRouter>);
+    const { getByRole, getByLabelText } = render(<MemoryRouter><Sidebar /></MemoryRouter>);
     expect(getByRole('navigation', { name: 'Primary application navigation' })).toBeInTheDocument();
     expect(getByLabelText('Dashboard')).toBeInTheDocument();
     expect(getByLabelText('Financials')).toBeInTheDocument();
@@ -83,7 +83,7 @@ describe('layout components', () => {
 
   it('marks the active sidebar link for the current route', () => {
     const { getByLabelText } = render(
-      <MemoryRouter initialEntries={['/dashboard']} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter initialEntries={['/dashboard']}>
         <Sidebar />
       </MemoryRouter>,
     );
@@ -92,7 +92,7 @@ describe('layout components', () => {
   });
 
   it('Header renders the application logo and logout button', () => {
-    const { getByText, getByRole } = render(<MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><Header /></MemoryRouter>);
+    const { getByText, getByRole } = render(<MemoryRouter><Header /></MemoryRouter>);
     expect(getByText('MedFinance Analytics')).toBeInTheDocument();
     expect(getByRole('button', { name: /log out/i })).toBeInTheDocument();
   });
@@ -100,7 +100,7 @@ describe('layout components', () => {
   it('Header renders dark-mode toggle label and handles theme toggling', async () => {
     const onToggleTheme = jest.fn();
     const { getByRole } = render(
-      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter>
         <Header theme="dark" onToggleTheme={onToggleTheme} />
       </MemoryRouter>,
     );
@@ -111,7 +111,7 @@ describe('layout components', () => {
   });
 
   it('Header logout clears the session and navigates to /login', async () => {
-    const { getByRole } = render(<MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><Header /></MemoryRouter>);
+    const { getByRole } = render(<MemoryRouter><Header /></MemoryRouter>);
     const dispatchSpy = jest.spyOn(window, 'dispatchEvent');
 
     await userEvent.click(getByRole('button', { name: /log out/i }));
@@ -125,7 +125,7 @@ describe('layout components', () => {
 
   it('Layout renders Header, Sidebar, and outlet area', () => {
     const { getByText, getByRole } = render(
-      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter>
         <Layout />
       </MemoryRouter>,
     );

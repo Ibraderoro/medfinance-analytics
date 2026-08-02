@@ -21,7 +21,7 @@ describe('OidcCallbackPage', () => {
 
   it('shows a friendly error when state or code are missing', async () => {
     render(
-      <MemoryRouter initialEntries={['/oidc/callback?state=']} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter initialEntries={['/oidc/callback?state=']}>
         <Routes>
           <Route path="/oidc/callback" element={<OidcCallbackPage />} />
         </Routes>
@@ -36,7 +36,7 @@ describe('OidcCallbackPage', () => {
     (completeOidc as jest.Mock).mockResolvedValueOnce({ data: { success: true } });
 
     render(
-      <MemoryRouter initialEntries={['/oidc/callback?state=state-1&code=code-1']} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter initialEntries={['/oidc/callback?state=state-1&code=code-1']}>
         <Routes>
           <Route path="/oidc/callback" element={<OidcCallbackPage />} />
         </Routes>

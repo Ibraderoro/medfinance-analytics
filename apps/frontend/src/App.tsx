@@ -98,7 +98,7 @@ export default function App() {
 
   return (
     <ErrorBoundary fallbackTitle="Application unavailable">
-    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <BrowserRouter>
       <Routes>
         <Route
           path="/login"
