@@ -32,7 +32,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 20
           cache: npm
@@ -56,7 +56,7 @@ jobs:
         run: npm run build
 
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
@@ -116,7 +116,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 20
           cache: npm
@@ -134,6 +134,219 @@ jobs:
         run: npm run test:integration --workspace=apps/backend
 
 
+  perf-pr-check:
+    name: Performance PR check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: medfinance
+          POSTGRES_PASSWORD: medfinance
+          POSTGRES_DB: medfinance_perf
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U medfinance -d medfinance_perf"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    # Deterministic test-only values for ephemeral CI infra; relaxed rate limits let
+    # load-test traffic from a single runner IP exercise real backend/DB/Redis
+    # performance instead of tripping the production-tuned 429 ceiling.
+    env:
+      NODE_ENV: test
+      PORT: 3001
+      DATABASE_URL: postgresql://medfinance:medfinance@127.0.0.1:5432/medfinance_perf
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6379
+      REDIS_TLS: "false"
+      PG_SSL: "false"
+      JWT_SECRET: 12345678901234567890123456789012
+      REFRESH_TOKEN_SECRET: 22345678901234567890123456789012
+      AUDIT_EXPORT_SIGNING_SECRET: 32345678901234567890123456789012
+      STRIPE_WEBHOOK_SECRET: whsec_integration_secret
+      STRIPE_PRO_PRICE_ID: price_pro_test
+      STRIPE_ENTERPRISE_PRICE_ID: price_enterprise_test
+      ANALYTICS_SAMPLE_RATE: 1
+      RATE_LIMIT_GENERAL_MAX: 100000
+      RATE_LIMIT_GENERAL_WINDOW_MS: 60000
+      RATE_LIMIT_AUTH_MAX: 20000
+      RATE_LIMIT_AUTH_WINDOW_MS: 60000
+      PERF_BASE_URL: http://127.0.0.1:3001/api/v1
+      PERF_EMAIL: perf@medfinance.test
+      PERF_PASSWORD: PerfTest123!
+      PERF_ORGANIZATION_ID: ff6a1c0f-6d3b-8388-6b12-4e2ad21f57c5
+      PERF_BENCH_DURATION_WARM: "15"
+      PERF_BENCH_DURATION_COLD: "15"
+      PERF_BENCH_CONNECTIONS_WARM: "10"
+      PERF_BENCH_CONNECTIONS_COLD: "10"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install psql client
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Apply database migrations
+        run: npm run migrate --workspace=apps/backend
+
+      - name: Seed representative dataset
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f infrastructure/postgres/seed.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/e2e/seed-e2e.sql
+
+      - name: Build backend
+        run: npm run build --workspace=apps/backend
+
+      - name: Start backend
+        run: nohup node apps/backend/dist/index.js > backend.log 2>&1 &
+
+      - name: Wait for backend readiness
+        run: |
+          for i in $(seq 1 40); do
+            if node scripts/healthcheck.js; then
+              echo "Backend is ready."
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Backend did not become ready in time." >&2
+          cat backend.log || true
+          exit 1
+
+      - name: Install k6
+        run: |
+          sudo mkdir -p /etc/apt/keyrings
+          curl -fsSL https://dl.k6.io/key.gpg | sudo gpg --dearmor -o /etc/apt/keyrings/k6-archive-keyring.gpg
+          echo "deb [signed-by=/etc/apt/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install -y k6
+
+      - name: API micro-benchmark
+        run: npm run perf:api:bench
+
+      - name: k6 mixed-load smoke
+        run: npm run perf:load:ci-smoke
+
+      - name: Database performance analysis
+        run: npm run perf:db:analyze
+
+      - name: Consolidated performance report
+        run: npm run perf:report
+
+      - name: Restore performance baseline
+        if: github.event_name == 'pull_request'
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: artifacts/performance/baseline.json
+          key: perf-baseline-main-${{ github.run_id }}
+          restore-keys: |
+            perf-baseline-main-
+
+      - name: Regression check vs baseline
+        run: npm run perf:regression:check
+
+      - name: Save performance baseline
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: artifacts/performance/baseline.json
+          key: perf-baseline-main-${{ github.run_id }}
+
+      - name: Upload performance artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: perf-artifacts-pr-${{ github.event.pull_request.number || github.run_id }}-${{ github.run_id }}
+          path: artifacts/performance/**
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Post performance report to PR
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const dir = 'artifacts/performance';
+            function latest(prefix) {
+              if (!fs.existsSync(dir)) return null;
+              const files = fs.readdirSync(dir).filter((f) => f.startsWith(prefix) && f.endsWith('.md')).sort();
+              return files.length ? path.join(dir, files[files.length - 1]) : null;
+            }
+            const marker = '<!-- perf-report-marker -->';
+            const reportPath = latest('perf-report-');
+            const regressionPath = latest('regression-');
+            const sections = [marker, '## Performance report'];
+            sections.push(reportPath ? fs.readFileSync(reportPath, 'utf8') : '_No perf-report artifact was generated._');
+            sections.push(regressionPath ? fs.readFileSync(regressionPath, 'utf8') : '_No regression artifact was generated._');
+            const body = sections.join('\n\n');
+
+            // GitHub comment bodies are capped around 65536 chars; stay well under that.
+            const MAX_BODY_LENGTH = 60000;
+            function truncate(text) {
+              if (text.length <= MAX_BODY_LENGTH) return text;
+              return `${marker}\n\n${text.slice(0, MAX_BODY_LENGTH)}\n\n_(truncated — see workflow artifacts for the full report)_`;
+            }
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find((c) => c.body && c.body.includes(marker));
+
+            async function upsertComment(commentBody) {
+              if (existing) {
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: existing.id,
+                  body: commentBody,
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  body: commentBody,
+                });
+              }
+            }
+
+            try {
+              await upsertComment(body);
+            } catch (error) {
+              console.warn(`Failed to post performance report comment: ${error.message}. Retrying with a truncated body.`);
+              await upsertComment(truncate(body));
+            }
+
   full-stack-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 35
@@ -150,7 +363,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 20
           cache: npm
@@ -162,7 +375,7 @@ jobs:
         uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435
 
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
@@ -179,7 +392,7 @@ jobs:
 
       - name: Upload full-stack Playwright report
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: full-stack-e2e-report
           path: |

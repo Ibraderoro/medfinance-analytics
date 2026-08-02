@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const autocannon = require('autocannon');
+const thresholds = require('./perf-thresholds.json');
 
 const baseUrl = (process.env.PERF_BASE_URL || 'http://localhost:3001/api/v1').replace(/\/$/, '');
 const outputDir = path.resolve(process.cwd(), 'artifacts/performance');
@@ -153,10 +154,14 @@ function summarize(entry) {
     generatedAt: new Date().toISOString(),
     baseUrl,
     assumptions: {
-      readApiP95Ms: 250,
-      readApiP99Ms: 600,
+      readApiP95Ms: thresholds.apiBench.p95Ms,
+      readApiP99Ms: thresholds.apiBench.p99Ms,
+      // Intentionally fixed, not sourced from perf-thresholds.json: this is
+      // descriptive metadata for the warm/cold api-bench profiles, not a k6
+      // profile — there's no single k6 readinessP95Ms (ci/smoke/peak/stress/soak
+      // each have their own) that correctly maps to it.
       readinessP95Ms: 80,
-      errorRateMax: 0.01,
+      errorRateMax: thresholds.apiBench.non2xxRate,
     },
     results,
   };

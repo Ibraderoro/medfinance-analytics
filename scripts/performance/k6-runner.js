@@ -7,6 +7,7 @@ const { spawnSync } = require('child_process');
 const outputDir = path.resolve(process.cwd(), 'artifacts/performance');
 
 const artifactPrefixes = {
+  ci: 'k6-load-ci',
   smoke: 'k6-load-smoke',
   peak: 'k6-load-peak',
   'stress-step': 'k6-stress-step',

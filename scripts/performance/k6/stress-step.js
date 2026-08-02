@@ -1,6 +1,8 @@
 import { check } from 'k6';
 import http from 'k6/http';
-import { BASE_URL, readinessLatency } from './common.js';
+import { BASE_URL, THRESHOLDS, readinessLatency } from './common.js';
+
+const t = THRESHOLDS.k6.stressStep;
 
 export const options = {
   scenarios: {
@@ -19,9 +21,9 @@ export const options = {
     },
   },
   thresholds: {
-    http_req_failed: ['rate<0.02'],
-    http_req_duration: ['p(95)<400', 'p(99)<1000'],
-    readiness_latency: ['p(95)<120'],
+    http_req_failed: [`rate<${t.httpReqFailedRate}`],
+    http_req_duration: [`p(95)<${t.p95Ms}`, `p(99)<${t.p99Ms}`],
+    readiness_latency: [`p(95)<${t.readinessP95Ms}`],
   },
 };
 
