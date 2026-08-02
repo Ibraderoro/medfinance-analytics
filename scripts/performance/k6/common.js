@@ -1,6 +1,8 @@
 import http from 'k6/http';
 import { Trend } from 'k6/metrics';
 
+export const THRESHOLDS = JSON.parse(open('../perf-thresholds.json'));
+
 export const readinessLatency = new Trend('readiness_latency');
 
 export const BASE_URL = (__ENV.PERF_BASE_URL || 'http://localhost:3001/api/v1').replace(/\/$/, '');

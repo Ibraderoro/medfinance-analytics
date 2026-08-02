@@ -1,0 +1,29 @@
+{
+  "apiBench": {
+    "p95Ms": 250,
+    "p99Ms": 600,
+    "non2xxRate": 0.01
+  },
+  "k6": {
+    "loadMixed": {
+      "profiles": {
+        "ci": { "rate": 10, "duration": "1m", "preAllocatedVUs": 10, "maxVUs": 30, "minThroughput": 8 },
+        "smoke": { "rate": 80, "duration": "5m", "preAllocatedVUs": 40, "maxVUs": 120, "minThroughput": 60 },
+        "peak": { "rate": 400, "duration": "15m", "preAllocatedVUs": 160, "maxVUs": 600, "minThroughput": 300 }
+      },
+      "thresholds": {
+        "ci": { "httpReqFailedRate": 0.02, "p95Ms": 300, "p99Ms": 800, "readinessP95Ms": 150 },
+        "smoke": { "httpReqFailedRate": 0.01, "p95Ms": 250, "p99Ms": 600, "readinessP95Ms": 80 },
+        "peak": { "httpReqFailedRate": 0.01, "p95Ms": 250, "p99Ms": 600, "readinessP95Ms": 80 }
+      }
+    },
+    "stressStep": { "httpReqFailedRate": 0.02, "p95Ms": 400, "p99Ms": 1000, "readinessP95Ms": 120 },
+    "stressSpike": { "httpReqFailedRate": 0.03, "p95Ms": 600, "p99Ms": 1200, "readinessP95Ms": 200 },
+    "soakPeak": { "httpReqFailedRate": 0.02, "p95Ms": 300, "p99Ms": 700, "readinessP95Ms": 100 }
+  },
+  "regression": {
+    "warnTolerancePct": 8,
+    "p95TolerancePct": 15,
+    "throughputTolerancePct": 15
+  }
+}

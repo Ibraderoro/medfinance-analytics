@@ -1,6 +1,7 @@
 import { Request } from 'express';
 import rateLimit, { MemoryStore, Store } from 'express-rate-limit';
 import { getRedis } from '../config/redis';
+import { env } from '../config/env';
 
 function keyByIp(ip: string | undefined): string {
   if (!ip) {
@@ -76,8 +77,8 @@ function createRedisStore(prefix: string): Store {
 
 export const rateLimiter = rateLimit({
   store: createRedisStore('rate-limit:general:'),
-  windowMs: 15 * 60 * 1000,
-  max: 200,
+  windowMs: env.RATE_LIMIT_GENERAL_WINDOW_MS,
+  max: env.RATE_LIMIT_GENERAL_MAX,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req: Request) => keyByIp(req.ip),
@@ -87,8 +88,8 @@ export const rateLimiter = rateLimit({
 export const authRateLimiter = rateLimit({
   // Shared Redis counters enforce global auth throttling across backend pods.
   store: createRedisStore('rate-limit:auth:'),
-  windowMs: 15 * 60 * 1000,
-  max: 20,
+  windowMs: env.RATE_LIMIT_AUTH_WINDOW_MS,
+  max: env.RATE_LIMIT_AUTH_MAX,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req: Request) => keyByIp(req.ip),

@@ -2,6 +2,7 @@
 /* eslint-disable no-console */
 const fs = require('fs');
 const path = require('path');
+const thresholds = require('./perf-thresholds.json');
 
 const outputDir = path.resolve(process.cwd(), 'artifacts/performance');
 const runId = new Date().toISOString().replace(/[:.]/g, '-');
@@ -29,9 +30,9 @@ function numberFromEnv(name, fallback) {
 
 function evaluateApiBench(apiBench) {
   if (!apiBench?.results) return [];
-  const p95TargetMs = numberFromEnv('API_BENCH_P95_MS', 250);
-  const p99TargetMs = numberFromEnv('API_BENCH_P99_MS', 600);
-  const non2xxRateTarget = numberFromEnv('API_BENCH_NON2XX_RATE', 0.01);
+  const p95TargetMs = numberFromEnv('API_BENCH_P95_MS', thresholds.apiBench.p95Ms);
+  const p99TargetMs = numberFromEnv('API_BENCH_P99_MS', thresholds.apiBench.p99Ms);
+  const non2xxRateTarget = numberFromEnv('API_BENCH_NON2XX_RATE', thresholds.apiBench.non2xxRate);
   const findings = [];
   for (const row of apiBench.results) {
     if (row.skipped) {
@@ -49,7 +50,7 @@ function evaluateApiBench(apiBench) {
 
 function evaluateK6Results(k6Results) {
   const findings = [];
-  const httpReqFailedRateTarget = numberFromEnv('K6_HTTP_REQ_FAILED_RATE', 0.01);
+  const httpReqFailedRateTarget = numberFromEnv('K6_HTTP_REQ_FAILED_RATE', thresholds.k6.loadMixed.thresholds.smoke.httpReqFailedRate);
 
   for (const [name, result] of Object.entries(k6Results)) {
     if (!result) continue;
@@ -96,8 +97,13 @@ const findings = [
   ...evaluateK6Results(k6Results),
 ];
 
-if (dbAnalysis?.results?.some((result) => result.status !== 0)) {
+if (dbAnalysis?.results?.some((result) => result.status !== 0 && !result.skipped)) {
   findings.push({ level: 'fail', message: 'Database analysis contains failed query blocks' });
+}
+
+const skippedDbQueries = dbAnalysis?.results?.filter((result) => result.skipped) || [];
+for (const skipped of skippedDbQueries) {
+  findings.push({ level: 'warn', message: `Database analysis skipped: ${skipped.description} (${skipped.stderr})` });
 }
 
 if (redisCheck?.checks?.some((check) => check.status !== 0)) {

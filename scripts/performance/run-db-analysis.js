@@ -29,11 +29,23 @@ function runPsql(query, description) {
   };
 }
 
-const queries = [
-  {
-    description: 'pg_stat_statements availability',
-    query: `SELECT extname FROM pg_extension WHERE extname = 'pg_stat_statements';`,
-  },
+function skippedResult(query, description, reason) {
+  return {
+    description,
+    query,
+    stdout: '',
+    stderr: reason,
+    status: 0,
+    skipped: true,
+  };
+}
+
+const availabilityCheck = {
+  description: 'pg_stat_statements availability',
+  query: `SELECT extname FROM pg_extension WHERE extname = 'pg_stat_statements';`,
+};
+
+const pgStatStatementsQueries = [
   {
     description: 'Top total execution time statements',
     query: `SELECT LEFT(query, 180) AS query, calls, ROUND(total_exec_time::numeric, 2) AS total_exec_ms, ROUND(mean_exec_time::numeric, 2) AS mean_exec_ms, rows FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 20;`,
@@ -42,6 +54,9 @@ const queries = [
     description: 'Top mean execution time statements',
     query: `SELECT LEFT(query, 180) AS query, calls, ROUND(total_exec_time::numeric, 2) AS total_exec_ms, ROUND(mean_exec_time::numeric, 2) AS mean_exec_ms, rows FROM pg_stat_statements ORDER BY mean_exec_time DESC LIMIT 20;`,
   },
+];
+
+const remainingQueries = [
   {
     description: 'Connection pool pressure and waits',
     query: `SELECT state, wait_event_type, wait_event, COUNT(*) AS count FROM pg_stat_activity GROUP BY state, wait_event_type, wait_event ORDER BY count DESC;`,
@@ -68,7 +83,18 @@ const queries = [
   },
 ];
 
-const results = queries.map((item) => runPsql(item.query, item.description));
+const availabilityResult = runPsql(availabilityCheck.query, availabilityCheck.description);
+const pgStatStatementsAvailable = availabilityResult.status === 0 && /pg_stat_statements/.test(availabilityResult.stdout);
+
+const pgStatStatementsResults = pgStatStatementsAvailable
+  ? pgStatStatementsQueries.map((item) => runPsql(item.query, item.description))
+  : pgStatStatementsQueries.map((item) => skippedResult(item.query, item.description, 'pg_stat_statements extension is not installed/preloaded in this environment'));
+
+const results = [
+  availabilityResult,
+  ...pgStatStatementsResults,
+  ...remainingQueries.map((item) => runPsql(item.query, item.description)),
+];
 
 const out = {
   generatedAt: new Date().toISOString(),

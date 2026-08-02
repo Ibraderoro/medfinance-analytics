@@ -83,9 +83,108 @@ jobs:
       - name: Verify external provider evidence gate
         run: npm run production:external-evidence:check
 
+  perf-release-candidate:
+    name: Release-candidate performance validation
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Advisory only while thresholds are calibrated against real release runs — a
+    # failure here surfaces in the UI and uploaded report but does not block
+    # build-images/deploy-production. Revisit once several releases have
+    # established stable baselines.
+    continue-on-error: true
+    permissions:
+      contents: read
+    env:
+      COMPOSE_PROJECT_NAME: medfinance-perf-${{ github.run_id }}-${{ github.run_attempt }}
+      DOCKER_BUILDKIT: 1
+      RATE_LIMIT_GENERAL_MAX: "100000"
+      RATE_LIMIT_GENERAL_WINDOW_MS: "60000"
+      RATE_LIMIT_AUTH_MAX: "20000"
+      RATE_LIMIT_AUTH_WINDOW_MS: "60000"
+      PERF_BASE_URL: http://127.0.0.1:3001/api/v1
+      DATABASE_URL: postgresql://medfinance_e2e:medfinance_e2e_password@127.0.0.1:5433/medfinance_e2e
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: "6380"
+      REDIS_PASSWORD: medfinance_e2e_redis_password
+      PERF_EMAIL: perf@medfinance.test
+      PERF_PASSWORD: PerfTest123!
+      PERF_ORGANIZATION_ID: ff6a1c0f-6d3b-8388-6b12-4e2ad21f57c5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.inputs.version || github.ref }}
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435
+
+      - name: Boot backend + worker for perf validation
+        run: docker compose -f docker-compose.e2e.yml up --build --wait --wait-timeout 180 backend worker
+
+      - name: Install k6, psql, and redis-tools
+        run: |
+          sudo mkdir -p /etc/apt/keyrings
+          curl -fsSL https://dl.k6.io/key.gpg | sudo gpg --dearmor -o /etc/apt/keyrings/k6-archive-keyring.gpg
+          echo "deb [signed-by=/etc/apt/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install -y k6 postgresql-client redis-tools
+
+      - name: k6 peak load
+        run: PERF_PROFILE=peak npm run perf:load:peak
+
+      - name: API micro-benchmark
+        run: npm run perf:api:bench
+
+      - name: Database performance analysis
+        run: npm run perf:db:analyze
+
+      - name: Redis latency check
+        run: npm run perf:redis:check
+
+      - name: Consolidated performance report
+        run: npm run perf:report
+
+      - name: Restore performance baseline (read-only reference)
+        uses: actions/cache/restore@v4
+        with:
+          path: artifacts/performance/baseline.json
+          key: perf-baseline-main-${{ github.run_id }}
+          restore-keys: |
+            perf-baseline-main-
+
+      - name: Regression check vs latest known baseline
+        run: npm run perf:regression:check
+
+      - name: Upload performance artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-artifacts-release-${{ github.event.inputs.version || github.ref_name }}
+          path: artifacts/performance/**
+          retention-days: 90
+          if-no-files-found: warn
+
+      - name: Dump Docker logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.e2e.yml logs --no-color
+
+      - name: Tear down perf validation stack
+        if: always()
+        run: docker compose -f docker-compose.e2e.yml down --volumes --remove-orphans
+
   build-images:
     name: Build immutable images
-    needs: validate
+    needs: [validate, perf-release-candidate]
     runs-on: ubuntu-latest
     environment: production
     permissions:

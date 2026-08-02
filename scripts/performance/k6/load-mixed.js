@@ -1,15 +1,14 @@
 import http from 'k6/http';
 import { check } from 'k6';
-import { BASE_URL, getUsers, loginSession, weightedPick, authHeaders, readinessLatency, recordReadiness } from './common.js';
+import { BASE_URL, THRESHOLDS, getUsers, loginSession, weightedPick, authHeaders, readinessLatency, recordReadiness } from './common.js';
 
 const profile = __ENV.PERF_PROFILE || 'smoke';
 
-const profileSettings = {
-  smoke: { rate: 80, duration: '5m', preAllocatedVUs: 40, maxVUs: 120, minThroughput: 60 },
-  peak: { rate: 400, duration: '15m', preAllocatedVUs: 160, maxVUs: 600, minThroughput: 300 },
-};
+const profileSettings = THRESHOLDS.k6.loadMixed.profiles;
+const profileThresholds = THRESHOLDS.k6.loadMixed.thresholds;
 
 const activeProfile = profileSettings[profile] || profileSettings.smoke;
+const activeThresholds = profileThresholds[profile] || profileThresholds.smoke;
 
 export const options = {
   scenarios: {
@@ -23,9 +22,9 @@ export const options = {
     },
   },
   thresholds: {
-    http_req_failed: ['rate<0.01'],
-    http_req_duration: ['p(95)<250', 'p(99)<600'],
-    readiness_latency: ['p(95)<80'],
+    http_req_failed: [`rate<${activeThresholds.httpReqFailedRate}`],
+    http_req_duration: [`p(95)<${activeThresholds.p95Ms}`, `p(99)<${activeThresholds.p99Ms}`],
+    readiness_latency: [`p(95)<${activeThresholds.readinessP95Ms}`],
     http_reqs: [`rate>${activeProfile.minThroughput}`],
   },
 };

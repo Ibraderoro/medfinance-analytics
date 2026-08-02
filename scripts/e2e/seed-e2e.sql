@@ -12,7 +12,11 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO users (id, email, password_hash, first_name, last_name, role, organization_id, is_active)
 VALUES
   (md5('user_e2e_viewer')::uuid, 'viewer@medfinance.test', '$2a$12$mH/JllR1HHEYeoqF5yKt4evTqGGdXja3X9Ac8T5G9WxPHqU46zKBK', 'E2E', 'Viewer', 'viewer', md5('org_medfinance_demo')::uuid, true),
-  (md5('user_e2e_other_tenant')::uuid, 'other-tenant@medfinance.test', '$2a$12$mH/JllR1HHEYeoqF5yKt4evTqGGdXja3X9Ac8T5G9WxPHqU46zKBK', 'Other', 'Tenant', 'analyst', md5('org_medfinance_isolated')::uuid, true)
+  (md5('user_e2e_other_tenant')::uuid, 'other-tenant@medfinance.test', '$2a$12$mH/JllR1HHEYeoqF5yKt4evTqGGdXja3X9Ac8T5G9WxPHqU46zKBK', 'Other', 'Tenant', 'analyst', md5('org_medfinance_isolated')::uuid, true),
+  -- Dedicated identity for perf/load-test tooling (scripts/performance/**); kept
+  -- separate from demo@medfinance.test for a cleaner audit trail. Password: see
+  -- docs/performance-testing-strategy.md.
+  (md5('user_perf_bench')::uuid, 'perf@medfinance.test', '$2a$12$U/WEGdlGrrgqdYFpTZ68hui7NVsRia9ZZgMW0.L36oQ/QiOo4N.y6', 'Perf', 'Bench', 'cfo', md5('org_medfinance_demo')::uuid, true)
 ON CONFLICT (email) DO UPDATE SET
   password_hash = EXCLUDED.password_hash,
   role = EXCLUDED.role,

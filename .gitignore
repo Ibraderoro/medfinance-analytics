@@ -71,3 +71,8 @@ Thumbs.db
 # ────────────────────────────────────────────────
 tmp/
 temp/
+
+# ────────────────────────────────────────────────
+# Performance test artifacts (generated, not committed)
+# ────────────────────────────────────────────────
+artifacts/performance/
