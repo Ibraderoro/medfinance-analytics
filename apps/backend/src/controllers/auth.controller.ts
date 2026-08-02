@@ -219,3 +219,22 @@ export async function generateRecoveryCodes(req: Request, res: Response, next: N
     res.success(result, 201);
   } catch (err) { next(err); }
 }
+
+/**
+ * Returns the current authenticated user's identity and session policy info.
+ *
+ * Reads the JWT-verified `req.user` (set by the `authenticate` middleware — a stateless check
+ * with no refresh-token/DB rotation) and looks up the live user row. Unlike `/refresh`, this
+ * endpoint never mutates session state.
+ */
+export async function me(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const user = (req as Request & { user?: { id: string; email: string; role: string; organization_id: string } }).user;
+    if (!user) {
+      res.status(401).json({ success: false, error: { message: 'Unauthorized', code: 'AUTH_REQUIRED' }, data: null });
+      return;
+    }
+    const result = await service.getMe(user);
+    res.success(result);
+  } catch (err) { next(err); }
+}

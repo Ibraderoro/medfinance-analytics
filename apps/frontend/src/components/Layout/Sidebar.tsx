@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom';
+import { useAuthStore } from '../../store/authStore';
 import styles from './Sidebar.module.css';
 
 const navItems = [
@@ -7,15 +8,18 @@ const navItems = [
   { to: '/forecasting', label: 'Forecasting', icon: '📈' },
   { to: '/compliance', label: 'Compliance', icon: '🛡️' },
   { to: '/billing', label: 'Billing', icon: '💳' },
-  { to: '/admin/invitations', label: 'Invites', icon: '✉️' },
+  { to: '/admin/invitations', label: 'Invites', icon: '✉️', requiresRole: 'admin' as const },
 ];
 
 export function Sidebar() {
+  const role = useAuthStore((s) => s.user?.role);
+  const visibleNavItems = navItems.filter((item) => !item.requiresRole || item.requiresRole === role);
+
   return (
     <aside className={styles.sidebar}>
       <nav aria-label="Primary application navigation">
         <ul className={styles.list}>
-          {navItems.map(({ to, label, icon }) => (
+          {visibleNavItems.map(({ to, label, icon }) => (
             <li key={to}>
               <NavLink
                 to={to}

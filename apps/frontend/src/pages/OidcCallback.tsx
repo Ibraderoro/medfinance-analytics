@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { completeOidc } from '../services/api';
+import { useAuthStore } from '../store/authStore';
 import styles from './Page.module.css';
 
 export function OidcCallbackPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  const completeLogin = useAuthStore((s) => s.completeLogin);
   const [error, setError] = useState<string | null>(null);
   const startedRef = useRef(false);
 
@@ -25,8 +27,7 @@ export function OidcCallbackPage() {
     const run = async () => {
       try {
         await completeOidc(state, code);
-        sessionStorage.setItem('auth_session_active', 'true');
-        window.dispatchEvent(new Event('auth-session-changed'));
+        await completeLogin();
         navigate('/dashboard', { replace: true });
       } catch {
         setError('Unable to complete enterprise sign-in. Please try again.');

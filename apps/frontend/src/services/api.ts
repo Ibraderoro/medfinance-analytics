@@ -1,4 +1,5 @@
-import axios from 'axios';
+import axios, { AxiosRequestConfig } from 'axios';
+import { useAuthStore } from '../store/authStore';
 
 declare const __MEDFINANCE_API_URL__: string | undefined;
 
@@ -28,17 +29,25 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
+const AUTH_BOOTSTRAP_URL_PATTERN = /\/auth\/(login|register|refresh|mfa\/verify|oidc)/;
+
 apiClient.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      sessionStorage.removeItem('auth_session_active');
-      window.dispatchEvent(new Event('auth-session-changed'));
-      if (window.location.pathname !== '/login') {
-        window.history.replaceState(null, '', '/login');
-        window.dispatchEvent(new PopStateEvent('popstate'));
-      }
+  async (error) => {
+    const original = error.config as (AxiosRequestConfig & { _retried?: boolean }) | undefined;
+    const isAuthBootstrap = AUTH_BOOTSTRAP_URL_PATTERN.test(original?.url ?? '');
+
+    if (error.response?.status !== 401 || !original || original._retried || isAuthBootstrap) {
+      return Promise.reject(error);
     }
+
+    original._retried = true;
+    const refreshed = await useAuthStore.getState().silentRefresh();
+    if (refreshed) {
+      return apiClient(original);
+    }
+
+    void useAuthStore.getState().logout({ reason: 'expired' });
     return Promise.reject(error);
   },
 );
@@ -50,6 +59,7 @@ export const authApi = {
   createInvitation: (data: { email: string; role: 'analyst' | 'viewer'; expiresInHours?: number }) => apiClient.post('/auth/invitations', data),
   revokeInvitation: (id: string) => apiClient.delete(`/auth/invitations/${id}`),
   refresh: () => apiClient.post('/auth/refresh', {}),
+  getSession: () => apiClient.get('/auth/me'),
   logout: () => apiClient.post('/auth/logout', {}),
   verifyMfa: (tempToken: string, code: string) => apiClient.post('/auth/mfa/verify', { tempToken, code }),
   initiateOidc: (email: string, organizationId: string) => apiClient.post('/auth/oidc/initiate', { email, organizationId }),

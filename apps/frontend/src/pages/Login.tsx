@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { authApi } from '../services/api';
+import { useAuthStore } from '../store/authStore';
 import styles from './Page.module.css';
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -8,8 +9,19 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}
 const isAxiosError = (e: unknown): e is { response?: { status?: number; data?: { error?: { message?: string } } } } =>
   typeof e === 'object' && e !== null && 'response' in e;
 
+const SESSION_END_MESSAGES: Record<string, string> = {
+  expired: 'Your session has expired. Please sign in again.',
+  'other-tab': 'You were signed out.',
+};
+
 export function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const completeLogin = useAuthStore((s) => s.completeLogin);
+  const [sessionEndMessage] = useState(() => {
+    const reason = (location.state as { reason?: string } | null)?.reason;
+    return reason ? SESSION_END_MESSAGES[reason] ?? null : null;
+  });
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [organizationId, setOrganizationId] = useState('');
@@ -60,8 +72,7 @@ export function LoginPage() {
     try {
       if (pendingMfaToken) {
         await authApi.verifyMfa(pendingMfaToken, mfaCode.trim());
-        sessionStorage.setItem('auth_session_active', 'true');
-        window.dispatchEvent(new Event('auth-session-changed'));
+        await completeLogin();
         navigate('/dashboard', { replace: true });
         return;
       }
@@ -74,8 +85,7 @@ export function LoginPage() {
         return;
       }
 
-      sessionStorage.setItem('auth_session_active', 'true');
-      window.dispatchEvent(new Event('auth-session-changed'));
+      await completeLogin();
       navigate('/dashboard', { replace: true });
     } catch (err: unknown) {
       const status = isAxiosError(err) ? err.response?.status : null;
@@ -92,6 +102,7 @@ export function LoginPage() {
     <div className={styles.page} style={{ maxWidth: 420, margin: '4rem auto' }}>
       <h1 className={styles.title}>Sign in</h1>
       <p style={{ marginTop: 0, color: '#4b5563' }}>Use your MedFinance credentials to access dashboards.</p>
+      {sessionEndMessage && <p style={{ color: '#4b5563', background: '#f3f4f6', padding: '0.65rem', borderRadius: 6 }}>{sessionEndMessage}</p>}
 
       <form onSubmit={submit} style={{ display: 'grid', gap: 12 }} noValidate>
         <label>

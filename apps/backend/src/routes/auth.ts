@@ -4,7 +4,7 @@ import { authRateLimiter } from '../middleware/rateLimiter';
 import { authenticate, authorize } from '../middleware/auth';
 import { bruteForceProtection } from '../middleware/bruteForceProtection';
 import { validateRequest } from '../middleware/validateRequest';
-import { login, register, refresh, logout, verifyMfa, initiateOidc, completeOidc, createInvitation, verifyInvitation, acceptInvitation, revokeInvitation, generateRecoveryCodes } from '../controllers/auth.controller';
+import { login, register, refresh, logout, verifyMfa, initiateOidc, completeOidc, createInvitation, verifyInvitation, acceptInvitation, revokeInvitation, generateRecoveryCodes, me } from '../controllers/auth.controller';
 
 export const authRouter = Router();
 const UUID_LIKE_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -119,3 +119,5 @@ authRouter.delete(
 );
 
 authRouter.post('/recovery-codes', authRateLimiter, authenticate, generateRecoveryCodes);
+
+authRouter.get('/me', authenticate, me);
