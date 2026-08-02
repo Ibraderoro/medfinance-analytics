@@ -58,8 +58,13 @@ export function RegisterPage() {
     setIsSubmitting(true);
     try {
       await authApi.register({ firstName: firstName.trim(), lastName: lastName.trim(), invitationToken: invitationToken.trim(), email: email.trim(), password });
-      await completeLogin();
-      navigate('/dashboard', { replace: true });
+
+      try {
+        await completeLogin();
+        navigate('/dashboard', { replace: true });
+      } catch {
+        setError('Account created, but we could not load your session. Please sign in.');
+      }
     } catch (err: unknown) {
       const isAxiosError = (e: unknown): e is { response?: { data?: { error?: { message?: string } | string } } } =>
         typeof e === 'object' && e !== null && 'response' in e;

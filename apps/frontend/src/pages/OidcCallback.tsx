@@ -27,10 +27,16 @@ export function OidcCallbackPage() {
     const run = async () => {
       try {
         await completeOidc(state, code);
+      } catch {
+        setError('Unable to complete enterprise sign-in. Please try again.');
+        return;
+      }
+
+      try {
         await completeLogin();
         navigate('/dashboard', { replace: true });
       } catch {
-        setError('Unable to complete enterprise sign-in. Please try again.');
+        setError('Signed in, but we could not load your session. Please refresh the page.');
       }
     };
 

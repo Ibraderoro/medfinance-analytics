@@ -86,14 +86,24 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
 
     // Access token missing/expired on first load — attempt one silent
-    // refresh before declaring the session dead.
+    // refresh before declaring the session dead. This is a bootstrap check,
+    // not an active-session expiry, so it must not surface an "expired"
+    // reason even though silentRefresh's own failure path sets one.
     const refreshed = await get().silentRefresh();
-    set({ hasCheckedSession: true, ...(refreshed ? {} : { status: 'unauthenticated' as const, user: null }) });
+    set({
+      hasCheckedSession: true,
+      ...(refreshed ? {} : { status: 'unauthenticated' as const, user: null, sessionEndReason: null }),
+    });
   },
 
   completeLogin: async () => {
-    const res = await authApi.getSession();
-    set({ status: 'authenticated', user: extractUser(res.data), hasCheckedSession: true, sessionEndReason: null });
+    try {
+      const res = await authApi.getSession();
+      set({ status: 'authenticated', user: extractUser(res.data), hasCheckedSession: true, sessionEndReason: null });
+    } catch (err) {
+      set({ status: 'unauthenticated', user: null, hasCheckedSession: true, sessionEndReason: null });
+      throw err;
+    }
   },
 
   silentRefresh: () => {

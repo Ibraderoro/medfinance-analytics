@@ -29,7 +29,7 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
-const AUTH_BOOTSTRAP_URL_PATTERN = /\/auth\/(login|register|refresh|mfa\/verify|oidc)/;
+const AUTH_BOOTSTRAP_URL_PATTERN = /\/auth\/(login|register|refresh|mfa\/verify|oidc|me|logout)/;
 
 apiClient.interceptors.response.use(
   (response) => response,

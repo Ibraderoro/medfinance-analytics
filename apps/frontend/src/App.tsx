@@ -49,8 +49,9 @@ function AppRoutes() {
   useAuthBootstrap();
   const { theme, toggleTheme } = useThemeMode();
   const status = useAuthStore((s) => s.status);
+  const hasCheckedSession = useAuthStore((s) => s.hasCheckedSession);
   const isAuthenticated = status === 'authenticated';
-  const isChecking = status === 'idle' || status === 'checking';
+  const isChecking = !hasCheckedSession;
   const checkingFallback = <Loading message="Checking secure session" />;
 
   return (

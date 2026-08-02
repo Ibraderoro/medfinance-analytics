@@ -72,21 +72,22 @@ export function LoginPage() {
     try {
       if (pendingMfaToken) {
         await authApi.verifyMfa(pendingMfaToken, mfaCode.trim());
+      } else {
+        const response = await authApi.login(email.trim(), password, organizationId.trim());
+        const data = response.data?.data as { session?: string; tempToken?: string } | undefined;
+        if (data?.session === 'pending_mfa' && data.tempToken) {
+          setPendingMfaToken(data.tempToken);
+          setPassword('');
+          return;
+        }
+      }
+
+      try {
         await completeLogin();
         navigate('/dashboard', { replace: true });
-        return;
+      } catch {
+        setError('Signed in, but we could not load your session. Please refresh the page.');
       }
-
-      const response = await authApi.login(email.trim(), password, organizationId.trim());
-      const data = response.data?.data as { session?: string; tempToken?: string } | undefined;
-      if (data?.session === 'pending_mfa' && data.tempToken) {
-        setPendingMfaToken(data.tempToken);
-        setPassword('');
-        return;
-      }
-
-      await completeLogin();
-      navigate('/dashboard', { replace: true });
     } catch (err: unknown) {
       const status = isAxiosError(err) ? err.response?.status : null;
       const serverMessage = isAxiosError(err) ? err.response?.data?.error?.message : undefined;
