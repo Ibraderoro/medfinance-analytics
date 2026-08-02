@@ -12,7 +12,10 @@ Redis is used for:
 - Rate limiting and brute-force protection counters.
 - Refresh-token revocation/denylist state.
 - Analytics stream buffering and worker coordination.
+- BullMQ job queue state and scheduling (Stripe webhook processing, analytics telemetry persistence, and analytics retention — see [Queue / Worker Recovery](./queue-worker-recovery.md)).
 - Readiness checks.
+
+**Important:** unlike cache data, BullMQ queue state is not merely a performance optimization — a Redis flush or data loss also destroys any in-flight or waiting jobs (queued webhook events not yet processed, pending analytics batches). This is a materially different risk profile than the rest of Redis's cache-only usage; do not treat a Redis flush as "safe, cache will just rebuild" without also checking for queue backlog first.
 
 ## Symptoms
 
@@ -21,6 +24,7 @@ Redis is used for:
 - Cache miss surge and PostgreSQL load increase.
 - Analytics worker warnings about stream reads/writes.
 - Increased API latency due to fallback paths.
+- `worker` process `/ready` reporting `queueRedis: error`, or growing `queue_depth_current`/`queue_job_dead_letter_total` (see [Queue / Worker Recovery](./queue-worker-recovery.md)).
 
 ## Immediate Triage
 

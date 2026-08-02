@@ -20,8 +20,6 @@ type TelemetryEvent = {
 
 export class AnalyticsService {
   private readonly redis = getRedis();
-  private workerRunning = false;
-  private inflight: Promise<void> | null = null;
 
   /**
    * Enqueues API telemetry into a durable Redis stream.
@@ -37,32 +35,25 @@ export class AnalyticsService {
   }
 
   /**
-   * Starts the analytics consumer-group worker and performs pending-entry reclamation.
+   * Ensures the consumer group exists. Idempotent (BUSYGROUP errors are
+   * swallowed) and deliberately not cached on the instance — the underlying
+   * stream/group can disappear independently of this service's lifetime (a
+   * Redis flush, a manual `DEL`), so this is re-checked on every call rather
+   * than trusting a boolean flag that could go stale.
    */
-  async startWorker(): Promise<void> {
-    if (this.workerRunning) return;
-    this.workerRunning = true;
+  private async ensureGroup(): Promise<void> {
     await this.redis.call('XGROUP', 'CREATE', STREAM_KEY, GROUP, '0', 'MKSTREAM').catch(() => undefined);
-    await this.reclaimPending();
-    void this.runLoop();
   }
 
   /**
-   * Stops the worker and waits for any in-flight persistence operation to finish.
+   * Reclaims and reprocesses entries that were previously delivered to a now-dead
+   * consumer but never acknowledged. Called once at worker startup, before the
+   * repeatable persist-tick job starts reading newly-delivered entries.
    */
-  async stopWorker(): Promise<void> {
-    this.workerRunning = false;
-    if (this.inflight) {
-      await this.inflight.catch(() => undefined);
-    }
-  }
-
-  /**
-   * Reclaims and reprocesses pending entries that were previously delivered but not acknowledged.
-   */
-  private async reclaimPending(): Promise<void> {
+  async reclaimPendingOnce(): Promise<void> {
+    await this.ensureGroup();
     let startId = '0-0';
-    while (this.workerRunning) {
+    for (;;) {
       const reclaimed = await this.redis.call(
         'XAUTOCLAIM',
         STREAM_KEY,
@@ -77,29 +68,41 @@ export class AnalyticsService {
       if (!entries || entries.length === 0) {
         return;
       }
-      this.inflight = this.persistBatch(entries);
-      await this.inflight;
-      this.inflight = null;
+      await this.persistBatch(entries);
       startId = nextStartId;
     }
   }
 
   /**
-   * Worker loop that reads newly-delivered stream entries for this consumer.
+   * Reads and persists one batch of newly-delivered stream entries for this
+   * consumer. Invoked by the `analytics:telemetry-persist` repeatable BullMQ
+   * job rather than an internal loop — the job's own retry/backoff covers
+   * transient Postgres/Redis failures for "run one tick," while unacked stream
+   * entries remain durable in the consumer group regardless (the Redis Stream
+   * is the durability layer; BullMQ is the scheduling/retry layer on top).
+   *
+   * Returns whether any entries were read, so callers can decide whether to
+   * immediately attempt another tick (queue is backed up) or wait for the
+   * next scheduled tick.
    */
-  private async runLoop(): Promise<void> {
-    while (this.workerRunning) {
-      try {
-        const rows = await this.redis.call('XREADGROUP', 'GROUP', GROUP, CONSUMER, 'COUNT', String(env.ANALYTICS_BATCH_SIZE), 'BLOCK', '2000', 'STREAMS', STREAM_KEY, '>') as unknown[];
-        if (!rows?.length) continue;
-        const entries = (rows[0] as [string, Array<[string, string[]]>])[1];
-        this.inflight = this.persistBatch(entries);
-        await this.inflight;
-        this.inflight = null;
-      } catch (error) {
-        logger.warn('Analytics worker loop failure', { error: error instanceof Error ? error.message : 'unknown' });
-      }
-    }
+  async processOneBatch(): Promise<boolean> {
+    await this.ensureGroup();
+    const rows = await this.redis.call(
+      'XREADGROUP',
+      'GROUP',
+      GROUP,
+      CONSUMER,
+      'COUNT',
+      String(env.ANALYTICS_BATCH_SIZE),
+      'STREAMS',
+      STREAM_KEY,
+      '>',
+    ) as unknown[];
+    if (!rows?.length) return false;
+    const entries = (rows[0] as [string, Array<[string, string[]]>])[1];
+    if (entries.length === 0) return false;
+    await this.persistBatch(entries);
+    return true;
   }
 
   /**

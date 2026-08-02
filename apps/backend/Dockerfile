@@ -40,6 +40,7 @@ RUN npm ci --workspace=packages/shared --workspace=apps/backend --omit=dev
 COPY --from=builder /app/apps/backend/dist apps/backend/dist
 COPY --from=builder /app/packages/shared/dist packages/shared/dist
 COPY scripts/healthcheck.js scripts/healthcheck.js
+COPY scripts/healthcheck-worker.js scripts/healthcheck-worker.js
 
 # Init for proper signal handling (graceful shutdown in containers)
 RUN apk add --no-cache dumb-init

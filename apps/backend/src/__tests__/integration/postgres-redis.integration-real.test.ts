@@ -4,9 +4,12 @@ import { Pool } from 'pg';
 import { app } from '../../app';
 import { getPool, disconnectDatabase } from '../../config/database';
 import { getRedis, disconnectRedis } from '../../config/redis';
+import { disconnectQueueRedis } from '../../config/queueRedis';
 import { migrate } from '../../db/migrate';
 import { analyticsService } from '../../services/analytics.service';
 import { env } from '../../config/env';
+import { registerWorkers, closeWorkers } from '../../queue/workers';
+import { closeAllQueues } from '../../queue/queues';
 
 const ORG_A = '11111111-1111-4111-8111-111111111111';
 const ORG_B = '22222222-2222-4222-8222-222222222222';
@@ -111,10 +114,13 @@ describe('real Postgres + Redis integration gates', () => {
     await migrate();
     await ensureSeedData();
     await getRedis().flushdb();
+    await registerWorkers();
   }, 60_000);
 
   afterAll(async () => {
-    await analyticsService.stopWorker();
+    await closeWorkers();
+    await closeAllQueues();
+    await disconnectQueueRedis();
     await disconnectRedis();
     await disconnectDatabase();
   });
@@ -189,16 +195,15 @@ describe('real Postgres + Redis integration gates', () => {
 
     expect(await redis.xlen('api_telemetry_stream')).toBeGreaterThan(0);
 
-    await analyticsService.startWorker();
     const deadline = Date.now() + 10_000;
     let persisted = 0;
     while (Date.now() < deadline) {
+      await analyticsService.processOneBatch();
       const rows = await getPool().query<{ count: string }>("SELECT COUNT(*) AS count FROM api_request_metrics WHERE endpoint = '/integration/analytics'");
       persisted = Number(rows.rows[0].count);
       if (persisted > 0) break;
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
-    await analyticsService.stopWorker();
 
     expect(persisted).toBeGreaterThan(0);
   }, 20_000);
@@ -233,12 +238,22 @@ describe('real Postgres + Redis integration gates', () => {
     expect(second.status).toBe(200);
     expect(JSON.parse(second.body).data).toEqual({ received: true, duplicate: true });
 
-    const eventRows = await getPool().query<{ status: string }>('SELECT status FROM stripe_webhook_events WHERE id = $1', [eventId]);
-    expect(eventRows.rows[0].status).toBe('processed');
+    // Processing is now asynchronous — a BullMQ worker consumes the enqueued
+    // job in the background, so wait for it to land rather than asserting
+    // immediately after the HTTP response.
+    const deadline = Date.now() + 10_000;
+    let status: string | undefined;
+    while (Date.now() < deadline) {
+      const eventRows = await getPool().query<{ status: string }>('SELECT status FROM stripe_webhook_events WHERE id = $1', [eventId]);
+      status = eventRows.rows[0]?.status;
+      if (status === 'processed') break;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    expect(status).toBe('processed');
 
     const subscriptionRows = await getPool().query<{ status: string; plan: string }>(
       "SELECT status, plan FROM subscriptions WHERE stripe_subscription_id = 'sub_integration_a'",
     );
     expect(subscriptionRows.rows[0]).toMatchObject({ status: 'active', plan: 'pro' });
-  });
+  }, 15_000);
 });
