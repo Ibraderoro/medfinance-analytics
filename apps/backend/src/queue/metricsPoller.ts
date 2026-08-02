@@ -1,6 +1,7 @@
 import { QUEUE_NAMES, dlqName, getQueue } from './queues';
 import { metricsService } from '../services/metrics.service';
 import { logger } from '../utils/logger';
+import { env } from '../config/env';
 
 const STATES = ['waiting', 'active', 'delayed', 'failed', 'completed'] as const;
 
@@ -14,6 +15,7 @@ let pollTimer: NodeJS.Timeout | null = null;
  */
 async function pollOnce(): Promise<void> {
   const queueNames = [...Object.values(QUEUE_NAMES), ...Object.values(QUEUE_NAMES).map(dlqName)];
+  let anySucceeded = false;
 
   for (const name of queueNames) {
     try {
@@ -21,6 +23,7 @@ async function pollOnce(): Promise<void> {
       for (const state of STATES) {
         metricsService.recordQueueDepth({ queue: name, state }, counts[state] ?? 0);
       }
+      anySucceeded = true;
     } catch (error) {
       logger.warn('Failed to poll queue depth metrics', {
         queue: name,
@@ -29,10 +32,14 @@ async function pollOnce(): Promise<void> {
     }
   }
 
-  lastPollAt = Date.now();
+  if (anySucceeded) {
+    lastPollAt = Date.now();
+  }
 }
 
-export function startMetricsPoller(intervalMs = 15_000): void {
+export function startMetricsPoller(
+  intervalMs = Math.max(1_000, Math.floor(env.WORKER_READY_STALE_THRESHOLD_MS / 4)),
+): void {
   if (pollTimer) return;
   void pollOnce();
   pollTimer = setInterval(() => void pollOnce(), intervalMs);

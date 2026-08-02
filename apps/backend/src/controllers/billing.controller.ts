@@ -5,6 +5,7 @@ import { BillingService } from '../services/billing.service';
 import { StripeService } from '../services/stripe.service';
 import { getRedis } from '../config/redis';
 import { enqueueWebhookProcessing } from '../queue/producers';
+import { logger } from '../utils/logger';
 
 const billingService = new BillingService();
 const stripeService = new StripeService();
@@ -119,15 +120,22 @@ export async function handleStripeWebhook(
       if (dedupKey) {
         try {
           await redis.del(dedupKey);
-        } catch {
-          // Preserve the original enqueue error so Stripe can retry the event.
+        } catch (rollbackError) {
+          logger.error('Failed to roll back webhook dedup key after enqueue failure', {
+            dedupKey,
+            eventId: event.id,
+            message: rollbackError instanceof Error ? rollbackError.message : String(rollbackError),
+          });
         }
       }
       if (reservedEventId) {
         try {
           await billingService.releaseWebhookEventReservation(reservedEventId);
-        } catch {
-          // Preserve the original enqueue error so Stripe can retry the event.
+        } catch (rollbackError) {
+          logger.error('Failed to release webhook reservation after enqueue failure', {
+            reservedEventId,
+            message: rollbackError instanceof Error ? rollbackError.message : String(rollbackError),
+          });
         }
       }
       throw err;

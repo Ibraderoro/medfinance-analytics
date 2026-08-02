@@ -43,10 +43,10 @@ redis-cli -u <redis-url> INFO stats
 1. Check provider status and network access.
 2. Confirm credentials and TLS settings.
 3. Restart Redis service only if provider/runbook permits.
-4. Restart backend instances after Redis recovers if clients do not reconnect.
+4. Restart backend instances and the worker service after Redis recovers if clients do not reconnect.
 
 ```bash
-docker compose restart redis backend
+docker compose restart redis backend worker
 ```
 
 ### Path B: Memory Pressure

@@ -22,14 +22,13 @@ function optionalEnv(key: string, defaultValue = ''): string {
 }
 
 function parseIntEnv(key: string, defaultValue: number): number {
-  const raw = optionalEnv(key, String(defaultValue));
-  const parsed = Number.parseInt(raw, 10);
+  const raw = optionalEnv(key, String(defaultValue)).trim();
 
-  if (!Number.isFinite(parsed)) {
-    throw new Error(`Environment variable ${key} must be a valid integer`);
+  if (!/^\d+$/.test(raw) || !Number.isSafeInteger(Number(raw))) {
+    throw new Error(`Environment variable ${key} must be a non-negative integer`);
   }
 
-  return parsed;
+  return Number(raw);
 }
 
 function optionalBooleanEnv(key: string, defaultValue: boolean): boolean {
@@ -232,6 +231,7 @@ export const env = {
   DLQ_RETENTION_COUNT: parseIntEnv('DLQ_RETENTION_COUNT', 1_000),
   WORKER_HEALTH_PORT: parseIntEnv('WORKER_HEALTH_PORT', 3002),
   WORKER_READY_STALE_THRESHOLD_MS: parseIntEnv('WORKER_READY_STALE_THRESHOLD_MS', 60_000),
+  WORKER_SHUTDOWN_TIMEOUT_MS: parseIntEnv('WORKER_SHUTDOWN_TIMEOUT_MS', 10_000),
   ALLOW_SELF_SERVICE_REGISTRATION: optionalBooleanEnv(
     'ALLOW_SELF_SERVICE_REGISTRATION',
     optionalEnv('NODE_ENV', 'development') !== 'production',
@@ -277,6 +277,10 @@ for (const [key, value] of Object.entries({
   if (value < 0) {
     throw new Error(`Environment variable ${key} must be a non-negative number`);
   }
+}
+
+if (env.WORKER_HEALTH_PORT < 1 || env.WORKER_HEALTH_PORT > 65535) {
+  throw new Error('WORKER_HEALTH_PORT must be between 1 and 65535');
 }
 
 if (env.OPS_ENDPOINT_AUTH_ENABLED && env.OPS_ENDPOINT_AUTH_TOKEN.length < 16) {

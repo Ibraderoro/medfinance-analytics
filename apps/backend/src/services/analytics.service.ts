@@ -65,10 +65,12 @@ export class AnalyticsService {
         String(env.ANALYTICS_BATCH_SIZE),
       ) as [string, Array<[string, string[]]>];
       const [nextStartId, entries] = reclaimed;
-      if (!entries || entries.length === 0) {
+      if (entries && entries.length > 0) {
+        await this.persistBatch(entries);
+      }
+      if (nextStartId === '0-0') {
         return;
       }
-      await this.persistBatch(entries);
       startId = nextStartId;
     }
   }

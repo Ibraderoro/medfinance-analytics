@@ -47,10 +47,18 @@ async function handleFinalFailure(name: QueueName, job: Job, error: Error): Prom
   });
   metricsService.recordQueueDeadLetter({ queue: name });
 
-  await getQueue(dlqName(name)).add(job.name, job.data, {
-    jobId: job.id,
-    removeOnComplete: { count: env.DLQ_RETENTION_COUNT },
-  });
+  try {
+    await getQueue(dlqName(name)).add(job.name, job.data, {
+      jobId: job.id,
+      removeOnComplete: { count: env.DLQ_RETENTION_COUNT },
+    });
+  } catch (dlqError) {
+    logger.error('Failed to enqueue job onto dead-letter queue', {
+      queue: name,
+      jobId: job.id,
+      message: dlqError instanceof Error ? dlqError.message : String(dlqError),
+    });
+  }
 
   if (name === QUEUE_NAMES.BILLING_WEBHOOK) {
     const payload = job.data as WebhookProcessingPayload;

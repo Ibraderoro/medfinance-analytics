@@ -59,13 +59,13 @@ docker compose restart worker
 
 1. Confirm the worker is actually consuming (check logs for job completion, or `queue_jobs_total` increasing).
 2. Scale worker concurrency for the affected queue via `WEBHOOK_QUEUE_CONCURRENCY` / `ANALYTICS_PERSIST_QUEUE_CONCURRENCY` (keep `ANALYTICS_PERSIST_QUEUE_CONCURRENCY` and `ANALYTICS_RETENTION_QUEUE_CONCURRENCY` at `1` — these are single-writer by design to avoid double-processing the same stream entries or overlapping retention passes).
-3. For sustained backlog, run additional `worker` replicas — BullMQ workers on the same queue name safely share work across replicas.
+3. For sustained **webhook** backlog, running additional `worker` replicas is safe — BullMQ workers on the same queue name share work across replicas. Do **not** scale worker replicas to relieve analytics backlog: every replica registers all three queues, so more replicas multiply analytics consumers too and break the single-writer guarantee, regardless of the `ANALYTICS_PERSIST_QUEUE_CONCURRENCY`/`ANALYTICS_RETENTION_QUEUE_CONCURRENCY` settings. For sustained analytics backlog, investigate the underlying cause (see Path D) rather than scaling replicas.
 
 ### Path C: Jobs Landing in a Dead-Letter Queue
 
 1. Identify which queue via `queue_job_dead_letter_total{queue="..."}`.
 2. Inspect the DLQ jobs (`<queue-name>.dlq`) to see the failed payload and confirm root cause (check worker logs around the same timestamp for the underlying error).
-3. For the webhook DLQ specifically: the Postgres reservation was already released when the job landed in the DLQ, so simply waiting for Stripe's own webhook redelivery (Stripe retries failed webhooks for up to ~3 days) will naturally reprocess the event from scratch — no manual requeue is required unless the underlying cause is fixed and immediate reprocessing is desired.
+3. For the webhook DLQ specifically: the Postgres reservation is already released once the job lands in the DLQ. After confirming and fixing the underlying cause (from step 2's log inspection), immediately reprocess the event — either manually replay the queued DLQ job (step 4 below) or resend the event from the Stripe dashboard. Do not rely on Stripe's own automatic retries to recover this: those only cover deliveries where the webhook endpoint itself failed to return a timely 2xx — they won't fire for jobs that failed inside our own processing pipeline after we already returned 2xx.
 4. To manually requeue a DLQ job immediately (only after confirming the root cause is fixed):
 
 ```bash

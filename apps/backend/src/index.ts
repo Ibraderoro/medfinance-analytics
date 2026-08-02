@@ -5,6 +5,8 @@ import { connectDatabase, disconnectDatabase } from './config/database';
 import { assertCompatibleSchemaVersion } from './db/schemaCompatibility';
 import { validateRequiredTables } from './db/schemaValidation';
 import { connectRedis, disconnectRedis } from './config/redis';
+import { connectQueueRedis, disconnectQueueRedis } from './config/queueRedis';
+import { closeAllQueues } from './queue/queues';
 import { env } from './config/env';
 import { liveFinancialsService } from './services/liveFinancials.service';
 import { startTracing, stopTracing } from './observability/tracing';
@@ -36,6 +38,7 @@ async function bootstrap(): Promise<void> {
     await assertCompatibleSchemaVersion();
     await validateRequiredTables();
     await connectRedis();
+    await connectQueueRedis();
 
     await liveFinancialsService.start();
 
@@ -62,7 +65,8 @@ async function bootstrap(): Promise<void> {
           return;
         }
 
-        await Promise.allSettled([disconnectDatabase(), disconnectRedis(), stopTracing()]);
+        await closeAllQueues();
+        await Promise.allSettled([disconnectDatabase(), disconnectRedis(), disconnectQueueRedis(), stopTracing()]);
         process.exit(0);
       });
     };

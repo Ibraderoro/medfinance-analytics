@@ -35,18 +35,47 @@ export function getQueueRedisConnection(): Redis {
   return queueRedisClient;
 }
 
-export async function connectQueueRedis(retries = 12, retryDelayMs = 3_000): Promise<void> {
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+export async function connectQueueRedis(
+  retries = 12,
+  retryDelayMs = 3_000,
+  attemptTimeoutMs = retryDelayMs,
+): Promise<void> {
   const client = getQueueRedisConnection();
   let lastError: unknown;
   for (let attempt = 1; attempt <= retries; attempt += 1) {
     try {
-      if (client.status === 'wait') await client.connect();
-      await client.ping();
+      await withTimeout(
+        (async () => {
+          if (!['connecting', 'connect', 'ready'].includes(client.status)) {
+            await client.connect();
+          }
+          await client.ping();
+        })(),
+        attemptTimeoutMs,
+        `Queue Redis connect/ping attempt timed out after ${attemptTimeoutMs}ms`,
+      );
       logger.info('Queue Redis connected', { attempt });
       return;
     } catch (error) {
       lastError = error;
       logger.warn('Queue Redis connection attempt failed', { attempt, retries });
+      client.disconnect();
       await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
     }
   }

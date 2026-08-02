@@ -4,7 +4,7 @@ const port = Number.parseInt(process.env.WORKER_HEALTH_PORT || '3002', 10);
 
 const request = http.get(
   {
-    hostname: 'localhost',
+    hostname: '127.0.0.1',
     port,
     path: '/ready',
   },

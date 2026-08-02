@@ -45,13 +45,32 @@ async function bootstrap(): Promise<void> {
       isShuttingDown = true;
 
       logger.info('Worker received shutdown signal', { signal });
-      stopMetricsPoller();
-      await closeWorkers();
-      await closeAllQueues();
 
-      await new Promise<void>((resolve) => healthServer.close(() => resolve()));
-      await Promise.allSettled([disconnectDatabase(), disconnectRedis(), disconnectQueueRedis(), stopTracing()]);
-      process.exit(0);
+      const watchdog = setTimeout(() => {
+        logger.error('Worker shutdown timed out, forcing exit', {
+          signal,
+          timeoutMs: env.WORKER_SHUTDOWN_TIMEOUT_MS,
+        });
+        process.exit(0);
+      }, env.WORKER_SHUTDOWN_TIMEOUT_MS);
+      watchdog.unref();
+
+      try {
+        stopMetricsPoller();
+        await closeWorkers();
+        await closeAllQueues();
+
+        await new Promise<void>((resolve) => healthServer.close(() => resolve()));
+        await Promise.allSettled([disconnectDatabase(), disconnectRedis(), disconnectQueueRedis(), stopTracing()]);
+      } catch (shutdownError) {
+        logger.error('Error during worker shutdown cleanup', {
+          signal,
+          message: shutdownError instanceof Error ? shutdownError.message : String(shutdownError),
+        });
+      } finally {
+        clearTimeout(watchdog);
+        process.exit(0);
+      }
     };
 
     process.on('SIGTERM', () => {

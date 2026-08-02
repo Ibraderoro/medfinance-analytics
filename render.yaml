@@ -67,6 +67,10 @@ services:
 
   - type: worker
     name: medfinance-worker
+    # Render worker services have no built-in health-check/uptime monitoring.
+    # External liveness/readiness monitoring against WORKER_HEALTH_PORT's
+    # /ready endpoint (or a heartbeat-metric + stale-worker alert) must be
+    # configured out of band — see docs/runbooks/queue-worker-recovery.md.
     runtime: docker
     repo: https://github.com/your-org/medfinance-analytics
     rootDir: .
