@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { Loading } from './components/common/Loading';
@@ -12,53 +12,18 @@ import { LoginPage } from './pages/Login';
 import { RegisterPage } from './pages/Register';
 import { AdminInvitesPage } from './pages/AdminInvites';
 import { OidcCallbackPage } from './pages/OidcCallback';
-import { authApi } from './services/api';
+import { useAuthStore } from './store/authStore';
+import { ProtectedRoute } from './components/routing/ProtectedRoute';
+import { RoleRoute } from './components/routing/RoleRoute';
 
-function useAuthSession() {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+function useAuthBootstrap() {
+  const restoreSession = useAuthStore((s) => s.restoreSession);
+  const setNavigate = useAuthStore((s) => s.setNavigate);
+  const navigate = useNavigate();
 
-  useEffect(() => {
-    const validateSession = async () => {
-      const hintedSession = sessionStorage.getItem('auth_session_active') === 'true';
-      if (!hintedSession) {
-        setIsAuthenticated(false);
-        return;
-      }
-
-      try {
-        await authApi.refresh();
-        setIsAuthenticated(true);
-      } catch {
-        sessionStorage.removeItem('auth_session_active');
-        setIsAuthenticated(false);
-      }
-    };
-
-
-    const handleAuthSessionChanged = () => {
-      void validateSession();
-    };
-
-    const handleStorage = (event: StorageEvent) => {
-      if (event.key === 'auth_session_active') {
-        void validateSession();
-      }
-    };
-
-    window.addEventListener('auth-session-changed', handleAuthSessionChanged);
-    window.addEventListener('storage', handleStorage);
-
-    void validateSession();
-
-    return () => {
-      window.removeEventListener('auth-session-changed', handleAuthSessionChanged);
-      window.removeEventListener('storage', handleStorage);
-    };
-  }, []);
-
-  return isAuthenticated;
+  useEffect(() => { void restoreSession(); }, [restoreSession]);
+  useEffect(() => { setNavigate(navigate); return () => setNavigate(null); }, [navigate, setNavigate]);
 }
-
 
 function useThemeMode() {
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -80,58 +45,57 @@ function useThemeMode() {
   return { theme, toggleTheme: () => setTheme((t) => (t === 'light' ? 'dark' : 'light')) };
 }
 
-function ProtectedRoute({ children, isAuthenticated }: { children: JSX.Element; isAuthenticated: boolean | null }) {
-  if (isAuthenticated === null) {
-    return <Loading message="Checking secure session" />;
-  }
+function AppRoutes() {
+  useAuthBootstrap();
+  const { theme, toggleTheme } = useThemeMode();
+  const status = useAuthStore((s) => s.status);
+  const hasCheckedSession = useAuthStore((s) => s.hasCheckedSession);
+  const isAuthenticated = status === 'authenticated';
+  const isChecking = !hasCheckedSession;
+  const checkingFallback = <Loading message="Checking secure session" />;
 
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
+  return (
+    <Routes>
+      <Route
+        path="/login"
+        element={isChecking ? checkingFallback : isAuthenticated ? <Navigate to="/dashboard" replace /> : <LoginPage />}
+      />
+      <Route
+        path="/register"
+        element={isChecking ? checkingFallback : isAuthenticated ? <Navigate to="/dashboard" replace /> : <RegisterPage />}
+      />
+      <Route
+        path="/oidc/callback"
+        element={<OidcCallbackPage />}
+      />
+      <Route
+        path="/"
+        element={(
+          <ProtectedRoute>
+            <Layout theme={theme} onToggleTheme={toggleTheme} />
+          </ProtectedRoute>
+        )}
+      >
+        <Route index element={<Navigate to="/dashboard" replace />} />
+        <Route path="dashboard" element={<DashboardPage />} />
+        <Route path="financials" element={<FinancialsPage />} />
+        <Route path="forecasting" element={<ForecastingPage />} />
+        <Route path="compliance" element={<CompliancePage />} />
+        <Route path="billing" element={<BillingPage />} />
+        <Route path="admin/invitations" element={<RoleRoute allow={['admin']}><AdminInvitesPage /></RoleRoute>} />
+      </Route>
 
-  return children;
+      <Route path="*" element={isChecking ? checkingFallback : <Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />} />
+    </Routes>
+  );
 }
 
 export default function App() {
-  const isAuthenticated = useAuthSession();
-  const { theme, toggleTheme } = useThemeMode();
-
   return (
     <ErrorBoundary fallbackTitle="Application unavailable">
-    <BrowserRouter>
-      <Routes>
-        <Route
-          path="/login"
-          element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <LoginPage />}
-        />
-        <Route
-          path="/register"
-          element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <RegisterPage />}
-        />
-        <Route
-          path="/oidc/callback"
-          element={<OidcCallbackPage />}
-        />
-        <Route
-          path="/"
-          element={(
-            <ProtectedRoute isAuthenticated={isAuthenticated}>
-              <Layout theme={theme} onToggleTheme={toggleTheme} />
-            </ProtectedRoute>
-          )}
-        >
-          <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="dashboard" element={<DashboardPage />} />
-          <Route path="financials" element={<FinancialsPage />} />
-          <Route path="forecasting" element={<ForecastingPage />} />
-          <Route path="compliance" element={<CompliancePage />} />
-          <Route path="billing" element={<BillingPage />} />
-          <Route path="admin/invitations" element={<AdminInvitesPage />} />
-        </Route>
-
-        <Route path="*" element={<Navigate to={isAuthenticated ? '/dashboard' : '/login'} replace />} />
-      </Routes>
-    </BrowserRouter>
+      <BrowserRouter>
+        <AppRoutes />
+      </BrowserRouter>
     </ErrorBoundary>
   );
 }

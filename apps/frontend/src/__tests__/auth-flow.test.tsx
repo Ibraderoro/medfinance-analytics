@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { LoginPage } from '../pages/Login';
@@ -20,6 +20,12 @@ jest.mock('../services/api', () => ({
     createInvitation: jest.fn().mockResolvedValue({ data: { success: true, data: { token: 'signed-token' } } }),
     revokeInvitation: jest.fn().mockResolvedValue({ data: { success: true, data: { revoked: true } } }),
     verifyMfa: jest.fn().mockResolvedValue({ data: { success: true, data: { session: 'created' } } }),
+    getSession: jest.fn().mockResolvedValue({
+      data: {
+        success: true,
+        data: { user: { id: 'user-1', email: 'a@a.com', firstName: 'A', lastName: 'B', role: 'viewer', organizationId: 'org-1' } },
+      },
+    }),
   },
 }));
 
@@ -37,6 +43,19 @@ describe('Auth flow', () => {
     expect(await screen.findByText('Invalid email, password, or organization ID.')).toBeInTheDocument();
   });
 
+  it('completes a plain login without MFA and navigates to the dashboard', async () => {
+    (authApi.login as jest.Mock).mockResolvedValueOnce({ data: { success: true, data: { session: 'created' } } });
+
+    render(<MemoryRouter><LoginPage /></MemoryRouter>);
+    await userEvent.type(screen.getByLabelText('Email'), 'admin@example.com');
+    await userEvent.type(screen.getByLabelText('Organization ID'), '550e8400-e29b-41d4-a716-446655440000');
+    await userEvent.type(screen.getByLabelText('Password'), 'strongpass1');
+    await userEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/dashboard', { replace: true }));
+    expect(authApi.getSession).toHaveBeenCalled();
+  });
+
   it('completes login when MFA is required', async () => {
     (authApi.login as jest.Mock).mockResolvedValueOnce({ data: { success: true, data: { session: 'pending_mfa', tempToken: 'temp-123' } } });
     (authApi.verifyMfa as jest.Mock).mockResolvedValueOnce({ data: { success: true, data: { session: 'created' } } });
@@ -52,6 +71,24 @@ describe('Auth flow', () => {
 
     expect(authApi.verifyMfa).toHaveBeenCalledWith('temp-123', '123456');
     expect(navigate).toHaveBeenCalledWith('/dashboard', { replace: true });
+  });
+
+  it('shows the session-expired banner when redirected with that reason', async () => {
+    render(
+      <MemoryRouter initialEntries={[{ pathname: '/login', state: { reason: 'expired' } }]}>
+        <LoginPage />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText('Your session has expired. Please sign in again.')).toBeInTheDocument();
+  });
+
+  it('shows a neutral banner when redirected after a cross-tab logout', async () => {
+    render(
+      <MemoryRouter initialEntries={[{ pathname: '/login', state: { reason: 'other-tab' } }]}>
+        <LoginPage />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText('You were signed out.')).toBeInTheDocument();
   });
 
   it('shows invite registration API error', async () => {

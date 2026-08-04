@@ -13,10 +13,15 @@ jest.mock('../services/api', () => ({
   completeOidc: jest.fn(),
 }));
 
+const completeLoginMock = jest.fn();
+jest.mock('../store/authStore', () => ({
+  useAuthStore: (selector: (state: { completeLogin: () => Promise<void> }) => unknown) =>
+    selector({ completeLogin: completeLoginMock }),
+}));
+
 describe('OidcCallbackPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    sessionStorage.clear();
   });
 
   it('shows a friendly error when state or code are missing', async () => {
@@ -30,10 +35,12 @@ describe('OidcCallbackPage', () => {
 
     expect(await screen.findByText(/missing required parameters/i)).toBeInTheDocument();
     expect(completeOidc).not.toHaveBeenCalled();
+    expect(completeLoginMock).not.toHaveBeenCalled();
   });
 
-  it('completes OIDC and redirects to dashboard', async () => {
+  it('completes OIDC, hydrates the session, and redirects to dashboard', async () => {
     (completeOidc as jest.Mock).mockResolvedValueOnce({ data: { success: true } });
+    completeLoginMock.mockResolvedValueOnce(undefined);
 
     render(
       <MemoryRouter initialEntries={['/oidc/callback?state=state-1&code=code-1']}>
@@ -44,7 +51,7 @@ describe('OidcCallbackPage', () => {
     );
 
     await waitFor(() => expect(completeOidc).toHaveBeenCalledWith('state-1', 'code-1'));
+    await waitFor(() => expect(completeLoginMock).toHaveBeenCalled());
     await waitFor(() => expect(navigate).toHaveBeenCalledWith('/dashboard', { replace: true }));
-    expect(sessionStorage.getItem('auth_session_active')).toBe('true');
   });
 });

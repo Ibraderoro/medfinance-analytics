@@ -7,6 +7,7 @@ import { Sidebar } from '../components/Layout/Sidebar';
 import { Header } from '../components/Layout/Header';
 import { Layout } from '../components/Layout/Layout';
 import { authApi } from '../services/api';
+import { useAuthStore } from '../store/authStore';
 import userEvent from '@testing-library/user-event';
 
 jest.mock('../services/api', () => ({
@@ -111,16 +112,15 @@ describe('layout components', () => {
   });
 
   it('Header logout clears the session and navigates to /login', async () => {
+    useAuthStore.getState().setNavigate(navigate);
     const { getByRole } = render(<MemoryRouter><Header /></MemoryRouter>);
-    const dispatchSpy = jest.spyOn(window, 'dispatchEvent');
 
     await userEvent.click(getByRole('button', { name: /log out/i }));
 
     expect(authApi.logout).toHaveBeenCalled();
-    expect(sessionStorage.getItem('auth_session_active')).toBeNull();
-    expect(dispatchSpy).toHaveBeenCalledWith(expect.any(Event));
-    expect(navigate).toHaveBeenCalledWith('/login', { replace: true });
-    dispatchSpy.mockRestore();
+    expect(useAuthStore.getState().status).toBe('unauthenticated');
+    expect(useAuthStore.getState().user).toBeNull();
+    expect(navigate).toHaveBeenCalledWith('/login', { replace: true, state: undefined });
   });
 
   it('Layout renders Header, Sidebar, and outlet area', () => {

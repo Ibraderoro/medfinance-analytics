@@ -1,10 +1,12 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
 import App from '../App';
 import { useAppStore } from '../store';
+import { useAuthStore } from '../store/authStore';
 import { authApi } from '../services/api';
 
 jest.mock('../services/api', () => ({
   authApi: {
+    getSession: jest.fn(),
     refresh: jest.fn(),
   },
 }));
@@ -20,37 +22,59 @@ jest.mock('../pages/Billing', () => ({ BillingPage: () => <div>Billing page</div
 jest.mock('../pages/Login', () => ({ LoginPage: () => <div>Login page</div> }));
 jest.mock('../pages/Register', () => ({ RegisterPage: () => <div>Register page</div> }));
 
+const getSessionMock = authApi.getSession as jest.Mock;
 const refreshMock = authApi.refresh as jest.Mock;
+
+const sessionResponse = {
+  data: {
+    data: {
+      user: { id: 'user-1', email: 'a@b.com', firstName: 'A', lastName: 'B', role: 'admin', organizationId: 'org-1' },
+    },
+  },
+};
+
+function resetAuthStore() {
+  useAuthStore.setState({
+    status: 'idle',
+    user: null,
+    isRefreshing: false,
+    sessionEndReason: null,
+    hasCheckedSession: false,
+    navigateRef: null,
+  });
+}
 
 describe('App routing and auth session coverage', () => {
   beforeEach(() => {
+    getSessionMock.mockReset();
     refreshMock.mockReset();
-    sessionStorage.clear();
+    resetAuthStore();
     window.history.pushState({}, '', '/');
   });
 
-  it('shows the login page when no session hint exists', async () => {
+  it('shows the login page when /auth/me and the fallback refresh both fail', async () => {
+    getSessionMock.mockRejectedValueOnce({ response: { status: 401 } });
+    refreshMock.mockRejectedValueOnce({ response: { status: 401 } });
+
     render(<App />);
 
     await waitFor(() => expect(screen.getByText('Login page')).toBeInTheDocument());
-    expect(refreshMock).not.toHaveBeenCalled();
+    expect(refreshMock).toHaveBeenCalledTimes(1);
   });
 
-  it('renders protected routes after a successful refresh', async () => {
-    sessionStorage.setItem('auth_session_active', 'true');
-    refreshMock.mockResolvedValueOnce({});
+  it('renders protected routes when /auth/me succeeds on first try', async () => {
+    getSessionMock.mockResolvedValueOnce(sessionResponse);
     window.history.pushState({}, '', '/dashboard');
 
     render(<App />);
 
     expect(screen.getByText('Checking secure session')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText('Protected shell')).toBeInTheDocument());
-    expect(refreshMock).toHaveBeenCalledTimes(1);
+    expect(refreshMock).not.toHaveBeenCalled();
   });
 
   it('redirects authenticated login and unknown routes to the dashboard shell', async () => {
-    sessionStorage.setItem('auth_session_active', 'true');
-    refreshMock.mockResolvedValue({});
+    getSessionMock.mockResolvedValue(sessionResponse);
     window.history.pushState({}, '', '/login');
 
     const { rerender } = render(<App />);
@@ -64,46 +88,16 @@ describe('App routing and auth session coverage', () => {
     await waitFor(() => expect(window.location.pathname).toBe('/dashboard'));
   });
 
-  it('clears the session and redirects to login when refresh fails', async () => {
-    sessionStorage.setItem('auth_session_active', 'true');
-    refreshMock.mockRejectedValueOnce(new Error('expired'));
+  it('renders protected routes when /auth/me 401s but the fallback silent refresh succeeds', async () => {
+    getSessionMock
+      .mockRejectedValueOnce({ response: { status: 401 } })
+      .mockResolvedValueOnce(sessionResponse);
+    refreshMock.mockResolvedValueOnce({});
     window.history.pushState({}, '', '/billing');
 
     render(<App />);
 
-    await waitFor(() => expect(screen.getByText('Login page')).toBeInTheDocument());
-    expect(sessionStorage.getItem('auth_session_active')).toBeNull();
-  });
-
-  it('revalidates when auth-session and storage events fire', async () => {
-    sessionStorage.setItem('auth_session_active', 'true');
-    refreshMock.mockResolvedValue({});
-    window.history.pushState({}, '', '/financials');
-
-    render(<App />);
-    await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
-
-    await act(async () => {
-      window.dispatchEvent(new Event('auth-session-changed'));
-    });
-    await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(2));
-
-    await act(async () => {
-      window.dispatchEvent(new StorageEvent('storage', { key: 'auth_session_active' }));
-    });
-    await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(3));
-  });
-
-  it('does not revalidate for unrelated storage keys', async () => {
-    sessionStorage.setItem('auth_session_active', 'true');
-    refreshMock.mockResolvedValue({});
-
-    render(<App />);
-    await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
-
-    await act(async () => {
-      window.dispatchEvent(new StorageEvent('storage', { key: 'other_key' }));
-    });
+    await waitFor(() => expect(screen.getByText('Protected shell')).toBeInTheDocument());
     expect(refreshMock).toHaveBeenCalledTimes(1);
   });
 });

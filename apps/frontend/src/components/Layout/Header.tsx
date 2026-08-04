@@ -1,19 +1,8 @@
-import { useNavigate } from 'react-router-dom';
-import { authApi } from '../../services/api';
+import { useAuthStore } from '../../store/authStore';
 import styles from './Header.module.css';
 
 export function Header({ theme = 'light', onToggleTheme = () => undefined }: { theme?: 'light' | 'dark'; onToggleTheme?: () => void }) {
-  const navigate = useNavigate();
-
-  const logout = async () => {
-    try {
-      await authApi.logout();
-    } finally {
-      sessionStorage.removeItem('auth_session_active');
-      window.dispatchEvent(new Event('auth-session-changed'));
-      navigate('/login', { replace: true });
-    }
-  };
+  const logout = useAuthStore((s) => s.logout);
 
   return (
     <header className={styles.header}>

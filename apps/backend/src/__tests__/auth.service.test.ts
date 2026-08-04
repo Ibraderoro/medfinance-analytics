@@ -663,6 +663,72 @@ describe('AuthService.refresh', () => {
   });
 });
 
+describe('AuthService.getMe', () => {
+  const service = new AuthService();
+
+  it('returns the current user and session policy info without touching refresh tokens', async () => {
+    mockQuery.mockResolvedValueOnce([
+      {
+        id: 'user-uuid',
+        email: 'user@example.com',
+        first_name: 'Alice',
+        last_name: 'Smith',
+        role: 'analyst',
+        organization_id: 'org-uuid',
+        is_active: true,
+        session_idle_timeout_minutes: 60,
+        session_absolute_timeout_minutes: 720,
+      },
+    ]);
+
+    const result = await service.getMe({ id: 'user-uuid', email: 'user@example.com', role: 'analyst', organization_id: 'org-uuid' });
+
+    expect(result).toEqual({
+      user: {
+        id: 'user-uuid',
+        email: 'user@example.com',
+        firstName: 'Alice',
+        lastName: 'Smith',
+        role: 'analyst',
+        organizationId: 'org-uuid',
+      },
+      session: { idleTimeoutMinutes: 60, absoluteTimeoutMinutes: 720 },
+    });
+    // Exactly one lightweight SELECT — no refresh_tokens row rotation, no Redis touch,
+    // unlike refresh() which deletes/inserts refresh_tokens rows and writes a Redis blacklist entry.
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    expect(String(mockQuery.mock.calls[0][0])).not.toContain('refresh_tokens');
+    expect(mockRedisSetex).not.toHaveBeenCalled();
+    expect(mockRedisDel).not.toHaveBeenCalled();
+  });
+
+  it('throws 401 when the user no longer exists', async () => {
+    mockQuery.mockResolvedValueOnce([]);
+
+    await expect(service.getMe({ id: 'ghost-uuid', email: 'ghost@example.com', role: 'viewer', organization_id: 'org-uuid' }))
+      .rejects.toMatchObject({ statusCode: 401 });
+  });
+
+  it('throws 401 when the user has been deactivated', async () => {
+    mockQuery.mockResolvedValueOnce([
+      {
+        id: 'user-uuid',
+        email: 'user@example.com',
+        first_name: 'Alice',
+        last_name: 'Smith',
+        role: 'analyst',
+        organization_id: 'org-uuid',
+        is_active: false,
+        session_idle_timeout_minutes: 60,
+        session_absolute_timeout_minutes: 720,
+      },
+    ]);
+
+    await expect(service.getMe({ id: 'user-uuid', email: 'user@example.com', role: 'analyst', organization_id: 'org-uuid' }))
+      .rejects.toMatchObject({ statusCode: 401 });
+  });
+});
+
 describe('AuthService additional production coverage', () => {
   const service = new AuthService();
 

@@ -2,9 +2,11 @@ import type { AxiosRequestConfig } from 'axios';
 
 const requestUse = jest.fn();
 const responseUse = jest.fn();
+const apiClientCallMock = jest.fn();
+
 const axiosCreate = jest.fn((config: unknown) => {
   void config;
-  return {
+  return Object.assign(apiClientCallMock, {
     interceptors: {
       request: { use: requestUse },
       response: { use: responseUse },
@@ -12,7 +14,7 @@ const axiosCreate = jest.fn((config: unknown) => {
     get: jest.fn(),
     post: jest.fn(),
     delete: jest.fn(),
-  };
+  });
 });
 
 jest.mock('axios', () => ({
@@ -22,13 +24,24 @@ jest.mock('axios', () => ({
   },
 }));
 
+const silentRefreshMock = jest.fn();
+const logoutMock = jest.fn();
+
+jest.mock('../store/authStore', () => ({
+  useAuthStore: {
+    getState: () => ({ silentRefresh: silentRefreshMock, logout: logoutMock }),
+  },
+}));
+
 describe('api service', () => {
   beforeEach(() => {
     jest.resetModules();
     requestUse.mockClear();
     responseUse.mockClear();
     axiosCreate.mockClear();
-    sessionStorage.clear();
+    apiClientCallMock.mockClear();
+    silentRefreshMock.mockReset();
+    logoutMock.mockReset();
     document.cookie = 'csrf_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
     window.history.pushState({}, '', '/dashboard');
   });
@@ -74,17 +87,7 @@ describe('api service', () => {
     expect(requestInterceptor({ method: 'delete', headers: {} }).headers?.['x-csrf-token' as never]).toBeUndefined();
   });
 
-  it('leaves non-401 errors and existing login locations unchanged', async () => {
-    await import('../services/api');
-    const rejectionInterceptor = responseUse.mock.calls[0][1] as (error: { response?: { status?: number } }) => Promise<never>;
-
-    await expect(rejectionInterceptor({ response: { status: 500 } })).rejects.toEqual({ response: { status: 500 } });
-    window.history.pushState({}, '', '/login');
-    await expect(rejectionInterceptor({ response: { status: 401 } })).rejects.toEqual({ response: { status: 401 } });
-    expect(window.location.pathname).toBe('/login');
-  });
-
-  it('exposes typed API helpers for each backend resource', async () => {
+  it('exposes typed API helpers for each backend resource, including the new session endpoint', async () => {
     const api = await import('../services/api');
     const client = api.apiClient as unknown as { get: jest.Mock; post: jest.Mock; delete: jest.Mock };
 
@@ -99,6 +102,10 @@ describe('api service', () => {
     api.authApi.refresh();
     api.authApi.logout();
     api.authApi.verifyMfa('temp', '123456');
+    api.authApi.getSession();
+    api.authApi.initiateOidc('user@example.com', 'org-1');
+    api.authApi.completeOidc('state-1', 'code-1');
+    api.authApi.generateRecoveryCodes();
     api.financialsApi.getKpis(2026);
     api.financialsApi.getSummary(2026);
     api.financialsApi.getRevenue('2026-01-01', '2026-01-31');
@@ -118,22 +125,74 @@ describe('api service', () => {
     expect(client.get).toHaveBeenCalledWith('/auth/invitations/verify', { headers: { 'x-invitation-token': 'invite-token' } });
     expect(client.post).toHaveBeenCalledWith('/auth/invitations', createInvitePayload);
     expect(client.delete).toHaveBeenCalledWith('/auth/invitations/invite-id');
+    expect(client.get).toHaveBeenCalledWith('/auth/me');
+    expect(client.post).toHaveBeenCalledWith('/auth/oidc/initiate', { email: 'user@example.com', organizationId: 'org-1' });
+    expect(client.post).toHaveBeenCalledWith('/auth/oidc/callback', { state: 'state-1', code: 'code-1' });
+    expect(client.post).toHaveBeenCalledWith('/auth/recovery-codes', {});
     expect(client.get).toHaveBeenCalledWith('/financials/revenue', { params: { startDate: '2026-01-01', endDate: '2026-01-31' } });
     expect(client.post).toHaveBeenCalledWith('/billing/subscription', { plan: 'pro' });
   });
 
+  describe('401 response interceptor', () => {
+    it('passes successful responses through unchanged', async () => {
+      await import('../services/api');
+      const successInterceptor = responseUse.mock.calls[0][0] as (response: unknown) => unknown;
 
-  it('clears session state and redirects to login after a 401 response', async () => {
-    sessionStorage.setItem('auth_session_active', 'true');
-    const dispatchSpy = jest.spyOn(window, 'dispatchEvent');
-    await import('../services/api');
-    const rejectionInterceptor = responseUse.mock.calls[0][1] as (error: { response?: { status?: number } }) => Promise<never>;
+      const response = { data: 'ok' };
+      expect(successInterceptor(response)).toBe(response);
+    });
 
-    await expect(rejectionInterceptor({ response: { status: 401 } })).rejects.toEqual({ response: { status: 401 } });
+    it('leaves non-401 errors unchanged', async () => {
+      await import('../services/api');
+      const rejectionInterceptor = responseUse.mock.calls[0][1] as (error: unknown) => Promise<never>;
 
-    expect(sessionStorage.getItem('auth_session_active')).toBeNull();
-    expect(dispatchSpy).toHaveBeenCalledWith(expect.any(Event));
-    expect(window.location.pathname).toBe('/login');
-    dispatchSpy.mockRestore();
+      await expect(rejectionInterceptor({ response: { status: 500 } })).rejects.toEqual({ response: { status: 500 } });
+      expect(silentRefreshMock).not.toHaveBeenCalled();
+    });
+
+    it('does not attempt a refresh for 401s from auth bootstrap endpoints', async () => {
+      await import('../services/api');
+      const rejectionInterceptor = responseUse.mock.calls[0][1] as (error: unknown) => Promise<never>;
+      const error = { response: { status: 401 }, config: { url: '/auth/refresh' } };
+
+      await expect(rejectionInterceptor(error)).rejects.toEqual(error);
+      expect(silentRefreshMock).not.toHaveBeenCalled();
+    });
+
+    it('refreshes once and retries the original request on a 401 from a regular endpoint', async () => {
+      await import('../services/api');
+      const rejectionInterceptor = responseUse.mock.calls[0][1] as (error: unknown) => Promise<unknown>;
+      silentRefreshMock.mockResolvedValueOnce(true);
+      apiClientCallMock.mockResolvedValueOnce({ data: 'retried-ok' });
+      const config = { url: '/financials/kpis' };
+
+      const result = await rejectionInterceptor({ response: { status: 401 }, config });
+
+      expect(silentRefreshMock).toHaveBeenCalledTimes(1);
+      expect(apiClientCallMock).toHaveBeenCalledWith(expect.objectContaining({ url: '/financials/kpis', _retried: true }));
+      expect(result).toEqual({ data: 'retried-ok' });
+      expect(logoutMock).not.toHaveBeenCalled();
+    });
+
+    it('does not retry a request a second time (prevents infinite retry loops)', async () => {
+      await import('../services/api');
+      const rejectionInterceptor = responseUse.mock.calls[0][1] as (error: unknown) => Promise<never>;
+      const error = { response: { status: 401 }, config: { url: '/financials/kpis', _retried: true } };
+
+      await expect(rejectionInterceptor(error)).rejects.toEqual(error);
+      expect(silentRefreshMock).not.toHaveBeenCalled();
+    });
+
+    it('logs out and does not retry when the refresh itself fails', async () => {
+      await import('../services/api');
+      const rejectionInterceptor = responseUse.mock.calls[0][1] as (error: unknown) => Promise<never>;
+      silentRefreshMock.mockResolvedValueOnce(false);
+      const error = { response: { status: 401 }, config: { url: '/financials/kpis' } };
+
+      await expect(rejectionInterceptor(error)).rejects.toEqual(error);
+
+      expect(logoutMock).toHaveBeenCalledWith({ reason: 'expired' });
+      expect(apiClientCallMock).not.toHaveBeenCalled();
+    });
   });
 });

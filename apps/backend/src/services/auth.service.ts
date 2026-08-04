@@ -648,6 +648,53 @@ export class AuthService {
     };
   }
 
+  async getMe(identity: UserIdentity): Promise<{
+    user: {
+      id: string;
+      email: string;
+      firstName: string;
+      lastName: string;
+      role: string;
+      organizationId: string;
+    };
+    session: {
+      idleTimeoutMinutes: number;
+      absoluteTimeoutMinutes: number;
+    };
+  }> {
+    const [row] = await query<UserRow & {
+      session_idle_timeout_minutes: number;
+      session_absolute_timeout_minutes: number;
+    }>(
+      `SELECT u.id, u.email, u.first_name, u.last_name, u.role, u.organization_id, u.is_active,
+              COALESCE(p.session_idle_timeout_minutes, 60) AS session_idle_timeout_minutes,
+              COALESCE(p.session_absolute_timeout_minutes, 720) AS session_absolute_timeout_minutes
+       FROM users u
+       LEFT JOIN organization_auth_policies p ON p.organization_id = u.organization_id
+       WHERE u.id = $1`,
+      [identity.id],
+    );
+
+    if (!row || !row.is_active) {
+      throw authError('Account is inactive or not found');
+    }
+
+    return {
+      user: {
+        id: row.id,
+        email: row.email,
+        firstName: row.first_name,
+        lastName: row.last_name,
+        role: row.role,
+        organizationId: row.organization_id,
+      },
+      session: {
+        idleTimeoutMinutes: row.session_idle_timeout_minutes,
+        absoluteTimeoutMinutes: row.session_absolute_timeout_minutes,
+      },
+    };
+  }
+
   async generateRecoveryCodes(user: UserIdentity) {
     const codes = Array.from({ length: 10 }, () => `${crypto.randomBytes(4).toString('hex')}-${crypto.randomBytes(4).toString('hex')}`.toUpperCase());
     const client = await getPool().connect();

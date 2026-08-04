@@ -1,12 +1,14 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { authApi } from '../services/api';
+import { useAuthStore } from '../store/authStore';
 import styles from './Page.module.css';
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function RegisterPage() {
   const navigate = useNavigate();
+  const completeLogin = useAuthStore((s) => s.completeLogin);
   const [searchParams] = useSearchParams();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -56,9 +58,13 @@ export function RegisterPage() {
     setIsSubmitting(true);
     try {
       await authApi.register({ firstName: firstName.trim(), lastName: lastName.trim(), invitationToken: invitationToken.trim(), email: email.trim(), password });
-      sessionStorage.setItem('auth_session_active', 'true');
-      window.dispatchEvent(new Event('auth-session-changed'));
-      navigate('/dashboard', { replace: true });
+
+      try {
+        await completeLogin();
+        navigate('/dashboard', { replace: true });
+      } catch {
+        setError('Account created, but we could not load your session. Please sign in.');
+      }
     } catch (err: unknown) {
       const isAxiosError = (e: unknown): e is { response?: { data?: { error?: { message?: string } | string } } } =>
         typeof e === 'object' && e !== null && 'response' in e;
