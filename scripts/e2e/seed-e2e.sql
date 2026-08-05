@@ -25,7 +25,7 @@ ON CONFLICT (email) DO UPDATE SET
 
 INSERT INTO departments (id, organization_id, department_code, name, cost_center, status)
 VALUES (md5('dept_other_tenant_revenue')::uuid, md5('org_medfinance_isolated')::uuid, 'ISO-001', 'Isolated Revenue', 'CC-ISO-001', 'active')
-ON CONFLICT (organization_id, department_code) DO NOTHING;
+ON CONFLICT (department_code) DO NOTHING;
 
 INSERT INTO transactions (id, organization_id, department_id, transaction_type, category, invoice_number, description, amount, tax_amount, currency, occurred_on)
 VALUES
