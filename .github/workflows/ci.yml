@@ -138,7 +138,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: tenant-isolation-report
-          path: tenant-isolation-report.json
+          path: apps/backend/tenant-isolation-report.json
           if-no-files-found: error
 
       - name: Run backend Postgres/Redis integration tests

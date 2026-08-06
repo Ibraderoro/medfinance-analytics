@@ -15,6 +15,7 @@ export type TenantPolicy = {
   name: string;
   command: string;
   roles: string[];
+  permissive: boolean;
   usingExpression: string | null;
   checkExpression: string | null;
 };
@@ -44,19 +45,36 @@ function normalizeExpression(expression: string | null): string {
   return (expression ?? '').replace(/\s+/g, ' ').toLowerCase();
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function expressionMatchesTenantColumn(expression: string | null, tenantColumn: string): boolean {
   const normalized = normalizeExpression(expression);
-  return normalized.includes(tenantColumn.toLowerCase())
-    && normalized.includes("current_setting('app.current_tenant_id'::text, true)");
+  const escapedColumn = escapeRegExp(tenantColumn.toLowerCase());
+  const currentTenant = String.raw`\(?current_setting\('app\.current_tenant_id'::text, true\)\)?::uuid`;
+  const tenantIdentifier = String.raw`(?:\b${escapedColumn}\b|\w+\.${escapedColumn}\b)`;
+  const columnEqualsTenant = new RegExp(String.raw`${tenantIdentifier}\s*=\s*${currentTenant}`);
+  const tenantEqualsColumn = new RegExp(String.raw`${currentTenant}\s*=\s*${tenantIdentifier}`);
+
+  return columnEqualsTenant.test(normalized) || tenantEqualsColumn.test(normalized);
+}
+function isPolicyApplicable(policy: TenantPolicy): boolean {
+  return policy.permissive && policy.roles.length > 0;
+}
+
+function policyEnforcesTenant(policy: TenantPolicy, tenantColumn: string): boolean {
+  return expressionMatchesTenantColumn(policy.usingExpression, tenantColumn)
+    && expressionMatchesTenantColumn(policy.checkExpression, tenantColumn);
 }
 
 function hasRequiredTenantPolicy(table: TenantScopedTable): boolean {
-  return table.policies.some((policy) => {
-    const commandSupportsAllWrites = policy.command === 'ALL';
-    return commandSupportsAllWrites
-      && expressionMatchesTenantColumn(policy.usingExpression, table.tenantColumn)
-      && expressionMatchesTenantColumn(policy.checkExpression, table.tenantColumn);
-  });
+  const applicablePermissivePolicies = table.policies.filter(isPolicyApplicable);
+  if (applicablePermissivePolicies.some((policy) => !policyEnforcesTenant(policy, table.tenantColumn))) {
+    return false;
+  }
+
+  return applicablePermissivePolicies.some((policy) => policy.command === 'ALL' && policyEnforcesTenant(policy, table.tenantColumn));
 }
 
 export function evaluateTenantIsolation(tables: TenantScopedTable[], generatedAt = new Date().toISOString()): TenantIsolationReport {
@@ -124,7 +142,14 @@ export async function discoverTenantScopedTables(client: Queryable): Promise<Ten
           json_build_object(
             'name', p.polname,
             'command', CASE p.polcmd WHEN '*' THEN 'ALL' WHEN 'r' THEN 'SELECT' WHEN 'a' THEN 'INSERT' WHEN 'w' THEN 'UPDATE' WHEN 'd' THEN 'DELETE' END,
-            'roles', (SELECT array_agg(rolname ORDER BY rolname) FROM pg_roles WHERE oid = ANY(p.polroles)),
+            'roles', COALESCE((
+              SELECT array_agg(role_name ORDER BY role_name)
+              FROM unnest(p.polroles) AS policy_roles(role_oid)
+              LEFT JOIN pg_roles r ON r.oid = policy_roles.role_oid
+              CROSS JOIN LATERAL (SELECT CASE WHEN policy_roles.role_oid = 0 THEN 'public' ELSE r.rolname END AS role_name) mapped
+              WHERE role_name IS NOT NULL
+            ), ARRAY[]::name[]),
+            'permissive', p.polpermissive,
             'usingExpression', pg_get_expr(p.polqual, p.polrelid),
             'checkExpression', pg_get_expr(p.polwithcheck, p.polrelid)
           ) ORDER BY p.polname
