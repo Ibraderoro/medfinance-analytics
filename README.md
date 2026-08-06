@@ -187,7 +187,7 @@ Security is enforced across transport, application, and data boundaries.
 | Session safety | Access + refresh token lifecycle with rotation flows |
 | CSRF protection | Token cookie + header validation for unsafe operations |
 | API protection | Rate limiting, validation/sanitization middleware, centralized error policy |
-| Tenant isolation | Multi-tenant context enforcement and DB-level policy strategy |
+| Tenant isolation | Multi-tenant context enforcement, DB-level policy strategy, and automated RLS/FORCE RLS verification for every `organization_id`/`tenant_id` table (see `docs/tenant-isolation-verification.md`) |
 | Headers & browser security | Helmet + restrictive CORS policy |
 | Auditability | Audit middleware/services and immutable-oriented log strategy |
 | Secrets management | Environment-driven secrets for JWT, DB, Redis, Stripe |
