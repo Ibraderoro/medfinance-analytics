@@ -37,6 +37,19 @@ CREATE TABLE IF NOT EXISTS financial_cash_reserves (
   PRIMARY KEY (organization_id, month_start)
 );
 
+-- Ensure primary key exists on existing legacy tables
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint 
+    WHERE conrelid = 'financial_cash_reserves'::regclass 
+      AND contype IN ('p', 'u')
+  ) THEN
+    ALTER TABLE financial_cash_reserves 
+      ADD CONSTRAINT financial_cash_reserves_pkey PRIMARY KEY (organization_id, month_start);
+  END IF;
+END $$;
+
 -- Ensure billing dependencies exist even when migrations/init scripts were not applied
 CREATE TABLE IF NOT EXISTS subscriptions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),

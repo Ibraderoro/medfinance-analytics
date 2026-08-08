@@ -10,13 +10,25 @@ export default defineConfig({
   workers: 1,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI
-    ? [['list'], ['html', { outputFolder: 'playwright-report/full-stack', open: 'never' }], ['junit', { outputFile: 'test-results/full-stack-e2e.xml' }]]
+    ? [
+        ['list'],
+        ['html', { outputFolder: 'playwright-report/full-stack', open: 'never' }],
+        ['junit', { outputFile: 'test-results/full-stack-e2e.xml' }],
+      ]
     : [['list'], ['html', { outputFolder: 'playwright-report/full-stack', open: 'never' }]],
   use: {
     baseURL,
+    actionTimeout: 15_000,
+    navigationTimeout: 15_000,
     trace: 'retain-on-failure',
     video: 'retain-on-failure',
     screenshot: 'only-on-failure',
+  },
+  webServer: {
+    command: 'npm run start',
+    url: baseURL,
+    reuseExistingServer: !process.env.CI,
+    timeout: 120_000,
   },
   projects: [
     {

@@ -25,10 +25,10 @@ jobs:
       REDIS_HOST: 127.0.0.1
       REDIS_PORT: "6380"
       PERF_EMAIL: perf@medfinance.test
+      PERF_PASSWORD: ${{ secrets.PERF_PASSWORD || 'PerfTest123!' }}
       PERF_ORGANIZATION_ID: ff6a1c0f-6d3b-8388-6b12-4e2ad21f57c5
-      # Keep the soak run short enough for a scheduled CI slot; the k6 script itself
-      # still supports multi-hour soaks locally via the same env var.
       PERF_SOAK_DURATION: 20m
+
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
@@ -60,30 +60,19 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y k6
 
-      # Informational only: this workflow never fails the run on threshold or
-      # regression findings, so each perf step and the final report use
-      # continue-on-error rather than `|| true` — that keeps the job non-blocking
-      # while still capturing (and surfacing, below) genuine execution failures
-      # instead of silently swallowing them.
       - name: k6 step stress
         id: k6_step_stress
         continue-on-error: true
-        env:
-          PERF_PASSWORD: PerfTest123!
         run: npm run perf:stress:step
 
       - name: k6 spike stress
         id: k6_spike_stress
         continue-on-error: true
-        env:
-          PERF_PASSWORD: PerfTest123!
         run: npm run perf:stress:spike
 
       - name: k6 soak
         id: k6_soak
         continue-on-error: true
-        env:
-          PERF_PASSWORD: PerfTest123!
         run: npm run perf:soak
 
       - name: Consolidated performance report
@@ -112,7 +101,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Dump Docker logs on failure
-        if: failure()
+        if: always() && (steps.k6_step_stress.outcome == 'failure' || steps.k6_spike_stress.outcome == 'failure' || steps.k6_soak.outcome == 'failure' || steps.perf_report.outcome == 'failure')
         run: docker compose -f docker-compose.e2e.yml logs --no-color
 
       - name: Tear down perf validation stack
