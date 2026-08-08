@@ -273,10 +273,13 @@ Current pipeline expectations center on automated quality gates before promotion
 | Validate | Lint, type safety, workspace consistency, dependency policy checks |
 | Test | Backend/frontend suites, critical integrations, evidence gate scripts |
 | Package | Build artifacts and container images |
+| Supply-chain security | CodeQL, Semgrep, secret scanning, IaC scanning, Trivy image scan, SBOM, Cosign signing, provenance attestations |
 | Release | Environment-specific deployment + migrations |
 | Verify | Readiness checks, synthetic smoke, observability confirmation |
 
 > Recommendation: enforce branch protection requiring all production readiness checks to pass prior to merge.
+>
+> Supply-chain security implementation details are documented in `/home/runner/work/medfinance-analytics/medfinance-analytics/docs/security/slsa-supply-chain-security.md`.
 
 ---
 
