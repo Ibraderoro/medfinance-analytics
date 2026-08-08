@@ -16,6 +16,7 @@ import {
   parseMigrationVersion,
   resolveMigrationsDir,
 } from './schemaCompatibility';
+import { verifyTenantIsolation } from './tenantIsolationVerifier';
 
 const MIGRATIONS_DIR = resolveMigrationsDir();
 const MIGRATION_LOCK_KEY = 42424220240501;
@@ -299,13 +300,16 @@ export async function migrate(options = readOptionsFromEnv()): Promise<void> {
     } else {
       console.log(`\n✨ ${count} migration(s) applied.`);
     }
+
+    await verifyTenantIsolation(client);
   });
 }
 
 export async function preflight(options = readOptionsFromEnv()): Promise<void> {
   await withMigrationLock(options, async (client) => {
     await validateMigrationPlan(client);
-    console.log('Migration preflight passed.');
+    await verifyTenantIsolation(client);
+    console.log('Migration preflight and tenant isolation verification passed.');
   });
 }
 
@@ -330,6 +334,14 @@ async function run(): Promise<void> {
 
   if (command === 'preflight') {
     await preflight();
+    return;
+  }
+
+  if (command === 'verify-tenant-isolation') {
+    await withMigrationLock(readOptionsFromEnv(), async (client) => {
+      await verifyTenantIsolation(client);
+      console.log('Tenant isolation verification passed.');
+    });
     return;
   }
 

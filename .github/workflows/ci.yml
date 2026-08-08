@@ -130,6 +130,17 @@ jobs:
       - name: Migration preflight
         run: npm run migrate:preflight --workspace=apps/backend
 
+      - name: Apply migrations and verify tenant isolation
+        run: npm run migrate --workspace=apps/backend
+
+      - name: Upload tenant isolation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tenant-isolation-report
+          path: apps/backend/tenant-isolation-report.json
+          if-no-files-found: error
+
       - name: Run backend Postgres/Redis integration tests
         run: npm run test:integration --workspace=apps/backend
 
