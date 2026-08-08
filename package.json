@@ -60,6 +60,7 @@
     "@typescript-eslint/eslint-plugin": "^7.13.0",
     "@typescript-eslint/parser": "^7.13.0",
     "autocannon": "^7.15.0",
+    "esbuild": "^0.28.1",
     "eslint": "^8.57.0",
     "typescript": "^5.4.5"
   },
