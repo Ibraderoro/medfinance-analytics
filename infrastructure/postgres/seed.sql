@@ -94,13 +94,6 @@ ON CONFLICT (id) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
 -- 2. Revenue transactions
---    Categories: consultations | insurance_claims | lab_services | pharmacy_sales
---
---    Base monthly amounts (USD):
---      consultations    : 480,000
---      insurance_claims : 320,000
---      lab_services     : 145,000
---      pharmacy_sales   : 210,000
 -- ---------------------------------------------------------------------------
 INSERT INTO transactions (
   id, organization_id, department_id, transaction_type, category,
@@ -144,14 +137,6 @@ ON CONFLICT (id) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
 -- 3. Expense transactions
---    Categories: salaries | equipment | rent | utilities | compliance_costs
---
---    Base monthly amounts (USD):
---      salaries         : 520,000
---      equipment        :  85,000
---      rent             :  65,000
---      utilities        :  28,000
---      compliance_costs :  42,000
 -- ---------------------------------------------------------------------------
 INSERT INTO transactions (
   id, organization_id, department_id, transaction_type, category,
@@ -208,7 +193,6 @@ ON CONFLICT (id) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
 -- 4. Baseline forecasts — revenue
---    One row per department × year × month
 -- ---------------------------------------------------------------------------
 INSERT INTO forecasts (
   id, organization_id, department_id,
@@ -302,7 +286,7 @@ FROM
   (VALUES
     ('HRS-005', 520000.00),
     ('TEC-007',  85000.00),
-    ('FAC-006',  93000.00),  -- combined rent + utilities for this department
+    ('FAC-006',  93000.00),
     ('CPL-008',  42000.00)
   ) AS exp_depts(dept_code, base_amount)
 ON CONFLICT (id) DO NOTHING;
@@ -310,7 +294,11 @@ ON CONFLICT (id) DO NOTHING;
 -- ---------------------------------------------------------------------------
 -- 6. Cash reserves for runway analytics
 -- ---------------------------------------------------------------------------
-INSERT INTO financial_cash_reserves (organization_id, month_start, cash_reserve_amount)
+INSERT INTO financial_cash_reserves (
+  organization_id,
+  month_start,
+  cash_reserve_amount
+)
 WITH monthly_net AS (
   SELECT
     organization_id,
@@ -360,7 +348,7 @@ VALUES
 ON CONFLICT (email) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
--- 7. Compliance sample data
+-- 8. Compliance sample data
 -- ---------------------------------------------------------------------------
 INSERT INTO compliance_items (
   id, regulation_code, status, last_reviewed_at, next_review_due_at, assigned_to, organization_id
@@ -382,7 +370,7 @@ ON CONFLICT (id) DO NOTHING;
 COMMIT;
 
 -- =============================================================================
--- 8. Convenience views  (financials_revenue / financials_expenses)
+-- 9. Convenience views  (financials_revenue / financials_expenses)
 -- =============================================================================
 
 CREATE OR REPLACE VIEW financials_revenue AS
@@ -423,7 +411,7 @@ JOIN departments  d ON d.id = t.department_id
 WHERE t.transaction_type = 'expense';
 
 -- =============================================================================
--- 9. Materialized summary view  (monthly P&L + per-category breakdown)
+-- 10. Materialized summary view  (monthly P&L + per-category breakdown)
 -- =============================================================================
 DROP MATERIALIZED VIEW IF EXISTS mv_monthly_financial_summary;
 
