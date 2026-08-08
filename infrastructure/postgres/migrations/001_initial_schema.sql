@@ -11,7 +11,8 @@ CREATE TABLE IF NOT EXISTS departments (
   parent_department_id UUID REFERENCES departments(id) ON DELETE SET NULL,
   status VARCHAR(16) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (organization_id, department_code)
 );
 
 CREATE TABLE IF NOT EXISTS forecasts (
@@ -26,7 +27,7 @@ CREATE TABLE IF NOT EXISTS forecasts (
   assumptions JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (department_id, fiscal_year, fiscal_month, metric_type, scenario)
+  UNIQUE (organization_id, department_id, fiscal_year, fiscal_month, metric_type, scenario)
 );
 
 CREATE TABLE IF NOT EXISTS transactions (
