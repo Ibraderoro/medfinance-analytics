@@ -97,7 +97,7 @@ jobs:
           persist-credentials: false
 
       - name: Trivy IaC scan (critical only, fail closed)
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.24.0
         with:
           scan-type: config
           scan-ref: .
