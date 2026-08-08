@@ -271,7 +271,7 @@ jobs:
         uses: sigstore/cosign-installer@v3.8.2
 
       - name: Trivy scan backend image (critical only)
-        uses: aquasecurity/trivy-action@v0.24.0
+        uses: aquasecurity/trivy-action@v0.28.0
         with:
           image-ref: ${{ steps.meta.outputs.namespace }}/backend@${{ steps.backend.outputs.digest }}
           format: table
@@ -280,7 +280,7 @@ jobs:
           exit-code: '1'
 
       - name: Trivy scan frontend image (critical only)
-        uses: aquasecurity/trivy-action@v0.24.0
+        uses: aquasecurity/trivy-action@v0.28.0
         with:
           image-ref: ${{ steps.meta.outputs.namespace }}/frontend@${{ steps.frontend.outputs.digest }}
           format: table
@@ -289,7 +289,7 @@ jobs:
           exit-code: '1'
 
       - name: Generate backend SBOM
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.28.0
         with:
           image-ref: ${{ steps.meta.outputs.namespace }}/backend@${{ steps.backend.outputs.digest }}
           format: cyclonedx
@@ -297,7 +297,7 @@ jobs:
           exit-code: '0'
 
       - name: Generate frontend SBOM
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.28.0
         with:
           image-ref: ${{ steps.meta.outputs.namespace }}/frontend@${{ steps.frontend.outputs.digest }}
           format: cyclonedx
