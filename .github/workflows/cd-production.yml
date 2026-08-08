@@ -196,6 +196,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
+      attestations: write
     outputs:
       version: ${{ steps.meta.outputs.version }}
       backend-image: ${{ steps.manifest.outputs.backend_image }}
@@ -244,6 +246,8 @@ jobs:
             org.opencontainers.image.version=${{ steps.meta.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          sbom: true
+          provenance: true
 
       - name: Build and push frontend image
         id: frontend
@@ -260,6 +264,74 @@ jobs:
             org.opencontainers.image.version=${{ steps.meta.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          sbom: true
+          provenance: true
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3.8.2
+
+      - name: Trivy scan backend image (critical only)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ${{ steps.meta.outputs.namespace }}/backend@${{ steps.backend.outputs.digest }}
+          format: table
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+
+      - name: Trivy scan frontend image (critical only)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ${{ steps.meta.outputs.namespace }}/frontend@${{ steps.frontend.outputs.digest }}
+          format: table
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+
+      - name: Generate backend SBOM
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ${{ steps.meta.outputs.namespace }}/backend@${{ steps.backend.outputs.digest }}
+          format: cyclonedx
+          output: backend.sbom.cdx.json
+          exit-code: '0'
+
+      - name: Generate frontend SBOM
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ${{ steps.meta.outputs.namespace }}/frontend@${{ steps.frontend.outputs.digest }}
+          format: cyclonedx
+          output: frontend.sbom.cdx.json
+          exit-code: '0'
+
+      - name: Upload SBOM artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: production-image-sboms
+          path: |
+            backend.sbom.cdx.json
+            frontend.sbom.cdx.json
+          if-no-files-found: error
+
+      - name: Cosign sign backend image
+        run: cosign sign --yes ${{ steps.meta.outputs.namespace }}/backend@${{ steps.backend.outputs.digest }}
+
+      - name: Cosign sign frontend image
+        run: cosign sign --yes ${{ steps.meta.outputs.namespace }}/frontend@${{ steps.frontend.outputs.digest }}
+
+      - name: Attest backend provenance
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: ${{ steps.meta.outputs.namespace }}/backend
+          subject-digest: ${{ steps.backend.outputs.digest }}
+          push-to-registry: true
+
+      - name: Attest frontend provenance
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: ${{ steps.meta.outputs.namespace }}/frontend
+          subject-digest: ${{ steps.frontend.outputs.digest }}
+          push-to-registry: true
 
       - name: Build release manifest
         id: manifest
