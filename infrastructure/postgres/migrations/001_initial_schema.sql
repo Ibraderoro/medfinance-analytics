@@ -16,13 +16,17 @@ CREATE TABLE IF NOT EXISTS departments (
   department_code VARCHAR(24) NOT NULL,
   name VARCHAR(120) NOT NULL,
   cost_center VARCHAR(32) NOT NULL,
-  parent_department_id UUID REFERENCES departments(id) ON DELETE SET NULL,
+  parent_department_id UUID,
   status VARCHAR(16) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (organization_id, id),
-  UNIQUE (organization_id, department_code),
-  UNIQUE (organization_id, cost_center)
+  CONSTRAINT uq_departments_org_id UNIQUE (organization_id, id),
+  CONSTRAINT uq_departments_org_code UNIQUE (organization_id, department_code),
+  CONSTRAINT uq_departments_org_cost_center UNIQUE (organization_id, cost_center),
+  CONSTRAINT fk_departments_parent_org 
+    FOREIGN KEY (organization_id, parent_department_id) 
+    REFERENCES departments(organization_id, id) 
+    ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS forecasts (
@@ -38,16 +42,19 @@ CREATE TABLE IF NOT EXISTS forecasts (
   assumptions JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (organization_id, id),
-  UNIQUE (organization_id, department_id, fiscal_year, fiscal_month, metric_type, scenario),
-  FOREIGN KEY (organization_id, department_id) REFERENCES departments(organization_id, id) ON DELETE RESTRICT
+  CONSTRAINT uq_forecasts_org_id UNIQUE (organization_id, id),
+  CONSTRAINT uq_forecasts_period UNIQUE (organization_id, department_id, fiscal_year, fiscal_month, metric_type, scenario),
+  CONSTRAINT fk_forecasts_department_org 
+    FOREIGN KEY (organization_id, department_id) 
+    REFERENCES departments(organization_id, id) 
+    ON DELETE RESTRICT
 );
 
 CREATE TABLE IF NOT EXISTS transactions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
   department_id UUID NOT NULL,
-  forecast_id UUID,
+  forecast_id UUID REFERENCES forecasts(id) ON DELETE SET NULL,
   transaction_type VARCHAR(16) NOT NULL CHECK (transaction_type IN ('revenue', 'expense')),
   category VARCHAR(64) NOT NULL,
   vendor_name VARCHAR(160),
@@ -60,8 +67,10 @@ CREATE TABLE IF NOT EXISTS transactions (
   posted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  FOREIGN KEY (organization_id, department_id) REFERENCES departments(organization_id, id) ON DELETE RESTRICT,
-  FOREIGN KEY (organization_id, forecast_id) REFERENCES forecasts(organization_id, id) ON DELETE SET NULL
+  CONSTRAINT fk_transactions_department_org 
+    FOREIGN KEY (organization_id, department_id) 
+    REFERENCES departments(organization_id, id) 
+    ON DELETE RESTRICT
 );
 
 -- Performance indexes following idx_<table >_<column> naming convention
