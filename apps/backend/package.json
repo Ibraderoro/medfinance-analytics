@@ -20,7 +20,8 @@
     "test:integration": "jest --config jest.integration.config.json --runInBand",
     "typecheck": "tsc --project tsconfig.json --noEmit",
     "migrate:preflight": "node -r ts-node/register src/db/migrate.ts preflight",
-    "migrate:status": "node -r ts-node/register src/db/migrate.ts status"
+    "migrate:status": "node -r ts-node/register src/db/migrate.ts status",
+    "db:tenant-isolation:verify": "node -r ts-node/register src/db/migrate.ts verify-tenant-isolation"
   },
   "dependencies": {
     "@medfinance/shared": "*",

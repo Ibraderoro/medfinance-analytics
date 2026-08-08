@@ -91,7 +91,7 @@ VALUES
   (md5('dept_facilities_management')::uuid, md5('org_medfinance_demo')::uuid, 'FAC-006', 'Facilities Management',  'CC-FAC-006', 'active'),
   (md5('dept_technology_equipment')::uuid,  md5('org_medfinance_demo')::uuid, 'TEC-007', 'Technology & Equipment', 'CC-TEC-007', 'active'),
   (md5('dept_compliance_risk')::uuid,       md5('org_medfinance_demo')::uuid, 'CPL-008', 'Compliance & Risk',      'CC-CPL-008', 'active')
-ON CONFLICT (organization_id, department_code) DO NOTHING;
+ON CONFLICT (department_code) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
 -- 2. Revenue transactions

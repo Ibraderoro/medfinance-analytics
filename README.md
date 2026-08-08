@@ -187,7 +187,7 @@ Security is enforced across transport, application, and data boundaries.
 | Session safety | Access + refresh token lifecycle with rotation flows |
 | CSRF protection | Token cookie + header validation for unsafe operations |
 | API protection | Rate limiting, validation/sanitization middleware, centralized error policy |
-| Tenant isolation | Multi-tenant context enforcement and DB-level policy strategy |
+| Tenant isolation | Multi-tenant context enforcement, DB-level policy strategy, and automated RLS/FORCE RLS verification for every `organization_id`/`tenant_id` table (see `docs/tenant-isolation-verification.md`) |
 | Headers & browser security | Helmet + restrictive CORS policy |
 | Auditability | Audit middleware/services and immutable-oriented log strategy |
 | Secrets management | Environment-driven secrets for JWT, DB, Redis, Stripe |
@@ -273,10 +273,13 @@ Current pipeline expectations center on automated quality gates before promotion
 | Validate | Lint, type safety, workspace consistency, dependency policy checks |
 | Test | Backend/frontend suites, critical integrations, evidence gate scripts |
 | Package | Build artifacts and container images |
+| Supply-chain security | CodeQL, Semgrep, secret scanning, IaC scanning, Trivy image scan, SBOM, Cosign signing, provenance attestations |
 | Release | Environment-specific deployment + migrations |
 | Verify | Readiness checks, synthetic smoke, observability confirmation |
 
 > Recommendation: enforce branch protection requiring all production readiness checks to pass prior to merge.
+>
+> Supply-chain security implementation details are documented in `/home/runner/work/medfinance-analytics/medfinance-analytics/docs/security/slsa-supply-chain-security.md`.
 
 ---
 
