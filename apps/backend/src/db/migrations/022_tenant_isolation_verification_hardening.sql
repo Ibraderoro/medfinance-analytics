@@ -50,6 +50,8 @@ BEGIN
 
     EXECUTE format('ALTER TABLE %I.%I ENABLE ROW LEVEL SECURITY', tenant_table.schema_name, tenant_table.table_name);
     EXECUTE format('ALTER TABLE %I.%I FORCE ROW LEVEL SECURITY', tenant_table.schema_name, tenant_table.table_name);
+    EXECUTE format('DROP POLICY IF EXISTS %I ON %I.%I', tenant_table.table_name || '_tenant_isolation', tenant_table.schema_name, tenant_table.table_name);
+    EXECUTE format('DROP POLICY IF EXISTS %I ON %I.%I', tenant_table.table_name || '_tenant_rls', tenant_table.schema_name, tenant_table.table_name);
     EXECUTE format('DROP POLICY IF EXISTS %I ON %I.%I', policy_name, tenant_table.schema_name, tenant_table.table_name);
     EXECUTE format(
       'CREATE POLICY %I ON %I.%I FOR ALL USING (%I = current_setting(''app.current_tenant_id'', true)::uuid) WITH CHECK (%I = current_setting(''app.current_tenant_id'', true)::uuid)',
