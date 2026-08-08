@@ -3,7 +3,6 @@
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- Ensure organizations exists first for foreign key constraints
 CREATE TABLE IF NOT EXISTS organizations (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name VARCHAR(255) NOT NULL,
@@ -13,21 +12,23 @@ CREATE TABLE IF NOT EXISTS organizations (
 
 CREATE TABLE IF NOT EXISTS departments (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
   department_code VARCHAR(24) NOT NULL,
   name VARCHAR(120) NOT NULL,
-  cost_center VARCHAR(32) NOT NULL UNIQUE,
+  cost_center VARCHAR(32) NOT NULL,
   parent_department_id UUID REFERENCES departments(id) ON DELETE SET NULL,
   status VARCHAR(16) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (organization_id, department_code)
+  UNIQUE (organization_id, id),
+  UNIQUE (organization_id, department_code),
+  UNIQUE (organization_id, cost_center)
 );
 
 CREATE TABLE IF NOT EXISTS forecasts (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  department_id UUID NOT NULL REFERENCES departments(id) ON DELETE CASCADE,
+  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+  department_id UUID NOT NULL,
   fiscal_year INTEGER NOT NULL CHECK (fiscal_year BETWEEN 2000 AND 2100),
   fiscal_month INTEGER NOT NULL CHECK (fiscal_month BETWEEN 1 AND 12),
   metric_type VARCHAR(16) NOT NULL CHECK (metric_type IN ('revenue', 'expense')),
@@ -37,14 +38,16 @@ CREATE TABLE IF NOT EXISTS forecasts (
   assumptions JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (organization_id, department_id, fiscal_year, fiscal_month, metric_type, scenario)
+  UNIQUE (organization_id, id),
+  UNIQUE (organization_id, department_id, fiscal_year, fiscal_month, metric_type, scenario),
+  FOREIGN KEY (organization_id, department_id) REFERENCES departments(organization_id, id) ON DELETE RESTRICT
 );
 
 CREATE TABLE IF NOT EXISTS transactions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  department_id UUID NOT NULL REFERENCES departments(id) ON DELETE RESTRICT,
-  forecast_id UUID REFERENCES forecasts(id) ON DELETE SET NULL,
+  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
+  department_id UUID NOT NULL,
+  forecast_id UUID,
   transaction_type VARCHAR(16) NOT NULL CHECK (transaction_type IN ('revenue', 'expense')),
   category VARCHAR(64) NOT NULL,
   vendor_name VARCHAR(160),
@@ -56,23 +59,23 @@ CREATE TABLE IF NOT EXISTS transactions (
   occurred_on DATE NOT NULL,
   posted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  FOREIGN KEY (organization_id, department_id) REFERENCES departments(organization_id, id) ON DELETE RESTRICT,
+  FOREIGN KEY (organization_id, forecast_id) REFERENCES forecasts(organization_id, id) ON DELETE SET NULL
 );
 
--- Performance indexes
+-- Performance indexes following idx_<table >_<column> naming convention
 CREATE INDEX IF NOT EXISTS idx_transactions_occurred_on ON transactions(occurred_on DESC);
 CREATE INDEX IF NOT EXISTS idx_transactions_type_date ON transactions(transaction_type, occurred_on DESC);
 CREATE INDEX IF NOT EXISTS idx_transactions_department_date ON transactions(department_id, occurred_on DESC);
 CREATE INDEX IF NOT EXISTS idx_transactions_forecast_id ON transactions(forecast_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category);
-CREATE INDEX IF NOT EXISTS idx_transactions_organization_id ON transactions(organization_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_organization ON transactions(organization_id);
 
-CREATE INDEX IF NOT EXISTS idx_forecasts_department_period
-  ON forecasts(department_id, fiscal_year, fiscal_month);
-CREATE INDEX IF NOT EXISTS idx_forecasts_metric_period
-  ON forecasts(metric_type, fiscal_year, fiscal_month);
-CREATE INDEX IF NOT EXISTS idx_forecasts_organization_id ON forecasts(organization_id);
+CREATE INDEX IF NOT EXISTS idx_forecasts_department_period ON forecasts(department_id, fiscal_year, fiscal_month);
+CREATE INDEX IF NOT EXISTS idx_forecasts_metric_period ON forecasts(metric_type, fiscal_year, fiscal_month);
+CREATE INDEX IF NOT EXISTS idx_forecasts_organization ON forecasts(organization_id);
 
 CREATE INDEX IF NOT EXISTS idx_departments_parent ON departments(parent_department_id);
 CREATE INDEX IF NOT EXISTS idx_departments_status ON departments(status);
-CREATE INDEX IF NOT EXISTS idx_departments_organization_id ON departments(organization_id);
+CREATE INDEX IF NOT EXISTS idx_departments_organization ON departments(organization_id);
