@@ -3,9 +3,8 @@
 -- =============================================================================
 -- Idempotent: safe to run multiple times.
 --
--- Departments  → ON CONFLICT (department_code) DO NOTHING
--- Forecasts    → ON CONFLICT (department_id, fiscal_year, fiscal_month,
---                              metric_type, scenario) DO NOTHING
+-- Departments  → deterministic UUID via md5()::uuid + ON CONFLICT (id) DO NOTHING
+-- Forecasts    → deterministic UUID via md5()::uuid + ON CONFLICT (id) DO NOTHING
 -- Transactions → deterministic UUID via md5()::uuid + ON CONFLICT (id) DO NOTHING
 --
 -- Covers fiscal years 2024 – 2026 (36 months).
@@ -37,6 +36,19 @@ CREATE TABLE IF NOT EXISTS financial_cash_reserves (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (organization_id, month_start)
 );
+
+-- Ensure primary key exists on existing legacy tables
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint 
+    WHERE conrelid = 'financial_cash_reserves'::regclass 
+      AND contype IN ('p', 'u')
+  ) THEN
+    ALTER TABLE financial_cash_reserves 
+      ADD CONSTRAINT financial_cash_reserves_pkey PRIMARY KEY (organization_id, month_start);
+  END IF;
+END $$;
 
 -- Ensure billing dependencies exist even when migrations/init scripts were not applied
 CREATE TABLE IF NOT EXISTS subscriptions (
@@ -91,17 +103,10 @@ VALUES
   (md5('dept_facilities_management')::uuid, md5('org_medfinance_demo')::uuid, 'FAC-006', 'Facilities Management',  'CC-FAC-006', 'active'),
   (md5('dept_technology_equipment')::uuid,  md5('org_medfinance_demo')::uuid, 'TEC-007', 'Technology & Equipment', 'CC-TEC-007', 'active'),
   (md5('dept_compliance_risk')::uuid,       md5('org_medfinance_demo')::uuid, 'CPL-008', 'Compliance & Risk',      'CC-CPL-008', 'active')
-ON CONFLICT (department_code) DO NOTHING;
+ON CONFLICT (id) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
 -- 2. Revenue transactions
---    Categories: consultations | insurance_claims | lab_services | pharmacy_sales
---
---    Base monthly amounts (USD):
---      consultations    : 480,000
---      insurance_claims : 320,000
---      lab_services     : 145,000
---      pharmacy_sales   : 210,000
 -- ---------------------------------------------------------------------------
 INSERT INTO transactions (
   id, organization_id, department_id, transaction_type, category,
@@ -145,14 +150,6 @@ ON CONFLICT (id) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
 -- 3. Expense transactions
---    Categories: salaries | equipment | rent | utilities | compliance_costs
---
---    Base monthly amounts (USD):
---      salaries         : 520,000
---      equipment        :  85,000
---      rent             :  65,000
---      utilities        :  28,000
---      compliance_costs :  42,000
 -- ---------------------------------------------------------------------------
 INSERT INTO transactions (
   id, organization_id, department_id, transaction_type, category,
@@ -209,7 +206,6 @@ ON CONFLICT (id) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
 -- 4. Baseline forecasts — revenue
---    One row per department × year × month
 -- ---------------------------------------------------------------------------
 INSERT INTO forecasts (
   id, organization_id, department_id,
@@ -256,7 +252,7 @@ FROM
     ('LAB-003', 145000.00),
     ('PHM-004', 210000.00)
   ) AS rev_depts(dept_code, base_amount)
-ON CONFLICT (organization_id, department_id, fiscal_year, fiscal_month, metric_type, scenario) DO NOTHING;
+ON CONFLICT (id) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
 -- 5. Baseline forecasts — expenses
@@ -303,17 +299,19 @@ FROM
   (VALUES
     ('HRS-005', 520000.00),
     ('TEC-007',  85000.00),
-    ('FAC-006',  93000.00),  -- combined rent + utilities for this department
+    ('FAC-006',  93000.00),
     ('CPL-008',  42000.00)
   ) AS exp_depts(dept_code, base_amount)
-ON CONFLICT (organization_id, department_id, fiscal_year, fiscal_month, metric_type, scenario) DO NOTHING;
-
-
+ON CONFLICT (id) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
 -- 6. Cash reserves for runway analytics
 -- ---------------------------------------------------------------------------
-INSERT INTO financial_cash_reserves (organization_id, month_start, cash_reserve_amount)
+INSERT INTO financial_cash_reserves (
+  organization_id,
+  month_start,
+  cash_reserve_amount
+)
 WITH monthly_net AS (
   SELECT
     organization_id,
@@ -343,7 +341,6 @@ DO UPDATE SET
   cash_reserve_amount = EXCLUDED.cash_reserve_amount,
   updated_at = NOW();
 
-
 -- ---------------------------------------------------------------------------
 -- 7. Application users (demo credentials)
 -- ---------------------------------------------------------------------------
@@ -364,7 +361,7 @@ VALUES
 ON CONFLICT (email) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
--- 7. Compliance sample data
+-- 8. Compliance sample data
 -- ---------------------------------------------------------------------------
 INSERT INTO compliance_items (
   id, regulation_code, status, last_reviewed_at, next_review_due_at, assigned_to, organization_id
@@ -386,7 +383,7 @@ ON CONFLICT (id) DO NOTHING;
 COMMIT;
 
 -- =============================================================================
--- 8. Convenience views  (financials_revenue / financials_expenses)
+-- 9. Convenience views  (financials_revenue / financials_expenses)
 -- =============================================================================
 
 CREATE OR REPLACE VIEW financials_revenue AS
@@ -427,7 +424,7 @@ JOIN departments  d ON d.id = t.department_id
 WHERE t.transaction_type = 'expense';
 
 -- =============================================================================
--- 9. Materialized summary view  (monthly P&L + per-category breakdown)
+-- 10. Materialized summary view  (monthly P&L + per-category breakdown)
 -- =============================================================================
 DROP MATERIALIZED VIEW IF EXISTS mv_monthly_financial_summary;
 
@@ -498,7 +495,4 @@ CREATE UNIQUE INDEX uidx_mv_monthly_summary_period
   ON mv_monthly_financial_summary (fiscal_year, fiscal_month);
 
 -- Populate the materialized view immediately.
--- NOTE: CONCURRENTLY cannot be used here because the view is empty on first
---       run.  Use REFRESH MATERIALIZED VIEW CONCURRENTLY for subsequent
---       incremental refreshes once the view already contains data.
 REFRESH MATERIALIZED VIEW mv_monthly_financial_summary;
