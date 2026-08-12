@@ -1,24 +1,23 @@
 -- =============================================================================
--- MedFinance Analytics — Production Seed
--- =============================================================================
--- Idempotent: safe to run multiple times.
---
--- Departments  → deterministic UUID via md5()::uuid + ON CONFLICT (id) DO NOTHING
--- Forecasts    → deterministic UUID via md5()::uuid + ON CONFLICT (id) DO NOTHING
--- Transactions → deterministic UUID via md5()::uuid + ON CONFLICT (id) DO NOTHING
---
+-- MedFinance Analytics Demo Seed
 -- Covers fiscal years 2024 – 2026 (36 months).
 --
--- Seasonal revenue multipliers  : Q1 +15 %, Q2  –5 %, Q3 –10 %, Q4 +10 %
--- Seasonal expense multipliers  : Q1  –5 %, Q2  +5 %, Q3 +10 %, Q4  –5 %
--- Year-over-year growth          : +4 % per year compounded from 2024
+-- Seasonal revenue multipliers:
+--   Q1 +15 %, Q2 -5 %, Q3 -10 %, Q4 +10 %
+--
+-- Seasonal expense multipliers:
+--   Q1 -5 %, Q2 +5 %, Q3 +10 %, Q4 -5 %
+--
+-- Year-over-year growth:
+--   +4 % per year compounded from 2024
 -- =============================================================================
 
 BEGIN;
 
--- ---------------------------------------------------------------------------
--- 0. Extensions
--- ---------------------------------------------------------------------------
+-- =============================================================================
+-- 0. Extensions and organizations
+-- =============================================================================
+
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 INSERT INTO organizations (id, name)
@@ -27,286 +26,429 @@ VALUES
   (md5('org_medfinance_demo')::uuid, 'MedFinance Demo Org')
 ON CONFLICT (id) DO NOTHING;
 
--- Ensure KPI dependency exists even when migrations/init scripts were not applied
-CREATE TABLE IF NOT EXISTS financial_cash_reserves (
-  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
-  month_start DATE NOT NULL,
-  cash_reserve_amount NUMERIC(16, 2) NOT NULL DEFAULT 0 CHECK (cash_reserve_amount >= 0),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  PRIMARY KEY (organization_id, month_start)
-);
 
--- Ensure primary key exists on existing legacy tables
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint 
-    WHERE conrelid = 'financial_cash_reserves'::regclass 
-      AND contype IN ('p', 'u')
-  ) THEN
-    ALTER TABLE financial_cash_reserves 
-      ADD CONSTRAINT financial_cash_reserves_pkey PRIMARY KEY (organization_id, month_start);
-  END IF;
-END $$;
-
--- Ensure billing dependencies exist even when migrations/init scripts were not applied
-CREATE TABLE IF NOT EXISTS subscriptions (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-  stripe_subscription_id VARCHAR(255) UNIQUE NOT NULL,
-  plan VARCHAR(50) NOT NULL DEFAULT 'starter',
-  status VARCHAR(50) NOT NULL DEFAULT 'active',
-  current_period_start TIMESTAMPTZ NOT NULL,
-  current_period_end TIMESTAMPTZ NOT NULL,
-  cancel_at_period_end BOOLEAN NOT NULL DEFAULT false,
-  metadata JSONB,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_subscriptions_organization_id ON subscriptions (organization_id);
-CREATE INDEX IF NOT EXISTS idx_subscriptions_status ON subscriptions (status);
-
--- Ensure internal analytics sink exists even when migrations/init scripts were not applied
-CREATE TABLE IF NOT EXISTS api_request_metrics (
-  id BIGSERIAL PRIMARY KEY,
-  endpoint TEXT NOT NULL,
-  method VARCHAR(8) NOT NULL,
-  status_code INTEGER NOT NULL,
-  latency_ms INTEGER NOT NULL CHECK (latency_ms >= 0),
-  user_id UUID,
-  organization_id UUID REFERENCES organizations(id) ON DELETE SET NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_api_request_metrics_created_at
-  ON api_request_metrics (created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_api_request_metrics_endpoint
-  ON api_request_metrics (endpoint);
-CREATE INDEX IF NOT EXISTS idx_api_request_metrics_user_id
-  ON api_request_metrics (user_id)
-  WHERE user_id IS NOT NULL;
-
--- ---------------------------------------------------------------------------
+-- =============================================================================
 -- 1. Departments
--- ---------------------------------------------------------------------------
-INSERT INTO departments (id, organization_id, department_code, name, cost_center, status)
+-- =============================================================================
+
+INSERT INTO departments (
+  id,
+  organization_id,
+  department_code,
+  name,
+  cost_center,
+  status
+)
 VALUES
-  -- Revenue-generating departments
-  (md5('dept_outpatient_services')::uuid,   md5('org_medfinance_demo')::uuid, 'OPC-001', 'Outpatient Services',    'CC-OPC-001', 'active'),
-  (md5('dept_insurance_billing')::uuid,     md5('org_medfinance_demo')::uuid, 'INS-002', 'Insurance & Billing',    'CC-INS-002', 'active'),
-  (md5('dept_laboratory_services')::uuid,   md5('org_medfinance_demo')::uuid, 'LAB-003', 'Laboratory Services',    'CC-LAB-003', 'active'),
-  (md5('dept_pharmacy')::uuid,              md5('org_medfinance_demo')::uuid, 'PHM-004', 'Pharmacy',               'CC-PHM-004', 'active'),
-  -- Expense / cost departments
-  (md5('dept_human_resources')::uuid,       md5('org_medfinance_demo')::uuid, 'HRS-005', 'Human Resources',        'CC-HRS-005', 'active'),
-  (md5('dept_facilities_management')::uuid, md5('org_medfinance_demo')::uuid, 'FAC-006', 'Facilities Management',  'CC-FAC-006', 'active'),
-  (md5('dept_technology_equipment')::uuid,  md5('org_medfinance_demo')::uuid, 'TEC-007', 'Technology & Equipment', 'CC-TEC-007', 'active'),
-  (md5('dept_compliance_risk')::uuid,       md5('org_medfinance_demo')::uuid, 'CPL-008', 'Compliance & Risk',      'CC-CPL-008', 'active')
+  (
+    md5('dept_outpatient_services')::uuid,
+    md5('org_medfinance_demo')::uuid,
+    'OPC-001',
+    'Outpatient Services',
+    'CC-OPC-001',
+    'active'
+  ),
+  (
+    md5('dept_insurance_billing')::uuid,
+    md5('org_medfinance_demo')::uuid,
+    'INS-002',
+    'Insurance & Billing',
+    'CC-INS-002',
+    'active'
+  ),
+  (
+    md5('dept_laboratory_services')::uuid,
+    md5('org_medfinance_demo')::uuid,
+    'LAB-003',
+    'Laboratory Services',
+    'CC-LAB-003',
+    'active'
+  ),
+  (
+    md5('dept_pharmacy')::uuid,
+    md5('org_medfinance_demo')::uuid,
+    'PHM-004',
+    'Pharmacy',
+    'CC-PHM-004',
+    'active'
+  ),
+  (
+    md5('dept_human_resources')::uuid,
+    md5('org_medfinance_demo')::uuid,
+    'HRS-005',
+    'Human Resources',
+    'CC-HRS-005',
+    'active'
+  ),
+  (
+    md5('dept_facilities_management')::uuid,
+    md5('org_medfinance_demo')::uuid,
+    'FAC-006',
+    'Facilities Management',
+    'CC-FAC-006',
+    'active'
+  ),
+  (
+    md5('dept_technology_equipment')::uuid,
+    md5('org_medfinance_demo')::uuid,
+    'TEC-007',
+    'Technology & Equipment',
+    'CC-TEC-007',
+    'active'
+  ),
+  (
+    md5('dept_compliance_risk')::uuid,
+    md5('org_medfinance_demo')::uuid,
+    'CPL-008',
+    'Compliance & Risk',
+    'CC-CPL-008',
+    'active'
+  )
 ON CONFLICT (id) DO NOTHING;
 
--- ---------------------------------------------------------------------------
+
+-- =============================================================================
 -- 2. Revenue transactions
--- ---------------------------------------------------------------------------
+-- =============================================================================
+
 INSERT INTO transactions (
-  id, organization_id, department_id, transaction_type, category,
-  invoice_number, description,
-  amount, tax_amount, currency, occurred_on
+  id,
+  organization_id,
+  department_id,
+  transaction_type,
+  category,
+  invoice_number,
+  description,
+  amount,
+  tax_amount,
+  currency,
+  occurred_on
 )
 SELECT
-  md5('txn_rev_' || rev.category || '_' || yr::text || '_' || lpad(mo::text, 2, '0'))::uuid,
+  md5(
+    'txn_rev_' ||
+    rev.category ||
+    '_' ||
+    yr::text ||
+    '_' ||
+    lpad(mo::text, 2, '0')
+  )::uuid,
+
   md5('org_medfinance_demo')::uuid,
-  (SELECT d.id FROM departments d WHERE d.organization_id = md5('org_medfinance_demo')::uuid AND d.department_code = rev.dept_code),
+
+  (
+    SELECT d.id
+    FROM departments d
+    WHERE d.organization_id = md5('org_medfinance_demo')::uuid
+      AND d.department_code = rev.dept_code
+  ),
+
   'revenue',
   rev.category,
-  'INV-REV-' || rev.cat_code || '-' || yr::text || '-' || lpad(mo::text, 2, '0'),
-  initcap(replace(rev.category, '_', ' ')) || ' revenue — '
-    || to_char(make_date(yr, mo, 1), 'FMMonth YYYY'),
+
+  'INV-REV-' ||
+    rev.cat_code ||
+    '-' ||
+    yr::text ||
+    '-' ||
+    lpad(mo::text, 2, '0'),
+
+  initcap(replace(rev.category, '_', ' ')) ||
+    ' revenue — ' ||
+    to_char(make_date(yr, mo, 1), 'FMMonth YYYY'),
+
   ROUND(
-    (rev.base_amount::numeric
-      * CASE
-          WHEN mo IN (1,2,3)   THEN 1.15
-          WHEN mo IN (4,5,6)   THEN 0.95
-          WHEN mo IN (7,8,9)   THEN 0.90
-          ELSE                      1.10
-        END
-      * POWER(1.04::numeric, (yr - 2024)::numeric)
-    ),
+    rev.base_amount::numeric *
+    CASE
+      WHEN mo IN (1, 2, 3) THEN 1.15
+      WHEN mo IN (4, 5, 6) THEN 0.95
+      WHEN mo IN (7, 8, 9) THEN 0.90
+      ELSE 1.10
+    END *
+    POWER(1.04::numeric, (yr - 2024)::numeric),
     2
   ),
+
   0.00,
   'USD',
+
   (make_date(yr, mo, 1) + INTERVAL '14 days')::date
-FROM
-  generate_series(2024, 2026) AS yr,
-  generate_series(1, 12)      AS mo,
-  (VALUES
+
+FROM generate_series(2024, 2026) AS yr
+CROSS JOIN generate_series(1, 12) AS mo
+CROSS JOIN (
+  VALUES
     ('OPC-001', 'consultations',    'CONS', 480000.00),
     ('INS-002', 'insurance_claims', 'INSC', 320000.00),
     ('LAB-003', 'lab_services',     'LABS', 145000.00),
     ('PHM-004', 'pharmacy_sales',   'PHMS', 210000.00)
-  ) AS rev(dept_code, category, cat_code, base_amount)
+) AS rev(dept_code, category, cat_code, base_amount)
+
 ON CONFLICT (id) DO NOTHING;
 
--- ---------------------------------------------------------------------------
+
+-- =============================================================================
 -- 3. Expense transactions
--- ---------------------------------------------------------------------------
+-- =============================================================================
+
 INSERT INTO transactions (
-  id, organization_id, department_id, transaction_type, category,
-  invoice_number, description,
-  amount, tax_amount, currency, occurred_on
+  id,
+  organization_id,
+  department_id,
+  transaction_type,
+  category,
+  invoice_number,
+  description,
+  amount,
+  tax_amount,
+  currency,
+  occurred_on
 )
 SELECT
-  md5('txn_exp_' || exp.category || '_' || yr::text || '_' || lpad(mo::text, 2, '0'))::uuid,
+  md5(
+    'txn_exp_' ||
+    exp.category ||
+    '_' ||
+    yr::text ||
+    '_' ||
+    lpad(mo::text, 2, '0')
+  )::uuid,
+
   md5('org_medfinance_demo')::uuid,
-  (SELECT d.id FROM departments d WHERE d.organization_id = md5('org_medfinance_demo')::uuid AND d.department_code = exp.dept_code),
+
+  (
+    SELECT d.id
+    FROM departments d
+    WHERE d.organization_id = md5('org_medfinance_demo')::uuid
+      AND d.department_code = exp.dept_code
+  ),
+
   'expense',
   exp.category,
-  'INV-EXP-' || exp.cat_code || '-' || yr::text || '-' || lpad(mo::text, 2, '0'),
-  initcap(replace(exp.category, '_', ' ')) || ' expense — '
-    || to_char(make_date(yr, mo, 1), 'FMMonth YYYY'),
+
+  'INV-EXP-' ||
+    exp.cat_code ||
+    '-' ||
+    yr::text ||
+    '-' ||
+    lpad(mo::text, 2, '0'),
+
+  initcap(replace(exp.category, '_', ' ')) ||
+    ' expense — ' ||
+    to_char(make_date(yr, mo, 1), 'FMMonth YYYY'),
+
   ROUND(
-    (exp.base_amount::numeric
-      * CASE
-          WHEN mo IN (1,2,3)   THEN 0.95
-          WHEN mo IN (4,5,6)   THEN 1.05
-          WHEN mo IN (7,8,9)   THEN 1.10
-          ELSE                      0.95
-        END
-      * POWER(1.04::numeric, (yr - 2024)::numeric)
-    ),
+    exp.base_amount::numeric *
+    CASE
+      WHEN mo IN (1, 2, 3) THEN 0.95
+      WHEN mo IN (4, 5, 6) THEN 1.05
+      WHEN mo IN (7, 8, 9) THEN 1.10
+      ELSE 0.95
+    END *
+    POWER(1.04::numeric, (yr - 2024)::numeric),
     2
   ),
+
   ROUND(
-    (exp.base_amount::numeric
-      * CASE
-          WHEN mo IN (1,2,3)   THEN 0.95
-          WHEN mo IN (4,5,6)   THEN 1.05
-          WHEN mo IN (7,8,9)   THEN 1.10
-          ELSE                      0.95
-        END
-      * POWER(1.04::numeric, (yr - 2024)::numeric)
-      * 0.08  -- 8 % applicable tax on expenses
-    ),
+    exp.base_amount::numeric *
+    CASE
+      WHEN mo IN (1, 2, 3) THEN 0.95
+      WHEN mo IN (4, 5, 6) THEN 1.05
+      WHEN mo IN (7, 8, 9) THEN 1.10
+      ELSE 0.95
+    END *
+    POWER(1.04::numeric, (yr - 2024)::numeric) *
+    0.08,
     2
   ),
+
   'USD',
+
   (make_date(yr, mo, 1) + INTERVAL '28 days')::date
-FROM
-  generate_series(2024, 2026) AS yr,
-  generate_series(1, 12)      AS mo,
-  (VALUES
+
+FROM generate_series(2024, 2026) AS yr
+CROSS JOIN generate_series(1, 12) AS mo
+CROSS JOIN (
+  VALUES
     ('HRS-005', 'salaries',         'SAL', 520000.00),
     ('TEC-007', 'equipment',        'EQP',  85000.00),
     ('FAC-006', 'rent',             'RNT',  65000.00),
     ('FAC-006', 'utilities',        'UTL',  28000.00),
     ('CPL-008', 'compliance_costs', 'CPL',  42000.00)
-  ) AS exp(dept_code, category, cat_code, base_amount)
+) AS exp(dept_code, category, cat_code, base_amount)
+
 ON CONFLICT (id) DO NOTHING;
 
--- ---------------------------------------------------------------------------
+
+-- =============================================================================
 -- 4. Baseline forecasts — revenue
--- ---------------------------------------------------------------------------
+-- =============================================================================
+
 INSERT INTO forecasts (
-  id, organization_id, department_id,
-  fiscal_year, fiscal_month,
-  metric_type, projected_amount,
-  scenario, confidence_score, assumptions
+  id,
+  organization_id,
+  department_id,
+  fiscal_year,
+  fiscal_month,
+  metric_type,
+  projected_amount,
+  scenario,
+  confidence_score,
+  assumptions
 )
 SELECT
-  md5('fcast_rev_' || dept_code || '_' || yr::text || '_' || lpad(mo::text, 2, '0'))::uuid,
+  md5(
+    'fcast_rev_' ||
+    dept_code ||
+    '_' ||
+    yr::text ||
+    '_' ||
+    lpad(mo::text, 2, '0')
+  )::uuid,
+
   md5('org_medfinance_demo')::uuid,
-  (SELECT d.id FROM departments d WHERE d.organization_id = md5('org_medfinance_demo')::uuid AND d.department_code = dept_code),
-  yr, mo,
+
+  (
+    SELECT d.id
+    FROM departments d
+    WHERE d.organization_id = md5('org_medfinance_demo')::uuid
+      AND d.department_code = dept_code
+  ),
+
+  yr,
+  mo,
   'revenue',
+
   ROUND(
-    (base_amount::numeric
-      * CASE
-          WHEN mo IN (1,2,3)   THEN 1.15
-          WHEN mo IN (4,5,6)   THEN 0.95
-          WHEN mo IN (7,8,9)   THEN 0.90
-          ELSE                      1.10
-        END
-      * POWER(1.04::numeric, (yr - 2024)::numeric)
-    ),
+    base_amount::numeric *
+    CASE
+      WHEN mo IN (1, 2, 3) THEN 1.15
+      WHEN mo IN (4, 5, 6) THEN 0.95
+      WHEN mo IN (7, 8, 9) THEN 0.90
+      ELSE 1.10
+    END *
+    POWER(1.04::numeric, (yr - 2024)::numeric),
     2
   ),
+
   'baseline',
   85.00,
+
   jsonb_build_object(
-    'seasonal_adjustment', CASE
-      WHEN mo IN (1,2,3)   THEN '+15%'
-      WHEN mo IN (4,5,6)   THEN '-5%'
-      WHEN mo IN (7,8,9)   THEN '-10%'
-      ELSE                      '+10%'
-    END,
+    'seasonal_adjustment',
+      CASE
+        WHEN mo IN (1, 2, 3) THEN '+15%'
+        WHEN mo IN (4, 5, 6) THEN '-5%'
+        WHEN mo IN (7, 8, 9) THEN '-10%'
+        ELSE '+10%'
+      END,
     'yoy_growth_rate', '4%',
     'seeded', true
   )
-FROM
-  generate_series(2024, 2026) AS yr,
-  generate_series(1, 12)      AS mo,
-  (VALUES
+
+FROM generate_series(2024, 2026) AS yr
+CROSS JOIN generate_series(1, 12) AS mo
+CROSS JOIN (
+  VALUES
     ('OPC-001', 480000.00),
     ('INS-002', 320000.00),
     ('LAB-003', 145000.00),
     ('PHM-004', 210000.00)
-  ) AS rev_depts(dept_code, base_amount)
+) AS rev_depts(dept_code, base_amount)
+
 ON CONFLICT (id) DO NOTHING;
 
--- ---------------------------------------------------------------------------
+
+-- =============================================================================
 -- 5. Baseline forecasts — expenses
--- ---------------------------------------------------------------------------
+-- =============================================================================
+
 INSERT INTO forecasts (
-  id, organization_id, department_id,
-  fiscal_year, fiscal_month,
-  metric_type, projected_amount,
-  scenario, confidence_score, assumptions
+  id,
+  organization_id,
+  department_id,
+  fiscal_year,
+  fiscal_month,
+  metric_type,
+  projected_amount,
+  scenario,
+  confidence_score,
+  assumptions
 )
 SELECT
-  md5('fcast_exp_' || dept_code || '_' || yr::text || '_' || lpad(mo::text, 2, '0'))::uuid,
+  md5(
+    'fcast_exp_' ||
+    dept_code ||
+    '_' ||
+    yr::text ||
+    '_' ||
+    lpad(mo::text, 2, '0')
+  )::uuid,
+
   md5('org_medfinance_demo')::uuid,
-  (SELECT d.id FROM departments d WHERE d.organization_id = md5('org_medfinance_demo')::uuid AND d.department_code = dept_code),
-  yr, mo,
+
+  (
+    SELECT d.id
+    FROM departments d
+    WHERE d.organization_id = md5('org_medfinance_demo')::uuid
+      AND d.department_code = dept_code
+  ),
+
+  yr,
+  mo,
   'expense',
+
   ROUND(
-    (base_amount::numeric
-      * CASE
-          WHEN mo IN (1,2,3)   THEN 0.95
-          WHEN mo IN (4,5,6)   THEN 1.05
-          WHEN mo IN (7,8,9)   THEN 1.10
-          ELSE                      0.95
-        END
-      * POWER(1.04::numeric, (yr - 2024)::numeric)
-    ),
+    base_amount::numeric *
+    CASE
+      WHEN mo IN (1, 2, 3) THEN 0.95
+      WHEN mo IN (4, 5, 6) THEN 1.05
+      WHEN mo IN (7, 8, 9) THEN 1.10
+      ELSE 0.95
+    END *
+    POWER(1.04::numeric, (yr - 2024)::numeric),
     2
   ),
+
   'baseline',
   88.00,
+
   jsonb_build_object(
-    'seasonal_adjustment', CASE
-      WHEN mo IN (1,2,3)   THEN '-5%'
-      WHEN mo IN (4,5,6)   THEN '+5%'
-      WHEN mo IN (7,8,9)   THEN '+10%'
-      ELSE                      '-5%'
-    END,
+    'seasonal_adjustment',
+      CASE
+        WHEN mo IN (1, 2, 3) THEN '-5%'
+        WHEN mo IN (4, 5, 6) THEN '+5%'
+        WHEN mo IN (7, 8, 9) THEN '+10%'
+        ELSE '-5%'
+      END,
     'yoy_growth_rate', '4%',
     'seeded', true
   )
-FROM
-  generate_series(2024, 2026) AS yr,
-  generate_series(1, 12)      AS mo,
-  (VALUES
+
+FROM generate_series(2024, 2026) AS yr
+CROSS JOIN generate_series(1, 12) AS mo
+CROSS JOIN (
+  VALUES
     ('HRS-005', 520000.00),
     ('TEC-007',  85000.00),
     ('FAC-006',  93000.00),
     ('CPL-008',  42000.00)
-  ) AS exp_depts(dept_code, base_amount)
+) AS exp_depts(dept_code, base_amount)
+
 ON CONFLICT (id) DO NOTHING;
 
--- ---------------------------------------------------------------------------
--- 6. Cash reserves for runway analytics
--- ---------------------------------------------------------------------------
+
+-- =============================================================================
+-- 6. Cash reserves
+--
+-- IMPORTANT:
+-- financial_cash_reserves MUST have:
+--
+-- PRIMARY KEY (organization_id, month_start)
+--
+-- because cash reserves are tenant-specific.
+-- =============================================================================
+
 INSERT INTO financial_cash_reserves (
   organization_id,
   month_start,
@@ -315,100 +457,196 @@ INSERT INTO financial_cash_reserves (
 WITH monthly_net AS (
   SELECT
     organization_id,
-    DATE_TRUNC('month', occurred_on::timestamp)::date AS month_start,
-    COALESCE(SUM(CASE WHEN transaction_type = 'revenue' THEN amount ELSE -amount END), 0) AS net_cash_flow
+    DATE_TRUNC(
+      'month',
+      occurred_on::timestamp
+    )::date AS month_start,
+
+    COALESCE(
+      SUM(
+        CASE
+          WHEN transaction_type = 'revenue'
+            THEN amount
+          ELSE -amount
+        END
+      ),
+      0
+    ) AS net_cash_flow
+
   FROM transactions
-  GROUP BY 1, 2
+
+  WHERE organization_id = md5('org_medfinance_demo')::uuid
+
+  GROUP BY organization_id, month_start
 ),
+
 running_cash AS (
   SELECT
     organization_id,
     month_start,
-    12000000::numeric + SUM(net_cash_flow) OVER (
-      PARTITION BY organization_id
-      ORDER BY month_start ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-    )
-      AS cash_reserve_amount
+
+    12000000::numeric +
+      SUM(net_cash_flow) OVER (
+        PARTITION BY organization_id
+        ORDER BY month_start
+        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+      ) AS cash_reserve_amount
+
   FROM monthly_net
 )
+
 SELECT
   organization_id,
   month_start,
   ROUND(GREATEST(cash_reserve_amount, 0), 2)
+
 FROM running_cash
+
 ON CONFLICT (organization_id, month_start)
 DO UPDATE SET
   cash_reserve_amount = EXCLUDED.cash_reserve_amount,
   updated_at = NOW();
 
--- ---------------------------------------------------------------------------
--- 7. Application users (demo credentials)
--- ---------------------------------------------------------------------------
+
+-- =============================================================================
+-- 7. Application user
+-- =============================================================================
+
 INSERT INTO users (
-  id, email, password_hash, first_name, last_name, role, organization_id, is_active
+  id,
+  email,
+  password_hash,
+  first_name,
+  last_name,
+  role,
+  organization_id,
+  is_active
 )
-VALUES
-  (
-    md5('user_demo_cfo')::uuid,
-    'demo@medfinance.test',
-    '$2a$12$mH/JllR1HHEYeoqF5yKt4evTqGGdXja3X9Ac8T5G9WxPHqU46zKBK',
-    'Demo',
-    'CFO',
-    'cfo',
-    md5('org_medfinance_demo')::uuid,
-    true
-  )
+VALUES (
+  md5('user_demo_cfo')::uuid,
+  'demo@medfinance.test',
+  '$2a$12$mH/JllR1HHEYeoqF5yKt4evTqGGdXja3X9Ac8T5G9WxPHqU46zKBK',
+  'Demo',
+  'CFO',
+  'cfo',
+  md5('org_medfinance_demo')::uuid,
+  true
+)
 ON CONFLICT (email) DO NOTHING;
 
--- ---------------------------------------------------------------------------
+
+-- =============================================================================
 -- 8. Compliance sample data
--- ---------------------------------------------------------------------------
+-- =============================================================================
+
 INSERT INTO compliance_items (
-  id, regulation_code, status, last_reviewed_at, next_review_due_at, assigned_to, organization_id
+  id,
+  regulation_code,
+  status,
+  last_reviewed_at,
+  next_review_due_at,
+  assigned_to,
+  organization_id
 )
 VALUES
-  (md5('cmp_item_hipaa_164_312_a_1')::uuid, 'HIPAA-164.312(a)(1)', 'compliant', NOW() - INTERVAL '21 days', NOW() + INTERVAL '69 days', 'security.lead@medfinance.test', md5('org_medfinance_demo')::uuid),
-  (md5('cmp_item_soc2_cc6_1')::uuid, 'SOC2-CC6.1', 'under_review', NOW() - INTERVAL '45 days', NOW() + INTERVAL '15 days', 'audit.manager@medfinance.test', md5('org_medfinance_demo')::uuid),
-  (md5('cmp_item_hitrust_09_m')::uuid, 'HITRUST-09.m', 'non_compliant', NOW() - INTERVAL '90 days', NOW() + INTERVAL '7 days', 'risk.owner@medfinance.test', md5('org_medfinance_demo')::uuid)
+(
+  md5('cmp_item_hipaa_164_312_a_1')::uuid,
+  'HIPAA-164.312(a)(1)',
+  'compliant',
+  NOW() - INTERVAL '21 days',
+  NOW() + INTERVAL '69 days',
+  'security.lead@medfinance.test',
+  md5('org_medfinance_demo')::uuid
+),
+(
+  md5('cmp_item_soc2_cc6_1')::uuid,
+  'SOC2-CC6.1',
+  'under_review',
+  NOW() - INTERVAL '45 days',
+  NOW() + INTERVAL '15 days',
+  'audit.manager@medfinance.test',
+  md5('org_medfinance_demo')::uuid
+),
+(
+  md5('cmp_item_hitrust_09_m')::uuid,
+  'HITRUST-09.m',
+  'non_compliant',
+  NOW() - INTERVAL '90 days',
+  NOW() + INTERVAL '7 days',
+  'risk.owner@medfinance.test',
+  md5('org_medfinance_demo')::uuid
+)
 ON CONFLICT (id) DO NOTHING;
 
+
 INSERT INTO regulatory_alerts (
-  id, title, description, severity, regulation_code, due_date, status, organization_id
+  id,
+  title,
+  description,
+  severity,
+  regulation_code,
+  due_date,
+  status,
+  organization_id
 )
 VALUES
-  (md5('alert_hipaa_access_review')::uuid, 'Quarterly access review due', 'Access certification package for privileged users is due this quarter.', 'high', 'HIPAA-164.308(a)(4)', CURRENT_DATE + INTERVAL '30 days', 'open', md5('org_medfinance_demo')::uuid),
-  (md5('alert_soc2_change_mgmt')::uuid, 'Change management evidence needed', 'Provide SOC 2 change tickets and approvals for production releases.', 'medium', 'SOC2-CC8.1', CURRENT_DATE + INTERVAL '21 days', 'acknowledged', md5('org_medfinance_demo')::uuid)
+(
+  md5('alert_hipaa_access_review')::uuid,
+  'Quarterly access review due',
+  'Access certification package for privileged users is due this quarter.',
+  'high',
+  'HIPAA-164.308(a)(4)',
+  CURRENT_DATE + INTERVAL '30 days',
+  'open',
+  md5('org_medfinance_demo')::uuid
+),
+(
+  md5('alert_soc2_change_mgmt')::uuid,
+  'Change management evidence needed',
+  'Provide SOC 2 change tickets and approvals for production releases.',
+  'medium',
+  'SOC2-CC8.1',
+  CURRENT_DATE + INTERVAL '21 days',
+  'acknowledged',
+  md5('org_medfinance_demo')::uuid
+)
 ON CONFLICT (id) DO NOTHING;
+
 
 COMMIT;
 
+
 -- =============================================================================
--- 9. Convenience views  (financials_revenue / financials_expenses)
+-- 9. Convenience views
 -- =============================================================================
 
 CREATE OR REPLACE VIEW financials_revenue AS
 SELECT
   t.id,
+  t.organization_id,
   t.department_id,
-  d.name                                           AS department_name,
+  d.name AS department_name,
   t.category,
   t.invoice_number,
   t.description,
   t.amount,
   t.currency,
   t.occurred_on,
-  EXTRACT(YEAR  FROM t.occurred_on)::INTEGER       AS fiscal_year,
-  EXTRACT(MONTH FROM t.occurred_on)::INTEGER       AS fiscal_month,
+  EXTRACT(YEAR FROM t.occurred_on)::INTEGER AS fiscal_year,
+  EXTRACT(MONTH FROM t.occurred_on)::INTEGER AS fiscal_month,
   t.created_at
 FROM transactions t
-JOIN departments  d ON d.id = t.department_id
+JOIN departments d
+  ON d.id = t.department_id
 WHERE t.transaction_type = 'revenue';
+
 
 CREATE OR REPLACE VIEW financials_expenses AS
 SELECT
   t.id,
+  t.organization_id,
   t.department_id,
-  d.name                                           AS department_name,
+  d.name AS department_name,
   t.category,
   t.invoice_number,
   t.description,
@@ -416,83 +654,168 @@ SELECT
   t.tax_amount,
   t.currency,
   t.occurred_on,
-  EXTRACT(YEAR  FROM t.occurred_on)::INTEGER       AS fiscal_year,
-  EXTRACT(MONTH FROM t.occurred_on)::INTEGER       AS fiscal_month,
+  EXTRACT(YEAR FROM t.occurred_on)::INTEGER AS fiscal_year,
+  EXTRACT(MONTH FROM t.occurred_on)::INTEGER AS fiscal_month,
   t.created_at
 FROM transactions t
-JOIN departments  d ON d.id = t.department_id
+JOIN departments d
+  ON d.id = t.department_id
 WHERE t.transaction_type = 'expense';
 
+
 -- =============================================================================
--- 10. Materialized summary view  (monthly P&L + per-category breakdown)
+-- 10. Monthly financial summary
 -- =============================================================================
+
 DROP MATERIALIZED VIEW IF EXISTS mv_monthly_financial_summary;
 
 CREATE MATERIALIZED VIEW mv_monthly_financial_summary AS
 WITH monthly_detail AS (
   SELECT
-    EXTRACT(YEAR  FROM occurred_on)::INTEGER AS fiscal_year,
+    organization_id,
+    EXTRACT(YEAR FROM occurred_on)::INTEGER AS fiscal_year,
     EXTRACT(MONTH FROM occurred_on)::INTEGER AS fiscal_month,
     transaction_type,
     category,
-    SUM(amount)                              AS total_amount
+    SUM(amount) AS total_amount
   FROM transactions
-  GROUP BY 1, 2, 3, 4
+  GROUP BY
+    organization_id,
+    2,
+    3,
+    4,
+    5
 ),
+
 monthly_totals AS (
   SELECT
+    organization_id,
     fiscal_year,
     fiscal_month,
-    to_char(make_date(fiscal_year, fiscal_month, 1), 'FMMonth YYYY') AS period_label,
-    SUM(total_amount) FILTER (WHERE transaction_type = 'revenue')    AS total_revenue,
-    SUM(total_amount) FILTER (WHERE transaction_type = 'expense')    AS total_expenses
+
+    to_char(
+      make_date(fiscal_year, fiscal_month, 1),
+      'FMMonth YYYY'
+    ) AS period_label,
+
+    SUM(total_amount)
+      FILTER (WHERE transaction_type = 'revenue') AS total_revenue,
+
+    SUM(total_amount)
+      FILTER (WHERE transaction_type = 'expense') AS total_expenses
+
   FROM monthly_detail
-  GROUP BY fiscal_year, fiscal_month
+
+  GROUP BY
+    organization_id,
+    fiscal_year,
+    fiscal_month
 )
+
 SELECT
+  t.organization_id,
   t.fiscal_year,
   t.fiscal_month,
   t.period_label,
   t.total_revenue,
   t.total_expenses,
-  (t.total_revenue - t.total_expenses)                               AS net_income,
+  (t.total_revenue - t.total_expenses) AS net_income,
+
   CASE
     WHEN t.total_revenue > 0
     THEN ROUND(
-           ((t.total_revenue - t.total_expenses) / t.total_revenue * 100)::numeric,
-           2
-         )
+      (
+        (t.total_revenue - t.total_expenses)
+        / t.total_revenue
+        * 100
+      )::numeric,
+      2
+    )
     ELSE 0
-  END                                                                AS net_margin_pct,
-  -- revenue breakdown
-  SUM(d.total_amount) FILTER (
-    WHERE d.transaction_type = 'revenue' AND d.category = 'consultations')    AS rev_consultations,
-  SUM(d.total_amount) FILTER (
-    WHERE d.transaction_type = 'revenue' AND d.category = 'insurance_claims') AS rev_insurance_claims,
-  SUM(d.total_amount) FILTER (
-    WHERE d.transaction_type = 'revenue' AND d.category = 'lab_services')     AS rev_lab_services,
-  SUM(d.total_amount) FILTER (
-    WHERE d.transaction_type = 'revenue' AND d.category = 'pharmacy_sales')   AS rev_pharmacy_sales,
-  -- expense breakdown
-  SUM(d.total_amount) FILTER (
-    WHERE d.transaction_type = 'expense' AND d.category = 'salaries')         AS exp_salaries,
-  SUM(d.total_amount) FILTER (
-    WHERE d.transaction_type = 'expense' AND d.category = 'equipment')        AS exp_equipment,
-  SUM(d.total_amount) FILTER (
-    WHERE d.transaction_type = 'expense' AND d.category = 'rent')             AS exp_rent,
-  SUM(d.total_amount) FILTER (
-    WHERE d.transaction_type = 'expense' AND d.category = 'utilities')        AS exp_utilities,
-  SUM(d.total_amount) FILTER (
-    WHERE d.transaction_type = 'expense' AND d.category = 'compliance_costs') AS exp_compliance_costs
+  END AS net_margin_pct,
+
+  SUM(d.total_amount)
+    FILTER (
+      WHERE d.transaction_type = 'revenue'
+        AND d.category = 'consultations'
+    ) AS rev_consultations,
+
+  SUM(d.total_amount)
+    FILTER (
+      WHERE d.transaction_type = 'revenue'
+        AND d.category = 'insurance_claims'
+    ) AS rev_insurance_claims,
+
+  SUM(d.total_amount)
+    FILTER (
+      WHERE d.transaction_type = 'revenue'
+        AND d.category = 'lab_services'
+    ) AS rev_lab_services,
+
+  SUM(d.total_amount)
+    FILTER (
+      WHERE d.transaction_type = 'revenue'
+        AND d.category = 'pharmacy_sales'
+    ) AS rev_pharmacy_sales,
+
+  SUM(d.total_amount)
+    FILTER (
+      WHERE d.transaction_type = 'expense'
+        AND d.category = 'salaries'
+    ) AS exp_salaries,
+
+  SUM(d.total_amount)
+    FILTER (
+      WHERE d.transaction_type = 'expense'
+        AND d.category = 'equipment'
+    ) AS exp_equipment,
+
+  SUM(d.total_amount)
+    FILTER (
+      WHERE d.transaction_type = 'expense'
+        AND d.category = 'rent'
+    ) AS exp_rent,
+
+  SUM(d.total_amount)
+    FILTER (
+      WHERE d.transaction_type = 'expense'
+        AND d.category = 'utilities'
+    ) AS exp_utilities,
+
+  SUM(d.total_amount)
+    FILTER (
+      WHERE d.transaction_type = 'expense'
+        AND d.category = 'compliance_costs'
+    ) AS exp_compliance_costs
+
 FROM monthly_totals t
-JOIN monthly_detail  d USING (fiscal_year, fiscal_month)
+
+JOIN monthly_detail d
+  ON d.organization_id = t.organization_id
+ AND d.fiscal_year = t.fiscal_year
+ AND d.fiscal_month = t.fiscal_month
+
 GROUP BY
-  t.fiscal_year, t.fiscal_month, t.period_label,
-  t.total_revenue, t.total_expenses
-ORDER BY t.fiscal_year, t.fiscal_month;
+  t.organization_id,
+  t.fiscal_year,
+  t.fiscal_month,
+  t.period_label,
+  t.total_revenue,
+  t.total_expenses
 
-CREATE UNIQUE INDEX uidx_mv_monthly_summary_period
-  ON mv_monthly_financial_summary (fiscal_year, fiscal_month);
+ORDER BY
+  t.organization_id,
+  t.fiscal_year,
+  t.fiscal_month;
 
--- Populate the materialized view immediately.
+
+CREATE UNIQUE INDEX IF NOT EXISTS
+  uidx_mv_monthly_summary_org_period
+ON mv_monthly_financial_summary (
+  organization_id,
+  fiscal_year,
+  fiscal_month
+);
+
+
 REFRESH MATERIALIZED VIEW mv_monthly_financial_summary;
