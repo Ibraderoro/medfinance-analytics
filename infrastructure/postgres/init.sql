@@ -1,4 +1,3 @@
-sql
 -- MedFinance Analytics core financial schema
 -- Contains normalized tables used by backend analytics endpoints.
 -- Multi-tenant version: organization_id is carried through all
