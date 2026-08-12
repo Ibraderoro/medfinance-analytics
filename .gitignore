@@ -46,6 +46,8 @@ pids/
 # ────────────────────────────────────────────────
 coverage/
 .nyc_output/
+apps/frontend/playwright-report/
+apps/frontend/test-results/
 
 # ────────────────────────────────────────────────
 # IDE / Editor
