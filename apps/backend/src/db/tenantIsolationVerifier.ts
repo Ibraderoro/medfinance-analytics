@@ -38,7 +38,7 @@ const TENANT_COLUMN_CANDIDATES = ['organization_id', 'tenant_id'] as const;
 
 const DEFAULT_REPORT_PATH = path.resolve(
   process.env.TENANT_ISOLATION_REPORT_DIR ??
-    path.join(process.cwd(), 'reports'),
+    path.join(process.cwd(), 'apps', 'backend'),
   'tenant-isolation-report.json',
 );
 
