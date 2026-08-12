@@ -16,25 +16,15 @@
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
-CREATE TABLE IF NOT EXISTS organizations (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  name VARCHAR(255) NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-INSERT INTO organizations (id, name)
-VALUES (
-  md5('default_organization')::uuid,
-  'Default Organization'
-)
-ON CONFLICT (id) DO NOTHING;
 
 -- ============================================================================
 -- 1. Financial cash reserves
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS financial_cash_reserves (
-  organization_id UUID NOT NULL,
+  organization_id UUID NOT NULL
+    REFERENCES organizations(id)
+    ON DELETE RESTRICT,
 
   month_start DATE NOT NULL,
 
