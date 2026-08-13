@@ -38,7 +38,8 @@ services:
       context: .
       dockerfile: apps/backend/Dockerfile
     restart: "no"
-    environment: &backend_env
+    environment: &backend_env 
+      TENANT_ISOLATION_REPORT_PATH: /app/reports/tenant-isolation-report.json
       NODE_ENV: test
       PORT: 3001
       DATABASE_URL: postgresql://${POSTGRES_USER:-medfinance_e2e}:${POSTGRES_PASSWORD:-medfinance_e2e_password}@postgres:5432/${POSTGRES_DB:-medfinance_e2e}

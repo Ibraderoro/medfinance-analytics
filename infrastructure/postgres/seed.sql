@@ -512,27 +512,27 @@ DO UPDATE SET
 -- 7. Application user
 -- =============================================================================
 
-INSERT INTO users (
-  id,
-  email,
-  password_hash,
-  first_name,
-  last_name,
-  role,
-  organization_id,
-  is_active
-)
-VALUES (
-  md5('user_demo_cfo')::uuid,
-  'demo@medfinance.test',
-  '$2a$12$mH/JllR1HHEYeoqF5yKt4evTqGGdXja3X9Ac8T5G9WxPHqU46zKBK',
-  'Demo',
-  'CFO',
-  'cfo',
-  md5('org_medfinance_demo')::uuid,
-  true
-)
-ON CONFLICT (email) DO NOTHING;
+-- INSERT INTO users (
+--   id,
+--   email,
+--   password_hash,
+--   first_name,
+--   last_name,
+--   role,
+--   organization_id,
+--   is_active
+-- )
+-- VALUES (
+--   md5('user_demo_cfo')::uuid,
+--   'demo@medfinance.test',
+--   '$2a$12$mH/JllR1HHEYeoqF5yKt4evTqGGdXja3X9Ac8T5G9WxPHqU46zKBK',
+--   'Demo',
+--   'CFO',
+--   'cfo',
+--   md5('org_medfinance_demo')::uuid,
+--   true
+-- )
+-- ON CONFLICT (email) DO NOTHING;
 
 
 -- =============================================================================
