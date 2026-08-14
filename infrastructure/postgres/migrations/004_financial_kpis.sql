@@ -34,7 +34,9 @@ ON CONFLICT (id) DO NOTHING;
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS financial_cash_reserves (
-  organization_id UUID NOT NULL,
+  organization_id UUID NOT NULL
+    REFERENCES organizations(id)
+    ON DELETE RESTRICT,
 
   month_start DATE NOT NULL,
 
@@ -204,15 +206,8 @@ monthly_kpis AS (
     m.organization_id,
     m.month_start,
 
-    COALESCE(
-      m.total_revenue,
-      0
-    )::numeric(16, 2) AS total_revenue,
-
-    COALESCE(
-      m.total_expenses,
-      0
-    )::numeric(16, 2) AS total_expenses,
+    COALESCE(m.total_revenue, 0)::numeric(16, 2) AS total_revenue,
+    COALESCE(m.total_expenses, 0)::numeric(16, 2) AS total_expenses,
 
     COALESCE(
       m.total_revenue - m.total_expenses,
@@ -285,52 +280,16 @@ kpis_with_lags AS (
 
 SELECT
   k.organization_id,
-
   k.month_start,
-
-  EXTRACT(
-    YEAR FROM k.month_start
-  )::int AS fiscal_year,
-
-  EXTRACT(
-    MONTH FROM k.month_start
-  )::int AS fiscal_month,
-
-  COALESCE(
-    k.total_revenue,
-    0
-  )::numeric(16, 2) AS total_revenue,
-
-  COALESCE(
-    k.total_expenses,
-    0
-  )::numeric(16, 2) AS total_expenses,
-
-  COALESCE(
-    k.net_income,
-    0
-  )::numeric(16, 2) AS net_income,
-
-  COALESCE(
-    k.gross_margin,
-    0
-  )::numeric(7, 2) AS gross_margin,
-
-  COALESCE(
-    k.operating_margin,
-    0
-  )::numeric(7, 2) AS operating_margin,
-
-  COALESCE(
-    k.burn_rate,
-    0
-  )::numeric(16, 2) AS burn_rate,
-
-  COALESCE(
-    r.cash_reserve_amount,
-    0
-  )::numeric(16, 2) AS cash_reserve_amount,
-
+  EXTRACT(YEAR FROM k.month_start)::int AS fiscal_year,
+  EXTRACT(MONTH FROM k.month_start)::int AS fiscal_month,
+  COALESCE(k.total_revenue, 0)::numeric(16, 2) AS total_revenue,
+  COALESCE(k.total_expenses, 0)::numeric(16, 2) AS total_expenses,
+  COALESCE(k.net_income, 0)::numeric(16, 2) AS net_income,
+  COALESCE(k.gross_margin, 0)::numeric(7, 2) AS gross_margin,
+  COALESCE(k.operating_margin, 0)::numeric(7, 2) AS operating_margin,
+  COALESCE(k.burn_rate, 0)::numeric(16, 2) AS burn_rate,
+  COALESCE(r.cash_reserve_amount, 0)::numeric(16, 2) AS cash_reserve_amount,
   COALESCE(
     ROUND(
       COALESCE(r.cash_reserve_amount, 0)
@@ -339,57 +298,40 @@ SELECT
     ),
     0
   )::numeric(12, 2) AS runway_months,
-
   COALESCE(
     ROUND(
-      (
-        (k.total_revenue - k.prev_month_revenue)
-        / NULLIF(k.prev_month_revenue, 0)
-      ) * 100,
+      ((k.total_revenue - k.prev_month_revenue)
+        / NULLIF(k.prev_month_revenue, 0)) * 100,
       2
     ),
     0
   )::numeric(7, 2) AS revenue_mom_growth,
-
   COALESCE(
     ROUND(
-      (
-        (k.total_revenue - k.prev_year_revenue)
-        / NULLIF(k.prev_year_revenue, 0)
-      ) * 100,
+      ((k.total_revenue - k.prev_year_revenue)
+        / NULLIF(k.prev_year_revenue, 0)) * 100,
       2
     ),
     0
   )::numeric(7, 2) AS revenue_yoy_growth,
-
   COALESCE(
     ROUND(
-      (
-        (k.net_income - k.prev_month_net_income)
-        / NULLIF(k.prev_month_net_income, 0)
-      ) * 100,
+      ((k.net_income - k.prev_month_net_income)
+        / NULLIF(k.prev_month_net_income, 0)) * 100,
       2
     ),
     0
   )::numeric(7, 2) AS net_income_mom_growth,
-
   COALESCE(
     ROUND(
-      (
-        (k.net_income - k.prev_year_net_income)
-        / NULLIF(k.prev_year_net_income, 0)
-      ) * 100,
+      ((k.net_income - k.prev_year_net_income)
+        / NULLIF(k.prev_year_net_income, 0)) * 100,
       2
     ),
     0
   )::numeric(7, 2) AS net_income_yoy_growth
-
 FROM kpis_with_lags k
-
 LEFT JOIN financial_cash_reserves r
   ON r.organization_id = k.organization_id
  AND r.month_start = k.month_start
-
-ORDER BY
-  k.organization_id,
-  k.month_start;
+ORDER BY k.organization_id, k.month_start;

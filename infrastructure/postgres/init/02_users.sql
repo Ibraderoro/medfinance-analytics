@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS users (
   first_name       VARCHAR(100) NOT NULL,
   last_name        VARCHAR(100) NOT NULL,
   role             VARCHAR(32)  NOT NULL DEFAULT 'viewer'
-                     CHECK (role IN ('cfo', 'finance_manager', 'auditor', 'viewer')),
+                     CHECK (role IN ('viewer', 'analyst', 'admin')),
   organization_id  UUID         NOT NULL REFERENCES organizations(id) ON DELETE RESTRICT,
   is_active        BOOLEAN      NOT NULL DEFAULT true,
   last_login_at    TIMESTAMPTZ,

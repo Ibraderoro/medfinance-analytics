@@ -46,6 +46,8 @@ pids/
 # ────────────────────────────────────────────────
 coverage/
 .nyc_output/
+apps/frontend/playwright-report/
+apps/frontend/test-results/
 
 # ────────────────────────────────────────────────
 # IDE / Editor
@@ -76,3 +78,5 @@ temp/
 # Performance test artifacts (generated, not committed)
 # ────────────────────────────────────────────────
 artifacts/performance/
+
+apps/backend/tenant-isolation-report.json

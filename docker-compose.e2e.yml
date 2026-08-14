@@ -11,9 +11,6 @@ services:
     tmpfs:
       - /var/lib/postgresql/data:rw,noexec,nosuid,size=512m
     ports:
-      # Host-published only so scripts/performance/** (which cannot go through the
-      # nginx `edge` proxy — it 404s /health/ready by design) can reach Postgres
-      # directly for perf:db:analyze. Not used by the Playwright e2e suite.
       - "127.0.0.1:${PERF_PG_PORT:-5433}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-medfinance_e2e} -d ${POSTGRES_DB:-medfinance_e2e}"]
@@ -28,8 +25,6 @@ services:
     tmpfs:
       - /data:rw,noexec,nosuid,size=128m
     ports:
-      # Host-published only for scripts/performance/run-redis-check.js; unused by
-      # the Playwright e2e suite.
       - "127.0.0.1:${PERF_REDIS_PORT:-6380}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-medfinance_e2e_redis_password}", "ping"]
@@ -43,7 +38,8 @@ services:
       context: .
       dockerfile: apps/backend/Dockerfile
     restart: "no"
-    environment: &backend_env
+    environment: &backend_env 
+      TENANT_ISOLATION_REPORT_PATH: /app/reports/tenant-isolation-report.json
       NODE_ENV: test
       PORT: 3001
       DATABASE_URL: postgresql://${POSTGRES_USER:-medfinance_e2e}:${POSTGRES_PASSWORD:-medfinance_e2e_password}@postgres:5432/${POSTGRES_DB:-medfinance_e2e}
@@ -59,10 +55,6 @@ services:
       STRIPE_PRO_PRICE_ID: ${STRIPE_PRO_PRICE_ID:-price_e2e_pro}
       STRIPE_ENTERPRISE_PRICE_ID: ${STRIPE_ENTERPRISE_PRICE_ID:-price_e2e_enterprise}
       ANALYTICS_SAMPLE_RATE: "0"
-      # Defaults match production; the perf-release-candidate CI job overrides these
-      # via shell env before `docker compose up` so sustained load-test traffic from
-      # a single source IP doesn't trip the limiter. Unset for the Playwright e2e
-      # suite, which keeps production-equivalent limits.
       RATE_LIMIT_GENERAL_MAX: ${RATE_LIMIT_GENERAL_MAX:-200}
       RATE_LIMIT_GENERAL_WINDOW_MS: ${RATE_LIMIT_GENERAL_WINDOW_MS:-900000}
       RATE_LIMIT_AUTH_MAX: ${RATE_LIMIT_AUTH_MAX:-20}
@@ -96,9 +88,6 @@ services:
       dockerfile: apps/backend/Dockerfile
     environment: *backend_env
     ports:
-      # Host-published only so scripts/performance/** can reach the backend
-      # directly — the nginx `edge` proxy 404s /health/ready and other
-      # perf-relevant internal routes by design.
       - "127.0.0.1:${PERF_BACKEND_PORT:-3001}:3001"
     depends_on:
       seed:
@@ -139,6 +128,12 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1/health || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
     networks: [e2e]
 
   edge:
@@ -155,7 +150,7 @@ services:
       - envsubst '$$CSP_CONNECT_SRC' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf && nginx -g 'daemon off;'
     depends_on:
       frontend:
-        condition: service_started
+        condition: service_healthy
       backend:
         condition: service_healthy
     networks: [e2e]

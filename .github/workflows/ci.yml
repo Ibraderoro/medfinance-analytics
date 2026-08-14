@@ -135,7 +135,7 @@ jobs:
 
       - name: Upload tenant isolation report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: tenant-isolation-report
           path: apps/backend/tenant-isolation-report.json
@@ -195,7 +195,7 @@ jobs:
       RATE_LIMIT_AUTH_WINDOW_MS: 60000
       PERF_BASE_URL: http://127.0.0.1:3001/api/v1
       PERF_EMAIL: perf@medfinance.test
-      PERF_PASSWORD: ${{ secrets.PERF_PASSWORD || 'PerfTest123!' }}
+      PERF_PASSWORD: PerfTest123!
       PERF_ORGANIZATION_ID: ff6a1c0f-6d3b-8388-6b12-4e2ad21f57c5
       PERF_BENCH_DURATION_WARM: "15"
       PERF_BENCH_DURATION_COLD: "15"

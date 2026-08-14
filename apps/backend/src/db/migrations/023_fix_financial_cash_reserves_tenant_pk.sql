@@ -36,9 +36,9 @@ DO $$
 BEGIN
     IF NOT EXISTS (
         SELECT 1
-        FROM pg_constraint
-        WHERE conname =
-            'fk_financial_cash_reserves_organization'
+        FROM pg_constraint c
+        WHERE c.conrelid = 'financial_cash_reserves'::regclass
+          AND c.conname = 'fk_financial_cash_reserves_organization'
     ) THEN
         ALTER TABLE financial_cash_reserves
         ADD CONSTRAINT fk_financial_cash_reserves_organization
