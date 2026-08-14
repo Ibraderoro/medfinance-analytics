@@ -78,3 +78,5 @@ temp/
 # Performance test artifacts (generated, not committed)
 # ────────────────────────────────────────────────
 artifacts/performance/
+
+apps/backend/tenant-isolation-report.json
