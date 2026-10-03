@@ -1,0 +1,8 @@
+title = "medfinance-analytics gitleaks config"
+
+[allowlist]
+description = "Allow deterministic test-only placeholder secrets"
+paths = [
+  '''apps/backend/src/__tests__/auth\.service\.test\.ts''',
+  '''apps/backend/src/__tests__/integration/setup-integration-env\.ts''',
+]
