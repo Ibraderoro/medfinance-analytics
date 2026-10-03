@@ -233,6 +233,7 @@ VALUES
 )
 ON CONFLICT (stripe_subscription_id)
 DO UPDATE SET
+  organization_id = EXCLUDED.organization_id,
   customer_id = EXCLUDED.customer_id,
   plan = EXCLUDED.plan,
   status = EXCLUDED.status,
