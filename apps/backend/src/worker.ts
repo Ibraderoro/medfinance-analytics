@@ -45,10 +45,19 @@ async function bootstrap(): Promise<void> {
       isShuttingDown = true;
 
       logger.info('Worker received shutdown signal', { signal });
+
+      // Hard-exit fallback: mirrors index.ts — exit before orchestrator SIGKILL.
+      const forceExitTimer = setTimeout(() => {
+        logger.warn('Worker graceful shutdown timed out, forcing process exit', { gracePeriodMs: env.SHUTDOWN_GRACE_PERIOD_MS });
+        process.exit(0);
+      }, env.SHUTDOWN_GRACE_PERIOD_MS);
+      forceExitTimer.unref();
+
       stopMetricsPoller();
       await closeWorkers();
       await closeAllQueues();
 
+      clearTimeout(forceExitTimer);
       await new Promise<void>((resolve) => healthServer.close(() => resolve()));
       await Promise.allSettled([disconnectDatabase(), disconnectRedis(), disconnectQueueRedis(), stopTracing()]);
       process.exit(0);

@@ -8,8 +8,14 @@ rule_files:
 scrape_configs:
   # Scrape the backend directly on the internal observability Docker network.
   # Do not route Prometheus metrics through the public Nginx listener.
+  #
+  # When OPS_ENDPOINT_AUTH_ENABLED=true on the backend (recommended in production),
+  # uncomment the authorization block below and set the same token value as
+  # OPS_ENDPOINT_AUTH_TOKEN in your environment secrets.
   - job_name: medfinance-backend
     metrics_path: /api/v1/internal/observability/metrics
+    # authorization:
+    #   credentials: <your-OPS_ENDPOINT_AUTH_TOKEN-value>
     static_configs:
       - targets: ['backend:3001']
 

@@ -620,7 +620,10 @@ COMMIT;
 -- 9. Convenience views
 -- =============================================================================
 
-CREATE OR REPLACE VIEW financials_revenue AS
+-- DROP before recreating so column renames don't cause "cannot change name of
+-- view column" errors on an already-initialised database.
+DROP VIEW IF EXISTS financials_revenue;
+CREATE VIEW financials_revenue AS
 SELECT
   t.id,
   t.organization_id,
@@ -641,7 +644,8 @@ JOIN departments d
 WHERE t.transaction_type = 'revenue';
 
 
-CREATE OR REPLACE VIEW financials_expenses AS
+DROP VIEW IF EXISTS financials_expenses;
+CREATE VIEW financials_expenses AS
 SELECT
   t.id,
   t.organization_id,

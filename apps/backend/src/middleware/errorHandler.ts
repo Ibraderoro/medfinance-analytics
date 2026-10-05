@@ -47,7 +47,9 @@ export function errorHandler(err: AppError, req: Request, res: Response, _next: 
     statusCode,
     code,
     message: err.message,
-    stack: err.stack,
+    // Omit stack traces in production logs — they expose internal file paths and
+    // library versions. Still included in development for easy debugging.
+    ...(process.env.NODE_ENV !== 'production' && { stack: err.stack }),
     details: err.details,
   });
 

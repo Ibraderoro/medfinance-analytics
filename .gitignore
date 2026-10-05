@@ -80,3 +80,4 @@ temp/
 artifacts/performance/
 
 apps/backend/tenant-isolation-report.json
+apps/backend/.env

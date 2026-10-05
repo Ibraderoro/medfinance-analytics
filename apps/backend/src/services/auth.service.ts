@@ -311,9 +311,12 @@ export class AuthService {
 
     const jti = crypto.randomUUID();
     const expiresAt = new Date(Date.now() + boundedHours * 60 * 60 * 1000);
+    // Invitation tokens are signed with AUDIT_EXPORT_SIGNING_SECRET (not JWT_SECRET)
+    // so that compromising the session signing key does not also compromise invitations.
+    // AUDIT_EXPORT_SIGNING_SECRET is already required to differ from JWT_SECRET at startup.
     const token = jwt.sign(
       { typ: 'organization_invite', org: inviter.organization_id, email: normalizedEmail, role },
-      env.JWT_SECRET,
+      env.AUDIT_EXPORT_SIGNING_SECRET,
       {
         algorithm: 'HS256',
         expiresIn: `${boundedHours}h`,
@@ -961,7 +964,7 @@ export class AuthService {
   private async resolveInvitation(token: string): Promise<InvitationRow> {
     let payload: InvitationTokenPayload;
     try {
-      const verified = jwt.verify(token, env.JWT_SECRET, {
+      const verified = jwt.verify(token, env.AUDIT_EXPORT_SIGNING_SECRET, {
         algorithms: ['HS256'],
         issuer: env.JWT_ISSUER,
         audience: env.JWT_AUDIENCE,

@@ -12,6 +12,14 @@ const requiredBackendSecrets = [
   'JWT_SECRET',
   'REFRESH_TOKEN_SECRET',
   'AUDIT_EXPORT_SIGNING_SECRET',
+  'STRIPE_SECRET_KEY',
+  'STRIPE_WEBHOOK_SECRET',
+  'STRIPE_PRO_PRICE_ID',
+  'STRIPE_ENTERPRISE_PRICE_ID',
+  'MFA_DELIVERY_WEBHOOK_URL',
+  'GRAFANA_ADMIN_USER',
+  'GRAFANA_ADMIN_PASSWORD',
+  'OIDC_JWKS_URI',
 ] as const;
 
 function readRepoFile(relativePath: string): string {

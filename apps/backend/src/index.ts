@@ -54,8 +54,18 @@ async function bootstrap(): Promise<void> {
       app.locals.isShuttingDown = true;
 
       logger.info('Received shutdown signal', { signal });
+
+      // Hard-exit fallback: if graceful drain takes longer than SHUTDOWN_GRACE_PERIOD_MS
+      // the container orchestrator would SIGKILL anyway — exit cleanly before that.
+      const forceExitTimer = setTimeout(() => {
+        logger.warn('Graceful shutdown timed out, forcing process exit', { gracePeriodMs: env.SHUTDOWN_GRACE_PERIOD_MS });
+        process.exit(0);
+      }, env.SHUTDOWN_GRACE_PERIOD_MS);
+      forceExitTimer.unref(); // don't prevent natural exit if it completes first
+
       await liveFinancialsService.stop();
       server.close(async (error) => {
+        clearTimeout(forceExitTimer);
         if (error) {
           logger.error('Error during server shutdown', { message: error.message, stack: error.stack });
           process.exit(1);

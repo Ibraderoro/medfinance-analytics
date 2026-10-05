@@ -41,7 +41,8 @@ const normalizedAllowedOrigins = allowedOrigins.map(normalizeOrigin);
 const corsOptions: CorsOptions = {
   origin: (origin, callback) => {
     if (!origin) return callback(null, true);
-    return callback(normalizedAllowedOrigins.includes(normalizeOrigin(origin)) ? null : new Error('Origin not allowed by CORS'), true);
+    const allowed = normalizedAllowedOrigins.includes(normalizeOrigin(origin));
+    return callback(allowed ? null : new Error('Origin not allowed by CORS'), allowed);
   },
   credentials: true,
 };

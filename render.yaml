@@ -64,6 +64,22 @@ services:
         value: "true"
       - key: OPS_ENDPOINT_AUTH_TOKEN
         sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRO_PRICE_ID
+        sync: false
+      - key: STRIPE_ENTERPRISE_PRICE_ID
+        sync: false
+      - key: MFA_DELIVERY_WEBHOOK_URL
+        sync: false
+      - key: GRAFANA_ADMIN_USER
+        sync: false
+      - key: GRAFANA_ADMIN_PASSWORD
+        sync: false
+      - key: OIDC_JWKS_URI
+        sync: false
 
   - type: worker
     name: medfinance-worker
@@ -100,7 +116,19 @@ services:
         sync: false
       - key: AUDIT_EXPORT_SIGNING_SECRET
         sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
       - key: STRIPE_PRO_PRICE_ID
         sync: false
       - key: STRIPE_ENTERPRISE_PRICE_ID
+        sync: false
+      - key: MFA_DELIVERY_WEBHOOK_URL
+        sync: false
+      - key: GRAFANA_ADMIN_USER
+        sync: false
+      - key: GRAFANA_ADMIN_PASSWORD
+        sync: false
+      - key: OIDC_JWKS_URI
         sync: false

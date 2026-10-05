@@ -178,6 +178,9 @@ export const env = {
   HTTP_REQUEST_TIMEOUT_MS: parseIntEnv('HTTP_REQUEST_TIMEOUT_MS', 30_000),
   HTTP_HEADERS_TIMEOUT_MS: parseIntEnv('HTTP_HEADERS_TIMEOUT_MS', 35_000),
   HTTP_KEEP_ALIVE_TIMEOUT_MS: parseIntEnv('HTTP_KEEP_ALIVE_TIMEOUT_MS', 5_000),
+  // Hard-exit fallback after graceful shutdown is initiated. Must be shorter than
+  // the container orchestrator's SIGKILL window (typically 30s for Docker/Kubernetes).
+  SHUTDOWN_GRACE_PERIOD_MS: parseIntEnv('SHUTDOWN_GRACE_PERIOD_MS', 25_000),
 
   REDIS_URL: optionalEnv('REDIS_URL'),
   REDIS_HOST: optionalEnv('REDIS_HOST', 'localhost'),
@@ -332,5 +335,22 @@ if (env.isProduction()) {
   const hasWeakSecret = weakSecretMarkers.some((m) => env.JWT_SECRET.toLowerCase().includes(m) || env.REFRESH_TOKEN_SECRET.toLowerCase().includes(m));
   if (hasWeakSecret) {
     throw new Error('JWT_SECRET/REFRESH_TOKEN_SECRET appear weak or default-like; rotate secrets before production startup');
+  }
+
+  // Stripe keys are required in production — billing and webhook processing will
+  // fail at runtime without them, and the failure surfaces mid-request rather than
+  // at startup.
+  const missingStripeKeys = (
+    ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET', 'STRIPE_PRO_PRICE_ID', 'STRIPE_ENTERPRISE_PRICE_ID'] as const
+  ).filter((key) => !env[key]);
+  if (missingStripeKeys.length > 0) {
+    throw new Error(`Missing required Stripe configuration in production: ${missingStripeKeys.join(', ')}`);
+  }
+
+  // MFA delivery webhook is required in production because organization_auth_policies
+  // defaults mfa_enforced=true. Without a delivery URL every login that requires MFA
+  // will throw at runtime, locking users out.
+  if (!env.MFA_DELIVERY_WEBHOOK_URL) {
+    throw new Error('MFA_DELIVERY_WEBHOOK_URL is required in production (mfa_enforced defaults to true)');
   }
 }

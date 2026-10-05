@@ -11,8 +11,11 @@ export type Permission =
   | 'admin:read';
 
 const ROLE_PERMISSIONS: Record<string, Set<Permission>> = {
+  // viewer: read-only access across all modules
   viewer: new Set(['financials:read', 'forecasting:read', 'compliance:read', 'billing:read']),
-  analyst: new Set(['financials:read', 'forecasting:read', 'compliance:read', 'billing:read']),
+  // analyst: all viewer permissions plus the ability to write compliance records
+  analyst: new Set(['financials:read', 'forecasting:read', 'compliance:read', 'compliance:write', 'billing:read']),
+  // admin: full access including billing write and admin endpoints
   admin: new Set(['financials:read', 'forecasting:read', 'compliance:read', 'compliance:write', 'billing:read', 'billing:write', 'admin:read']),
 };
 

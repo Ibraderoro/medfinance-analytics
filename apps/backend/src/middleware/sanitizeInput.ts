@@ -6,9 +6,11 @@ function sanitizeValue(value: unknown): unknown {
   }
 
   if (typeof value === 'string') {
+    // Strip null bytes (protocol-level injection) and trim whitespace.
+    // Do NOT strip < or > — output encoding at the React render layer handles XSS,
+    // and financial content legitimately contains these characters (e.g. "revenue > expenses").
     return value
       .replace(/\0/g, '')
-      .replace(/[<>]/g, '')
       .trim();
   }
 

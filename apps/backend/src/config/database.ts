@@ -56,8 +56,8 @@ function ensureSafeQuery(text: string, params?: unknown[]): void {
   }
 
   const maxPlaceholder = Math.max(...placeholders);
-  if (maxPlaceholder !== params.length) {
-    throw sqlInjectionError('SQL placeholder count does not match provided parameter count');
+  if (maxPlaceholder > params.length) {
+    throw sqlInjectionError('SQL placeholder index exceeds provided parameter count');
   }
 }
 
@@ -156,8 +156,11 @@ export async function query<T extends QueryResultRow>(
   } finally {
     const duration = Date.now() - start;
     metricsService.recordDbQuery(duration, { operation, status: queryStatus, db_system: 'postgresql' });
-    await client.query('RESET ALL').catch((resetError) => {
-      logger.warn('PostgreSQL session reset failed before release', {
+    // Targeted reset: clear only the tenant session variable rather than
+    // using RESET ALL, which would also wipe search_path, statement_timeout,
+    // and any connection-pooler settings configured on the connection.
+    await client.query("SELECT set_config('app.current_tenant_id', '', false)").catch((resetError) => {
+      logger.warn('PostgreSQL tenant session reset failed before release', {
         message: resetError instanceof Error ? resetError.message : String(resetError),
       });
     });
