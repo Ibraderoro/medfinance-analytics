@@ -8,9 +8,11 @@ import { env } from '../config/env';
 
 export const aiRouter = Router();
 
-// Dedicated rate limiter: stricter window (1 min) per user ID
+// Dedicated rate limiter: stricter window (1 min) per authenticated user ID.
+// Key is the verified user ID (set by the authenticate middleware) so rate
+// limiting is not bypassable by rotating IP addresses.
 const aiRateLimiter = rateLimit({
-  windowMs: 60 * 1000,
+  windowMs: 60 * 1_000,
   max: env.AI_RATE_LIMIT_MAX,
   standardHeaders: true,
   legacyHeaders: false,

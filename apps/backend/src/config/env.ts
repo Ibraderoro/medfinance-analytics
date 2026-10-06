@@ -257,6 +257,20 @@ export const env = {
   OPENAI_API_KEY: optionalEnv('OPENAI_API_KEY'),
   OPENAI_MODEL: optionalEnv('OPENAI_MODEL', 'gpt-4o-mini'),
   AI_RATE_LIMIT_MAX: parseIntEnv('AI_RATE_LIMIT_MAX', 20),
+  // Hard timeout for a single OpenAI provider call. Prevents a hung upstream from
+  // consuming a backend worker thread indefinitely.
+  AI_TIMEOUT_MS: parseIntEnv('AI_TIMEOUT_MS', 30_000),
+  // Maximum serialised byte size of the financial context object sent to the model.
+  // Anything larger is truncated-safe and returns an error before the provider call.
+  AI_MAX_CONTEXT_BYTES: parseIntEnv('AI_MAX_CONTEXT_BYTES', 8_000),
+  // Maximum number of simultaneous in-flight AI requests per user (concurrency guard).
+  AI_MAX_CONCURRENT_PER_USER: parseIntEnv('AI_MAX_CONCURRENT_PER_USER', 3),
+  // Per-message content limit inside conversation history.
+  AI_MAX_HISTORY_MSG_CHARS: parseIntEnv('AI_MAX_HISTORY_MSG_CHARS', 2_000),
+  // Total context-window token capacity of the configured model.
+  // Used for the conservative chars/4 token-budget pre-check.
+  // Default matches gpt-4o-mini (128 k). Override for other models.
+  AI_MODEL_CONTEXT_TOKENS: parseIntEnv('AI_MODEL_CONTEXT_TOKENS', 128_000),
 
   // Real-Time Dashboard
   LIVE_POLL_INTERVAL_MS: parseIntEnv('LIVE_POLL_INTERVAL_MS', 30_000),

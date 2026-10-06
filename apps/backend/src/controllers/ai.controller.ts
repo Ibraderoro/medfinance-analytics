@@ -1,6 +1,7 @@
 import { Response, NextFunction } from 'express';
 import { body } from 'express-validator';
-import { AiService } from '../services/ai.service';
+import { env } from '../config/env';
+import { AiService, hashQuestionForAudit } from '../services/ai.service';
 import { AuditService } from '../services/audit.service';
 import { AuthenticatedRequest, requireAuthenticatedUser } from '../middleware/auth';
 
@@ -13,7 +14,7 @@ export const askAiValidators = [
     .trim()
     .notEmpty()
     .withMessage('question is required')
-    .isLength({ max: 1000 })
+    .isLength({ max: 1_000 })
     .withMessage('question must not exceed 1000 characters'),
   body('history')
     .optional()
@@ -28,7 +29,11 @@ export const askAiValidators = [
     .isString()
     .trim()
     .notEmpty()
-    .withMessage('history[].content must be a non-empty string'),
+    .withMessage('history[].content must be a non-empty string')
+    // Per-message length cap mirrors env.AI_MAX_HISTORY_MSG_CHARS (2000 default).
+    // Validated early at the HTTP layer before any service logic runs.
+    .isLength({ max: env.AI_MAX_HISTORY_MSG_CHARS })
+    .withMessage(`history[].content must not exceed ${env.AI_MAX_HISTORY_MSG_CHARS} characters`),
 ];
 
 export async function askAi(
@@ -38,17 +43,28 @@ export async function askAi(
 ): Promise<void> {
   try {
     const user = requireAuthenticatedUser(req);
-    const { question, history = [] } = req.body as { question: string; history?: { role: 'user' | 'assistant'; content: string }[] };
+    const { question, history = [] } = req.body as {
+      question: string;
+      history?: { role: 'user' | 'assistant'; content: string }[];
+    };
 
-    const result = await aiService.ask(user.organization_id, question, history);
+    // Pass userId so the concurrency guard is scoped per-user, not per-tenant.
+    const result = await aiService.ask(user.organization_id, question, history, user.id);
 
+    // Hash the question before logging — plaintext user content must not be
+    // stored in the audit trail. The SHA-256 hex digest preserves forensic
+    // traceability (repeated identical queries produce the same hash) without
+    // recording what the user actually typed.
     await auditService.log({
       action: 'ai-query',
       entityType: 'ai-session',
       organizationId: user.organization_id,
       performedBy: user.id,
       requestId: req.header('X-Request-Id'),
-      metadata: { contextUsed: result.contextUsed },
+      metadata: {
+        contextUsed: result.contextUsed,
+        questionHash: hashQuestionForAudit(question),
+      },
     });
 
     res.json({ data: result });
