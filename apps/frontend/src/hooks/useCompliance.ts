@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { complianceApi } from '../services/api';
+import { useAutoRefresh } from './useAutoRefresh';
 
 export interface ComplianceItemRow {
   regulation_code: string;
@@ -16,33 +17,37 @@ interface UseComplianceReturn {
   refetch: () => void;
 }
 
-export function useCompliance(): UseComplianceReturn {
+export function useCompliance(liveRefresh: boolean = true): UseComplianceReturn {
   const [items, setItems] = useState<ComplianceItemRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
-  const [tick, setTick] = useState(0);
 
-  useEffect(() => {
-    let cancelled = false;
+  const fetchData = useCallback(() => {
     setIsLoading(true);
     setError(null);
 
     complianceApi
       .getStatus()
       .then((res) => {
-        if (!cancelled) {
-          setItems(res.data.data as ComplianceItemRow[]);
-        }
+        setItems(res.data.data as ComplianceItemRow[]);
       })
       .catch((err: Error) => {
-        if (!cancelled) setError(err);
+        setError(err);
       })
       .finally(() => {
-        if (!cancelled) setIsLoading(false);
+        setIsLoading(false);
       });
+  }, []);
 
-    return () => { cancelled = true; };
-  }, [tick]);
+  const { refresh } = useAutoRefresh(fetchData, 30_000, liveRefresh);
 
-  return { items, isLoading, error, refetch: () => setTick((t) => t + 1) };
+  // When liveRefresh is disabled, still fetch once on mount.
+  useEffect(() => {
+    if (!liveRefresh) {
+      fetchData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveRefresh]);
+
+  return { items, isLoading, error, refetch: refresh };
 }

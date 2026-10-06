@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { financialsApi } from '../services/api';
+import { useAutoRefresh } from './useAutoRefresh';
 import type { RevenueDataPoint } from '../components/Charts/RevenueChart';
 
 interface FinancialSummary {
@@ -22,16 +23,14 @@ interface UseFinancialsReturn {
   refetch: () => void;
 }
 
-export function useFinancials(year?: number): UseFinancialsReturn {
+export function useFinancials(year?: number, liveRefresh: boolean = true): UseFinancialsReturn {
   const [summary, setSummary] = useState<FinancialSummary | null>(null);
   const [prevSummary, setPrevSummary] = useState<FinancialSummary | null>(null);
   const [revenue, setRevenue] = useState<RevenueDataPoint[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
-  const [tick, setTick] = useState(0);
 
-  useEffect(() => {
-    let cancelled = false;
+  const fetchData = useCallback(() => {
     setIsLoading(true);
     setError(null);
 
@@ -46,8 +45,6 @@ export function useFinancials(year?: number): UseFinancialsReturn {
       financialsApi.getRevenue(startDate, endDate),
     ])
       .then(([summaryRes, prevSummaryRes, revenueRes]) => {
-        if (cancelled) return;
-
         if (summaryRes.status === 'fulfilled') {
           setSummary(summaryRes.value.data.data as FinancialSummary);
         }
@@ -81,16 +78,22 @@ export function useFinancials(year?: number): UseFinancialsReturn {
         }
       })
       .catch((err: Error) => {
-        if (!cancelled) setError(err);
+        setError(err);
       })
       .finally(() => {
-        if (!cancelled) setIsLoading(false);
+        setIsLoading(false);
       });
+  }, [year]);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [year, tick]);
+  const { refresh } = useAutoRefresh(fetchData, 30_000, liveRefresh);
+
+  // When liveRefresh is disabled, still fetch once on mount / year change.
+  useEffect(() => {
+    if (!liveRefresh) {
+      fetchData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [year, liveRefresh]);
 
   return {
     summary,
@@ -98,6 +101,6 @@ export function useFinancials(year?: number): UseFinancialsReturn {
     revenue,
     isLoading,
     error,
-    refetch: () => setTick((t) => t + 1),
+    refetch: refresh,
   };
 }

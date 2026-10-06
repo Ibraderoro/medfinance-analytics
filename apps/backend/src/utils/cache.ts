@@ -86,4 +86,33 @@ export class CacheService {
       logger.warn('Cache flush error:', err);
     }
   }
+
+  /**
+   * Deletes all Redis keys in this namespace that are associated with the given
+   * organisation. Uses SCAN (not KEYS) to avoid blocking the Redis event loop.
+   *
+   * Key pattern matched: `medfinance:{namespace}:*{orgId}*`
+   */
+  async invalidateOrgCache(orgId: string): Promise<void> {
+    try {
+      const redis = getRedis();
+      const pattern = `medfinance:${this.namespace}:*${orgId}*`;
+      const keys: string[] = [];
+      let cursor = '0';
+
+      do {
+        const [nextCursor, batch] = await redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+        cursor = nextCursor;
+        if (batch.length > 0) {
+          keys.push(...batch);
+        }
+      } while (cursor !== '0');
+
+      if (keys.length > 0) {
+        await redis.del(...keys);
+      }
+    } catch (err) {
+      logger.warn('Cache invalidateOrgCache error:', err);
+    }
+  }
 }

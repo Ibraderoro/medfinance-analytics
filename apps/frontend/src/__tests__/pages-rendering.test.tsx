@@ -26,6 +26,7 @@ const createForecastingState = (
   forecast: [],
   isLoading: false,
   error: null,
+  refetch: jest.fn(),
   ...overrides,
 });
 

@@ -85,7 +85,7 @@ export class AnalyticsService {
    * immediately attempt another tick (queue is backed up) or wait for the
    * next scheduled tick.
    */
-  async processOneBatch(): Promise<boolean> {
+  async processOneBatch(): Promise<{ processed: boolean; orgIds: string[] }> {
     await this.ensureGroup();
     const rows = await this.redis.call(
       'XREADGROUP',
@@ -98,21 +98,22 @@ export class AnalyticsService {
       STREAM_KEY,
       '>',
     ) as unknown[];
-    if (!rows?.length) return false;
+    if (!rows?.length) return { processed: false, orgIds: [] };
     const entries = (rows[0] as [string, Array<[string, string[]]>])[1];
-    if (entries.length === 0) return false;
-    await this.persistBatch(entries);
-    return true;
+    if (entries.length === 0) return { processed: false, orgIds: [] };
+    const orgIds = await this.persistBatch(entries);
+    return { processed: true, orgIds };
   }
 
   /**
    * Persists a batch to PostgreSQL and acknowledges entries only after successful insert.
    */
-  private async persistBatch(entries: Array<[string, string[]]>): Promise<void> {
-    if (entries.length === 0) return;
+  private async persistBatch(entries: Array<[string, string[]]>): Promise<string[]> {
+    if (entries.length === 0) return [];
     const values: string[] = [];
     const params: unknown[] = [];
     const ackIds: string[] = [];
+    const orgIdSet = new Set<string>();
     entries.forEach(([id, vals], i) => {
       const map: Record<string, string> = {};
       for (let j = 0; j < vals.length; j += 2) map[vals[j]] = vals[j + 1];
@@ -120,9 +121,11 @@ export class AnalyticsService {
       values.push(`($${base + 1},$${base + 2},$${base + 3},$${base + 4},NULLIF($${base + 5},'')::uuid,NULLIF($${base + 6},'')::uuid,$${base + 7})`);
       params.push(map.endpoint, map.method, Number.parseInt(map.status_code ?? '0', 10), Number.parseFloat(map.latency_ms ?? '0'), map.user_id ?? '', map.organization_id ?? '', map.captured_at);
       ackIds.push(id);
+      if (map.organization_id) orgIdSet.add(map.organization_id);
     });
     await query(`INSERT INTO api_request_metrics (endpoint, method, status_code, latency_ms, user_id, organization_id, created_at) VALUES ${values.join(',')}`, params);
     await this.redis.call('XACK', STREAM_KEY, GROUP, ...ackIds);
+    return Array.from(orgIdSet);
   }
 
   /**

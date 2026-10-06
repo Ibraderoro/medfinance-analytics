@@ -253,6 +253,14 @@ export const env = {
   MFA_DELIVERY_WEBHOOK_URL: mfaDeliveryWebhookUrl,
   ...oidcConfig,
 
+  // AI Assistant (OpenAI)
+  OPENAI_API_KEY: optionalEnv('OPENAI_API_KEY'),
+  OPENAI_MODEL: optionalEnv('OPENAI_MODEL', 'gpt-4o-mini'),
+  AI_RATE_LIMIT_MAX: parseIntEnv('AI_RATE_LIMIT_MAX', 20),
+
+  // Real-Time Dashboard
+  LIVE_POLL_INTERVAL_MS: parseIntEnv('LIVE_POLL_INTERVAL_MS', 30_000),
+
 
   isProduction: () => optionalEnv('NODE_ENV', 'development') === 'production',
   isDevelopment: () => optionalEnv('NODE_ENV', 'development') === 'development',
@@ -315,6 +323,10 @@ if (env.AUDIT_EXPORT_SIGNING_SECRET === refreshTokenSecret) {
   throw new Error('AUDIT_EXPORT_SIGNING_SECRET must be different from REFRESH_TOKEN_SECRET');
 }
 
+
+if (env.isProduction() && !env.OPENAI_API_KEY) {
+  throw new Error('OPENAI_API_KEY is required in production for the AI assistant');
+}
 
 if (env.isProduction()) {
   if (env.JWT_SECRET === env.REFRESH_TOKEN_SECRET) {

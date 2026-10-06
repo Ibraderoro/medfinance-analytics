@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { financialsApi } from '../services/api';
+import { useAutoRefresh } from './useAutoRefresh';
 
 export interface FinancialKpiRow {
   month_start: string;
@@ -27,34 +28,39 @@ interface UseFinancialKpisReturn {
   refetch: () => void;
 }
 
-export function useFinancialKpis(year?: number): UseFinancialKpisReturn {
+export function useFinancialKpis(year?: number, liveRefresh: boolean = true): UseFinancialKpisReturn {
   const [kpis, setKpis] = useState<FinancialKpiRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
-  const [tick, setTick] = useState(0);
 
-  useEffect(() => {
-    let cancelled = false;
+  const fetchData = useCallback(() => {
     setIsLoading(true);
     setError(null);
 
     financialsApi
       .getKpis(year ?? new Date().getFullYear())
       .then((res) => {
-        if (cancelled) return;
         setKpis(res.data.data as FinancialKpiRow[]);
       })
       .catch((err: Error) => {
-        if (!cancelled) setError(err);
+        setError(err);
       })
       .finally(() => {
-        if (!cancelled) setIsLoading(false);
+        setIsLoading(false);
       });
+  }, [year]);
 
-    return () => { cancelled = true; };
-  }, [year, tick]);
+  const { refresh } = useAutoRefresh(fetchData, 30_000, liveRefresh);
+
+  // When liveRefresh is disabled, still fetch once on mount / year change.
+  useEffect(() => {
+    if (!liveRefresh) {
+      fetchData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [year, liveRefresh]);
 
   const latest = kpis.length > 0 ? kpis[kpis.length - 1] : null;
 
-  return { kpis, latest, isLoading, error, refetch: () => setTick((t) => t + 1) };
+  return { kpis, latest, isLoading, error, refetch: refresh };
 }

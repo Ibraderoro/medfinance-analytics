@@ -24,6 +24,7 @@ A production-oriented healthcare finance intelligence platform for provider orga
 - [Engineering Tradeoffs](#engineering-tradeoffs)
 - [Setup & Environments](#setup--environments)
 - [Contribution Guidelines](#contribution-guidelines)
+- [Real-Time Dashboards & AI Assistant](#real-time-dashboards--ai-assistant)
 - [Future Improvements](#future-improvements)
 - [License](#license)
 
@@ -469,6 +470,50 @@ curl -i -H "Authorization: Bearer ${OPS_ENDPOINT_AUTH_TOKEN}" \
    - any relevant production gate scripts
 5. **Document architectural or operational changes** in `docs/`.
 6. **Use evidence-first PRs** for security, deployment, and reliability changes.
+
+---
+
+## Real-Time Dashboards & AI Assistant
+
+### Real-Time Updates
+
+All dashboard pages (Overview, Financials, Forecasting, Compliance) receive live updates via:
+
+- **Server-Sent Events (SSE):** Instant push when data changes (transactions, KPI recalculation, compliance status)
+- **Auto-polling:** 30-second fallback interval when SSE is idle
+
+A "Live" badge in each page header shows connection status. The "Last updated" timestamp refreshes automatically.
+
+### AI Assistant
+
+A floating chat panel (bottom-right) is available on every dashboard page.
+
+**Features:**
+- Ask natural language questions about your financial data
+- "Generate Summary" quick action for an instant executive overview
+- AI Recommendations card on the Dashboard overview
+- All AI responses are grounded in your live financial context (KPIs, compliance, forecasts)
+
+**Setup:**
+
+1. Add your OpenAI API key to `.env`:
+   ```
+   OPENAI_API_KEY=sk-your-key-here
+   OPENAI_MODEL=gpt-4o-mini   # optional, this is the default
+   ```
+2. Restart the backend server. No database migrations required.
+3. In development without an API key, AI endpoints return a graceful "not configured" response — the rest of the app works normally.
+
+**Cost:** Uses `gpt-4o-mini` by default (~$0.00015/1K input tokens). A typical financial query costs < $0.001.
+
+### Environment Variables (New)
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `OPENAI_API_KEY` | Production only | — | OpenAI API key |
+| `OPENAI_MODEL` | No | `gpt-4o-mini` | OpenAI model to use |
+| `AI_RATE_LIMIT_MAX` | No | `20` | Max AI requests per minute per user |
+| `LIVE_POLL_INTERVAL_MS` | No | `30000` | Dashboard polling interval in ms |
 
 ---
 

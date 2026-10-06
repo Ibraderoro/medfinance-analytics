@@ -1,0 +1,48 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  user-select: none;
+}
+
+.live {
+  color: #057a55;
+  background: #d1fae5;
+  border-color: #6ee7b7;
+}
+
+.offline {
+  color: #6b7280;
+  background: #f3f4f6;
+  border-color: #d1d5db;
+}
+
+.dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.live .dot {
+  background: #059669;
+  /* subtle pulse animation using CSS only */
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.offline .dot {
+  background: #9ca3af;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}

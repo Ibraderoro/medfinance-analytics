@@ -1,7 +1,7 @@
 import Redis from 'ioredis';
 import { Response } from 'express';
 import { query } from '../config/database';
-import { CACHE_TTL, getRedis, invalidateFinancialCache } from '../config/redis';
+import { CACHE_TTL, getRedis } from '../config/redis';
 import { CacheService } from '../utils/cache';
 import { logger } from '../utils/logger';
 
@@ -19,16 +19,25 @@ interface LiveMetricsPayload {
   updatedAt: string;
 }
 
-type LiveEventType = 'transaction-added' | 'forecast-changed';
+type LiveEventType =
+  | 'transaction-added'
+  | 'forecast-changed'
+  | 'kpi-updated'
+  | 'compliance-updated'
+  | 'forecast-updated';
 
 interface LiveBroadcastEvent {
   type: LiveEventType;
   organization_id: string;
   updatedAt: string;
+  fiscalYear?: number;
+  metric?: string;
+  months?: number;
 }
 
 const FINANCIALS_SUMMARY_CACHE_TTL_SECONDS = CACHE_TTL?.latestMetricsSeconds ?? 120;
-const LIVE_EVENT_CHANNEL = 'medfinance:financials:live-events';
+const LIVE_EVENT_CHANNEL = 'medfinance:live-events';
+const LEGACY_LIVE_EVENT_CHANNEL = 'medfinance:financials:live-events';
 
 function tenantRedisKey(organizationId: string): string {
   return `medfinance:financials:latest_metrics:${organizationId}`;
@@ -56,10 +65,10 @@ export class LiveFinancialsService {
     }
 
     this.subscriber = getRedis().duplicate();
-    await this.subscriber.subscribe(LIVE_EVENT_CHANNEL);
+    await this.subscriber.subscribe(LIVE_EVENT_CHANNEL, LEGACY_LIVE_EVENT_CHANNEL);
 
     this.subscriber.on('message', (channel, message) => {
-      if (channel !== LIVE_EVENT_CHANNEL) {
+      if (channel !== LIVE_EVENT_CHANNEL && channel !== LEGACY_LIVE_EVENT_CHANNEL) {
         return;
       }
 
@@ -74,7 +83,7 @@ export class LiveFinancialsService {
       return;
     }
 
-    await this.subscriber.unsubscribe(LIVE_EVENT_CHANNEL);
+    await this.subscriber.unsubscribe(LIVE_EVENT_CHANNEL, LEGACY_LIVE_EVENT_CHANNEL);
     this.subscriber.disconnect();
     this.subscriber = null;
     logger.info('Live financial pub/sub stopped');
@@ -110,14 +119,31 @@ export class LiveFinancialsService {
     await this.publishEvent('forecast-changed', organizationId);
   }
 
-  private async publishEvent(type: LiveEventType, organizationId: string): Promise<void> {
+  async publishKpiUpdated(organizationId: string, fiscalYear: number): Promise<void> {
+    await this.publishEvent('kpi-updated', organizationId, { fiscalYear });
+  }
+
+  async publishComplianceUpdated(organizationId: string): Promise<void> {
+    await this.publishEvent('compliance-updated', organizationId);
+  }
+
+  async publishForecastUpdated(organizationId: string, metric: string, months: number): Promise<void> {
+    await this.publishEvent('forecast-updated', organizationId, { metric, months });
+  }
+
+  private async publishEvent(
+    type: LiveEventType,
+    organizationId: string,
+    extras?: Partial<Omit<LiveBroadcastEvent, 'type' | 'organization_id' | 'updatedAt'>>,
+  ): Promise<void> {
     const event: LiveBroadcastEvent = {
       type,
       organization_id: organizationId,
       updatedAt: new Date().toISOString(),
+      ...extras,
     };
 
-    await invalidateFinancialCache(organizationId);
+    await this.cache.invalidateOrgCache(organizationId);
     await getRedis().publish(LIVE_EVENT_CHANNEL, JSON.stringify(event));
   }
 

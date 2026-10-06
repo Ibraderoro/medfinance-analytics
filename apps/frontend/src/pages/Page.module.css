@@ -4,10 +4,29 @@
   gap: 1.5rem;
 }
 
+.pageHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
 .title {
   font-size: 1.5rem;
   font-weight: 600;
   color: var(--color-text);
+}
+
+.liveStatus {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.lastUpdated {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
 }
 
 .error {

@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { forecastingApi } from '../services/api';
+import { useAutoRefresh } from './useAutoRefresh';
 import type { ForecastDataPoint } from '../components/Charts/ForecastChart';
 
 interface ApiDataPoint {
@@ -19,22 +20,21 @@ interface UseForecastingReturn {
   forecast: ForecastDataPoint[];
   isLoading: boolean;
   error: Error | null;
+  refetch: () => void;
 }
 
-export function useForecasting(months = 12, metric = 'revenue'): UseForecastingReturn {
+export function useForecasting(months = 12, metric = 'revenue', liveRefresh: boolean = true): UseForecastingReturn {
   const [forecast, setForecast] = useState<ForecastDataPoint[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
+  const fetchData = useCallback(() => {
     setIsLoading(true);
     setError(null);
 
     forecastingApi
       .getForecast(months, metric)
       .then((res) => {
-        if (cancelled) return;
         const { dataPoints } = res.data.data as ForecastApiResponse;
         const mapped: ForecastDataPoint[] = dataPoints.map((d) => {
           const actualValue = Number(d.actual_total);
@@ -49,14 +49,22 @@ export function useForecasting(months = 12, metric = 'revenue'): UseForecastingR
         setForecast(mapped);
       })
       .catch((err: Error) => {
-        if (!cancelled) setError(err);
+        setError(err);
       })
       .finally(() => {
-        if (!cancelled) setIsLoading(false);
+        setIsLoading(false);
       });
-
-    return () => { cancelled = true; };
   }, [months, metric]);
 
-  return { forecast, isLoading, error };
+  const { refresh } = useAutoRefresh(fetchData, 30_000, liveRefresh);
+
+  // When liveRefresh is disabled, still fetch once on mount / param change.
+  useEffect(() => {
+    if (!liveRefresh) {
+      fetchData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [months, metric, liveRefresh]);
+
+  return { forecast, isLoading, error, refetch: refresh };
 }

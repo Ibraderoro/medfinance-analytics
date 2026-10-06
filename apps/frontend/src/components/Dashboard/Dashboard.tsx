@@ -1,12 +1,16 @@
-import { memo } from 'react';
+import { memo, useCallback } from 'react';
 import { Card } from '../common/Card';
 import { RevenueChart } from '../Charts/RevenueChart';
 import { ForecastChart } from '../Charts/ForecastChart';
 import { ComplianceChart } from '../Charts/ComplianceChart';
+import { AiRecommendations } from './AiRecommendations';
 import { useFinancials } from '../../hooks/useFinancials';
 import { useFinancialKpis } from '../../hooks/useFinancialKpis';
 import { useForecasting } from '../../hooks/useForecasting';
 import { useCompliance } from '../../hooks/useCompliance';
+import { useLiveFinancials } from '../../hooks/useLiveFinancials';
+import { useLastUpdated } from '../../hooks/useLastUpdated';
+import { LiveBadge } from '../LiveBadge';
 import { Loading } from '../common/Loading';
 import { EmptyState } from '../common/EmptyState';
 import { ErrorBoundary } from '../common/ErrorBoundary';
@@ -15,10 +19,49 @@ import styles from './Dashboard.module.css';
 function formatGrowth(value: string | number | null | undefined): string { if (value === null || value === undefined || Number.isNaN(Number(value))) return '—'; const num = Number(value); return `${num >= 0 ? '+' : ''}${num.toFixed(1)}%`; }
 
 function DashboardContent() {
-  const { revenue, isLoading: finLoading, error: financialError } = useFinancials();
-  const { latest: kpiRow, error: kpiError } = useFinancialKpis();
-  const { forecast, isLoading: forecastLoading, error: forecastError } = useForecasting();
-  const { items: complianceItems, isLoading: complianceLoading, error: complianceError } = useCompliance();
+  const { revenue, isLoading: finLoading, error: financialError, refetch: refetchFinancials } = useFinancials();
+  const { latest: kpiRow, error: kpiError, refetch: refetchKpis } = useFinancialKpis();
+  const { forecast, isLoading: forecastLoading, error: forecastError, refetch: refetchForecast } = useForecasting();
+  const { items: complianceItems, isLoading: complianceLoading, error: complianceError, refetch: refetchCompliance } = useCompliance();
+
+  const { markUpdated, relativeLabel } = useLastUpdated();
+
+  // Stable callbacks that survive re-renders without restarting the SSE connection.
+  const handleKpiUpdated = useCallback(() => {
+    refetchKpis();
+    refetchFinancials();
+    markUpdated();
+  }, [refetchKpis, refetchFinancials, markUpdated]);
+
+  const handleComplianceUpdated = useCallback(() => {
+    refetchCompliance();
+    markUpdated();
+  }, [refetchCompliance, markUpdated]);
+
+  const handleForecastUpdated = useCallback(() => {
+    refetchForecast();
+    markUpdated();
+  }, [refetchForecast, markUpdated]);
+
+  const handleTransactionAdded = useCallback(() => {
+    refetchFinancials();
+    refetchKpis();
+    markUpdated();
+  }, [refetchFinancials, refetchKpis, markUpdated]);
+
+  const handleSnapshot = useCallback(() => {
+    markUpdated();
+  }, [markUpdated]);
+
+  const { isConnected } = useLiveFinancials({
+    onSnapshot: handleSnapshot,
+    onTransactionAdded: handleTransactionAdded,
+    onForecastChanged: handleForecastUpdated,
+    onKpiUpdated: handleKpiUpdated,
+    onComplianceUpdated: handleComplianceUpdated,
+    onForecastUpdated: handleForecastUpdated,
+  });
+
   const complianceData = [
     { label: 'Compliant', value: complianceItems.filter((i) => i.status === 'compliant').length, color: '#057a55' },
     { label: 'Review', value: complianceItems.filter((i) => i.status === 'under_review').length, color: '#c27803' },
@@ -35,7 +78,13 @@ function DashboardContent() {
   const hasDashboardError = Boolean(financialError || kpiError || forecastError || complianceError);
 
   return <div className={styles.dashboard}>
-    <h1 className={styles.title}>Financial Overview</h1>
+    <div className={styles.titleRow}>
+      <h1 className={styles.title}>Financial Overview</h1>
+      <div className={styles.liveStatus}>
+        <LiveBadge isConnected={isConnected} />
+        {relativeLabel && <span className={styles.lastUpdated}>{relativeLabel}</span>}
+      </div>
+    </div>
     {hasDashboardError && (
       <div className={styles.alert} role="alert">
         Dashboard temporarily unavailable. Please refresh.
@@ -47,6 +96,7 @@ function DashboardContent() {
       <KpiCard label="Net Income" value={fmt(kpiRow?.net_income)} trend={formatGrowth(kpiRow?.net_income_yoy_growth)} positive={Number(kpiRow?.net_income_yoy_growth ?? 0) >= 0} />
       <KpiCard label="Operating Margin" value={hasFiniteOperatingMargin ? `${operatingMarginNumber.toFixed(1)}%` : 'No Data Available'} trend="—" positive={hasFiniteOperatingMargin && operatingMarginNumber >= 0} />
     </div>
+    <AiRecommendations />
     <div className={styles.chartsRow}>
       <Card title="Monthly Revenue" className={styles.chartCard}>{finLoading ? <Loading message="Loading revenue trends" /> : revenue.length > 0 ? <RevenueChart data={revenue} width={560} height={260} /> : <EmptyState title="No revenue data" description="Try broadening the selected time range or importing financial transactions." />}</Card>
       <Card title="Compliance Status" className={styles.complianceCard}>{complianceLoading ? <Loading message="Loading compliance posture" /> : complianceData.length > 0 ? <ComplianceChart data={complianceData} width={280} height={260} /> : <EmptyState title="No compliance records" description="No controls have been assessed yet for this organization." />}</Card>

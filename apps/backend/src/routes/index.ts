@@ -8,6 +8,7 @@ import { insightsRouter } from './insights';
 import { billingRouter } from './billing';
 import { adminRouter } from './admin';
 import { observabilityRouter } from './observability';
+import { aiRouter } from './ai';
 
 export const router = Router();
 
@@ -20,3 +21,4 @@ router.use('/insights', insightsRouter);
 router.use('/billing', billingRouter);
 router.use('/admin', adminRouter);
 router.use('/internal/observability', observabilityRouter);
+router.use('/ai', aiRouter);

@@ -1,7 +1,11 @@
+import { useCallback } from 'react';
 import { Card } from '../components/common/Card';
 import { ComplianceChart } from '../components/Charts/ComplianceChart';
 import { PageCard } from '../components/common/PageCard';
 import { useCompliance } from '../hooks/useCompliance';
+import { useLiveFinancials } from '../hooks/useLiveFinancials';
+import { useLastUpdated } from '../hooks/useLastUpdated';
+import { LiveBadge } from '../components/LiveBadge';
 import type { ComplianceDataPoint } from '../components/Charts/ComplianceChart';
 import styles from './Page.module.css';
 
@@ -12,7 +16,17 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export function CompliancePage() {
-  const { items, isLoading, error } = useCompliance();
+  const { items, isLoading, error, refetch: refetchCompliance } = useCompliance();
+  const { markUpdated, relativeLabel } = useLastUpdated();
+
+  const handleComplianceUpdated = useCallback(() => {
+    refetchCompliance();
+    markUpdated();
+  }, [refetchCompliance, markUpdated]);
+
+  const { isConnected } = useLiveFinancials({
+    onComplianceUpdated: handleComplianceUpdated,
+  });
 
   const chartData: ComplianceDataPoint[] = [
     { label: 'Compliant',     value: items.filter((i) => i.status === 'compliant').length,     color: STATUS_COLORS.compliant },
@@ -22,7 +36,13 @@ export function CompliancePage() {
 
   return (
     <div className={styles.page}>
-      <h1 className={styles.title}>Compliance</h1>
+      <div className={styles.pageHeader}>
+        <h1 className={styles.title}>Compliance</h1>
+        <div className={styles.liveStatus}>
+          <LiveBadge isConnected={isConnected} />
+          {relativeLabel && <span className={styles.lastUpdated}>{relativeLabel}</span>}
+        </div>
+      </div>
 
       <PageCard title="Compliance" isLoading={isLoading} error={error}>
         <div className={styles.twoCol}>

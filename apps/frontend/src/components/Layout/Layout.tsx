@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
+import { AiChatPanel } from '../AiChat/AiChatPanel';
 import styles from './Layout.module.css';
 
 export function Layout({ theme = 'light', onToggleTheme = () => undefined }: { theme?: 'light' | 'dark'; onToggleTheme?: () => void }) {
@@ -13,6 +14,7 @@ export function Layout({ theme = 'light', onToggleTheme = () => undefined }: { t
           <Outlet />
         </main>
       </div>
+      <AiChatPanel />
     </div>
   );
 }

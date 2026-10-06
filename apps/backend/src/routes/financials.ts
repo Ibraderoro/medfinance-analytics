@@ -16,6 +16,7 @@ import {
   getLiveFinancials,
   notifyTransactionAdded,
   notifyForecastChanged,
+  notifyKpiUpdated,
 } from '../controllers/financialsLive.controller';
 
 export const financialsRouter = Router();
@@ -35,3 +36,4 @@ financialsRouter.get('/live', authorize('viewer'), getLiveFinancials);
 
 financialsRouter.post('/live/events/transaction-added', authorize('analyst'), notifyTransactionAdded);
 financialsRouter.post('/live/events/forecast-changed', authorize('analyst'), notifyForecastChanged);
+financialsRouter.post('/live/events/kpi-updated', authorize('analyst'), notifyKpiUpdated);

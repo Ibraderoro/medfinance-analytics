@@ -1,0 +1,138 @@
+/* Matches the existing dashboard card style (same border, border-radius, padding, background) */
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  padding: 1.25rem 1.25rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.refreshButton {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  padding: 0.25rem;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background 0.15s;
+}
+
+.refreshButton:hover:not(:disabled) {
+  color: var(--color-text);
+  background: var(--color-border);
+}
+
+.refreshButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.subtitle {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+/* Skeleton loading shimmer */
+@keyframes shimmer {
+  0% { background-position: -600px 0; }
+  100% { background-position: 600px 0; }
+}
+
+.skeletonList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding-top: 0.25rem;
+}
+
+.skeleton {
+  height: 1rem;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--color-border) 25%, #e9eaec 50%, var(--color-border) 75%);
+  background-size: 600px 100%;
+  animation: shimmer 1.4s infinite linear;
+  width: 100%;
+}
+
+.skeleton:nth-child(2) { width: 88%; }
+.skeleton:nth-child(3) { width: 72%; }
+
+/* Error / empty states */
+.errorText,
+.emptyText {
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+  margin: 0.25rem 0 0;
+}
+
+/* Recommendation list */
+.list {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  font-size: 0.84rem;
+  color: var(--color-text);
+  line-height: 1.5;
+}
+
+.recText {
+  flex: 1;
+}
+
+/* Base badge */
+.badge {
+  display: inline-block;
+  flex-shrink: 0;
+  margin-top: 0.15rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1.6;
+}
+
+/* Severity colours — consistent with ComplianceChart palette */
+.badge.critical {
+  background: #fde8e8;
+  color: #c81e1e;
+}
+
+.badge.warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.badge.info {
+  background: #d1fae5;
+  color: #065f46;
+}

@@ -90,6 +90,13 @@ export const complianceApi = {
 
 export const insightsApi = { getInsights: () => apiClient.get('/insights') };
 
+export const aiApi = {
+  ask: (question: string, history: Array<{ role: 'user' | 'assistant'; content: string }>) =>
+    apiClient.post<{ data: { answer: string; recommendations: string[]; contextUsed: boolean } }>('/ai/ask', { question, history }),
+  getSummary: () =>
+    apiClient.get<{ data: { answer: string; recommendations: string[]; contextUsed: boolean } }>('/ai/summary'),
+};
+
 export const billingApi = {
   getSubscription: () => apiClient.get('/billing/subscription'),
   createSubscription: (plan: 'pro' | 'enterprise') => apiClient.post('/billing/subscription', { plan }),
