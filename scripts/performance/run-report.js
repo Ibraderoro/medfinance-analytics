@@ -98,13 +98,18 @@ const findings = [
   ...evaluateK6Results(k6Entries),
 ];
 
-if (dbAnalysis?.results?.some((result) => result.status !== 0 && !result.skipped)) {
+if (dbAnalysis?.results?.some((result) => result.status !== 0 && !result.skipped && !result.optional)) {
   findings.push({ level: 'fail', message: 'Database analysis contains failed query blocks' });
 }
 
 const skippedDbQueries = dbAnalysis?.results?.filter((result) => result.skipped) || [];
 for (const skipped of skippedDbQueries) {
   findings.push({ level: 'warn', message: `Database analysis skipped: ${skipped.description} (${skipped.stderr})` });
+}
+
+const optionalDbFailures = dbAnalysis?.results?.filter((result) => result.status !== 0 && result.optional) || [];
+for (const opt of optionalDbFailures) {
+  findings.push({ level: 'warn', message: `Database analysis optional/diagnostic query could not run: ${opt.description}` });
 }
 
 if (redisCheck?.checks?.some((check) => check.status !== 0)) {
