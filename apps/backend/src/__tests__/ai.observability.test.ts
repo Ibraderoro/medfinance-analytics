@@ -846,8 +846,34 @@ describe('estimateCost', () => {
 
   it('calculates cost for gpt-4o correctly', () => {
     const cost = estimateCost('gpt-4o', { promptTokens: 1_000_000, completionTokens: 1_000_000, totalTokens: 2_000_000 });
-    // input: $5.00, output: $15.00 → total $20.00
-    expect(cost).toBeCloseTo(20.0, 5);
+    // input: $2.50/1M, output: $10.00/1M → total $12.50
+    expect(cost).toBeCloseTo(12.5, 5);
+  });
+
+  it('applies 50% cache discount to cached prompt tokens', () => {
+    // 500k non-cached input + 500k cached input + 1M output
+    // non-cached: 500k * $2.50/1M = $1.25
+    // cached:     500k * $2.50/1M * 0.50 = $0.625
+    // output:     1M   * $10.00/1M = $10.00
+    // total: $11.875
+    const cost = estimateCost('gpt-4o', {
+      promptTokens: 1_000_000,
+      completionTokens: 1_000_000,
+      totalTokens: 2_000_000,
+      cachedTokens: 500_000,
+    });
+    expect(cost).toBeCloseTo(11.875, 5);
+  });
+
+  it('treats all prompt tokens as cached when cachedTokens equals promptTokens', () => {
+    // 1M fully cached input + 0 output → 1M * $2.50/1M * 0.50 = $1.25
+    const cost = estimateCost('gpt-4o', {
+      promptTokens: 1_000_000,
+      completionTokens: 0,
+      totalTokens: 1_000_000,
+      cachedTokens: 1_000_000,
+    });
+    expect(cost).toBeCloseTo(1.25, 5);
   });
 
   it('matches on longest prefix — model with version suffix resolves correctly', () => {

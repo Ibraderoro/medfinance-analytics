@@ -171,6 +171,20 @@ export function getReservationTokens(): number {
   return 1_200;
 }
 
+/**
+ * Shared calculation: micro-USD pessimistic reservation for the monthly cost
+ * budget.  Used both in checkUsageLimits (to reserve) and rollbackReservations
+ * (to release).  Returns 0 when the monthly USD budget is not enabled.
+ */
+export function getReservationMicroUsd(): number {
+  const monthlyUsdBudget = env.AI_TENANT_MONTHLY_BUDGET_USD;
+  if (monthlyUsdBudget <= 0) return 0;
+  const maxRequestCost = env.AI_MAX_COST_PER_REQUEST_USD > 0
+    ? env.AI_MAX_COST_PER_REQUEST_USD
+    : monthlyUsdBudget * 0.05;
+  return Math.ceil(maxRequestCost * 1_000_000);
+}
+
 export async function checkUsageLimits(
   userId: string,
   tenantId: string,
@@ -252,12 +266,7 @@ export async function checkUsageLimits(
       // integer arithmetic in Redis.
       const cKey = tenantMonthlyCostKey(tenantId);
       const monthlyTtlMs = 32 * 24 * 60 * 60 * 1_000;
-      // Reserve 1 "max request cost" pessimistically.
-      // Use AI_MAX_COST_PER_REQUEST_USD if set; otherwise 5% of monthly budget.
-      const maxRequestCost = env.AI_MAX_COST_PER_REQUEST_USD > 0
-        ? env.AI_MAX_COST_PER_REQUEST_USD
-        : monthlyUsdBudget * 0.05;
-      const reserveMicroUsd = Math.ceil(maxRequestCost * 1_000_000);
+      const reserveMicroUsd = getReservationMicroUsd();
       const budgetMicroUsd = Math.floor(monthlyUsdBudget * 1_000_000);
       const reserved = await evalScript(RESERVE_BUDGET_SCRIPT, [cKey], [
         String(reserveMicroUsd),
@@ -372,18 +381,22 @@ export async function reconcileBudget(
   }
 
   // Reconcile monthly cost reservation → actual cost.
-  if (env.AI_TENANT_MONTHLY_BUDGET_USD > 0 && estimatedCostUsd !== undefined) {
+  // Always run when the budget is enabled, even if cost is unknown.
+  // When cost is unknown we treat actual cost as zero (i.e. release the full
+  // reservation) to prevent a permanent counter leak.
+  if (env.AI_TENANT_MONTHLY_BUDGET_USD > 0) {
     try {
       const cKey = tenantMonthlyCostKey(tenantId);
-      const maxRequestCost = env.AI_MAX_COST_PER_REQUEST_USD > 0
-        ? env.AI_MAX_COST_PER_REQUEST_USD
-        : env.AI_TENANT_MONTHLY_BUDGET_USD * 0.05;
-      const reservedMicroUsd = Math.ceil(maxRequestCost * 1_000_000);
-      const actualMicroUsd = Math.round(estimatedCostUsd * 1_000_000);
+      const reservedMicroUsd = getReservationMicroUsd();
+      // Use actual cost when available; treat unknown as zero (release reservation).
+      const actualMicroUsd = estimatedCostUsd !== undefined
+        ? Math.round(estimatedCostUsd * 1_000_000)
+        : 0;
       const costDelta = actualMicroUsd - reservedMicroUsd;
       const after = costDelta !== 0
         ? Number(await getRedis().call(costDelta > 0 ? 'INCRBY' : 'DECRBY', cKey, String(Math.abs(costDelta))))
-        : reservedMicroUsd;
+        // costDelta === 0: actual exactly matched reservation — read true counter.
+        : Number(await getRedis().call('GET', cKey)) || actualMicroUsd;
       monthlyCostAfterMicroUsd = after;
     } catch (err) {
       logger.warn('AiUsageControl: monthly cost reconciliation failed', {
@@ -409,6 +422,7 @@ export async function rollbackReservations(
 ): Promise<void> {
   const redis = getRedis();
   const reservation = getReservationTokens();
+  const reserveMicroUsd = getReservationMicroUsd();
   await Promise.allSettled([
     redis.call('DECR', userRateKey(userId)),
     redis.call('DECR', tenantRateKey(tenantId)),
@@ -417,6 +431,9 @@ export async function rollbackReservations(
       : []),
     ...(env.AI_TENANT_MONTHLY_TOKEN_BUDGET > 0
       ? [redis.call('DECRBY', tenantMonthlyTokenKey(tenantId), String(reservation))]
+      : []),
+    ...(reserveMicroUsd > 0
+      ? [redis.call('DECRBY', tenantMonthlyCostKey(tenantId), String(reserveMicroUsd))]
       : []),
   ]);
 }

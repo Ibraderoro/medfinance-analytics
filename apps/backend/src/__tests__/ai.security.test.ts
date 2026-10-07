@@ -103,6 +103,36 @@ jest.mock('../utils/logger', () => ({
 }));
 
 // ---------------------------------------------------------------------------
+// Mock AuditService — recordSuccess() awaits audit.log(); without this mock
+// the real AuditService tries to connect to a DB and throws, causing ask()
+// to return FALLBACK_PROVIDER_ERROR (contextUsed: false) in all tests.
+// ---------------------------------------------------------------------------
+
+jest.mock('../services/audit.service', () => ({
+  AuditService: jest.fn().mockImplementation(() => ({
+    log: jest.fn().mockResolvedValue(undefined),
+  })),
+}));
+
+// ---------------------------------------------------------------------------
+// Mock metrics service — ai.telemetry.ts and ai.usageControl.ts call
+// metricsService.*; prevent 'not a function' errors in tests that don't
+// need to assert on metric values.
+// ---------------------------------------------------------------------------
+
+jest.mock('../services/metrics.service', () => ({
+  metricsService: {
+    recordAiRequest: jest.fn(),
+    recordAiTokenUsage: jest.fn(),
+    recordAiRateLimitRejection: jest.fn(),
+    recordAiBudgetRejection: jest.fn(),
+    recordRedisOperation: jest.fn(),
+    recordRequest: jest.fn(),
+    recordDbQuery: jest.fn(),
+  },
+}));
+
+// ---------------------------------------------------------------------------
 // Mock Redis client
 // acquireSlot/releaseSlot call getRedis().call() — we need a controllable mock
 // so tests run without a live Redis instance.

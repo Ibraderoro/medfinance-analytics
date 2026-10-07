@@ -7,7 +7,7 @@ import { InsightsService } from './insights.service';
 import { ComplianceService } from './compliance.service';
 import { ForecastingService } from './forecasting.service';
 import { aiTelemetryService, estimateCost, type AiOperation, type AiTokenUsage } from './ai.telemetry';
-import { checkUsageLimits, recordUsageAndCheck } from './ai.usageControl';
+import { checkUsageLimits, reconcileBudget, rollbackReservations } from './ai.usageControl';
 import { logger } from '../utils/logger';
 
 // ---------------------------------------------------------------------------
@@ -532,6 +532,14 @@ export class AiService {
     const slotKey = userId ?? orgId;
     if (!(await acquireSlot(slotKey))) {
       logger.warn('AiService: concurrency limit reached', { slotKey });
+      // Roll back the Redis reservations made by checkUsageLimits before returning.
+      if (usageResult.outcome !== 'redis_unavailable') {
+        await rollbackReservations(rateUserId, orgId).catch((e) =>
+          logger.warn('AiService: rollback failed after concurrency denial', {
+            error: e instanceof Error ? e.message : String(e),
+          }),
+        );
+      }
       void aiTelemetryService.record({
         requestId,
         organizationId: orgId,
@@ -547,12 +555,14 @@ export class AiService {
       return FALLBACK_CONCURRENCY;
     }
 
+    const reservationsActive = usageResult.outcome !== 'redis_unavailable';
     try {
       return await this._ask(orgId, question, history, {
         operation,
         requestId,
         userId,
         startMs,
+        reservationsActive,
       });
     } finally {
       await releaseSlot(slotKey);
@@ -568,9 +578,11 @@ export class AiService {
       requestId?: string;
       userId?: string;
       startMs: number;
+      /** True when checkUsageLimits made reservations that must be reconciled. */
+      reservationsActive?: boolean;
     },
   ): Promise<AiResponse> {
-    const { operation, requestId, userId, startMs } = meta;
+    const { operation, requestId, userId, startMs, reservationsActive } = meta;
     const model = env.OPENAI_MODEL;
     const provider = 'openai';
 
@@ -770,6 +782,12 @@ export class AiService {
         parsed = JSON.parse(raw);
       } catch {
         logger.warn('AiService: failed to parse OpenAI JSON response', { orgId });
+        // Reconcile budget even on failure to release the pre-call reservation.
+        if (reservationsActive) {
+          await reconcileBudget(orgId, tokenUsage?.totalTokens ?? 0, estimatedCostUsd).catch(
+            (e) => logger.warn('AiUsageControl: reconcile failed (invalid_json)', { error: e instanceof Error ? e.message : String(e) }),
+          );
+        }
         void aiTelemetryService.record({
           requestId,
           organizationId: orgId,
@@ -793,6 +811,12 @@ export class AiService {
       try {
         validated = validateModelOutput(parsed);
       } catch {
+        // Reconcile budget even on failure to release the pre-call reservation.
+        if (reservationsActive) {
+          await reconcileBudget(orgId, tokenUsage?.totalTokens ?? 0, estimatedCostUsd).catch(
+            (e) => logger.warn('AiUsageControl: reconcile failed (invalid_schema)', { error: e instanceof Error ? e.message : String(e) }),
+          );
+        }
         void aiTelemetryService.record({
           requestId,
           organizationId: orgId,
@@ -812,13 +836,15 @@ export class AiService {
         return FALLBACK_PROVIDER_ERROR;
       }
 
-      // Post-call: record token usage in quota and check per-request caps.
-      if (tokenUsage) {
-        void recordUsageAndCheck(orgId, tokenUsage.totalTokens, estimatedCostUsd);
+      // Post-call: reconcile token/cost reservations unconditionally.
+      if (reservationsActive) {
+        await reconcileBudget(orgId, tokenUsage?.totalTokens ?? 0, estimatedCostUsd).catch(
+          (e) => logger.warn('AiUsageControl: reconcile failed (success)', { error: e instanceof Error ? e.message : String(e) }),
+        );
       }
 
-      // Telemetry: success path.
-      void aiTelemetryService.record({
+      // Telemetry: success path — propagates audit failure to caller.
+      await aiTelemetryService.recordSuccess({
         requestId,
         organizationId: orgId,
         userId,

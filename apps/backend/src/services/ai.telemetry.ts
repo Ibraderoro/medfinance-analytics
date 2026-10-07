@@ -24,6 +24,8 @@ export interface AiTokenUsage {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+  /** Subset of promptTokens that were served from the provider's prompt cache. */
+  cachedTokens?: number;
 }
 
 export interface AiInvocationRecord {
@@ -49,28 +51,30 @@ export interface AiInvocationRecord {
 
 // ---------------------------------------------------------------------------
 // Cost estimation
-// Prices sourced from public OpenAI pricing (per-1M tokens as of 2024).
+// Prices sourced from public OpenAI pricing (per-1M tokens, prices as of 2024-11).
 // Keys are model identifiers; add entries as needed.
 // Falls back to undefined rather than failing if the model is unknown.
 //
 // Override at runtime via AI_PRICING_OVERRIDES env var (JSON):
-//   '{"gpt-4o":{"input":5.0,"output":15.0},"my-custom-model":{"input":1.0,"output":2.0}}'
+//   '{"gpt-4o":{"input":2.50,"output":10.0},"my-custom-model":{"input":1.0,"output":2.0}}'
 // ---------------------------------------------------------------------------
 
 const BUILTIN_COST_PER_1M_INPUT: Record<string, number> = {
-  'gpt-4o': 5.0,
+  'gpt-4o': 2.50,       // https://openai.com/api/pricing/
   'gpt-4o-mini': 0.15,
   'gpt-4-turbo': 10.0,
   'gpt-4': 30.0,
   'gpt-3.5-turbo': 0.5,
 };
 const BUILTIN_COST_PER_1M_OUTPUT: Record<string, number> = {
-  'gpt-4o': 15.0,
-  'gpt-4o-mini': 0.6,
+  'gpt-4o': 10.0,
+  'gpt-4o-mini': 0.60,
   'gpt-4-turbo': 30.0,
   'gpt-4': 60.0,
   'gpt-3.5-turbo': 1.5,
 };
+// Cached prompt tokens are billed at 50% of the normal input rate.
+const BUILTIN_CACHE_DISCOUNT = 0.5;
 
 /**
  * Parse AI_PRICING_OVERRIDES JSON and merge with builtins.
@@ -118,6 +122,10 @@ export function resetPricingCache(): void {
  * Estimate cost in USD from token usage for a given model.
  * Returns undefined if the model pricing is not known, to avoid false
  * budget calculations for unknown models.
+ *
+ * Cached prompt tokens (usage.cachedTokens) are billed at 50% of the normal
+ * input rate per OpenAI documentation.  Non-cached input tokens = promptTokens
+ * minus cachedTokens.
  */
 export function estimateCost(model: string, usage: AiTokenUsage): number | undefined {
   const { input: inputTable, output: outputTable } = getPricingTable();
@@ -127,8 +135,14 @@ export function estimateCost(model: string, usage: AiTokenUsage): number | undef
     .sort((a, b) => b.length - a.length)
     .find((k) => model.startsWith(k));
   if (!matchingKey) return undefined;
-  const inputCost = (usage.promptTokens / 1_000_000) * inputTable[matchingKey];
-  const outputCost = (usage.completionTokens / 1_000_000) * outputTable[matchingKey];
+  const inputRate = inputTable[matchingKey];
+  const outputRate = outputTable[matchingKey];
+  const cachedTokens = usage.cachedTokens ?? 0;
+  const nonCachedInputTokens = Math.max(0, usage.promptTokens - cachedTokens);
+  const inputCost =
+    (nonCachedInputTokens / 1_000_000) * inputRate +
+    (cachedTokens / 1_000_000) * inputRate * BUILTIN_CACHE_DISCOUNT;
+  const outputCost = (usage.completionTokens / 1_000_000) * outputRate;
   // Round to 8 decimal places to avoid floating-point noise in logs.
   return Math.round((inputCost + outputCost) * 1e8) / 1e8;
 }
@@ -140,8 +154,13 @@ export class AiTelemetryService {
    * Record audit metadata (safe, no prompt/response content) and update
    * Prometheus metrics for a completed AI invocation.
    *
-   * Audit persistence failures are logged but do NOT propagate — telemetry
-   * must never disrupt the user-facing response path.
+   * For non-success outcomes the audit write is best-effort: failures are
+   * logged and swallowed so they never disrupt the user response path.
+   *
+   * For success outcomes callers MUST use `recordSuccess()` instead, which
+   * awaits the audit write and propagates its failure so the controller can
+   * surface an audit-write error rather than silently returning a response
+   * that was never recorded.
    */
   async record(record: AiInvocationRecord): Promise<void> {
     // --- 1. Structured log (safe metadata only) ----------------------------
@@ -210,23 +229,100 @@ export class AiTelemetryService {
       auditMeta.errorCategory = record.errorCategory;
     }
 
-    try {
-      await auditService.log({
-        action,
-        entityType: 'ai-session',
-        organizationId: record.organizationId,
-        performedBy: record.userId,
-        requestId: record.requestId,
-        metadata: auditMeta,
-      });
-    } catch (err) {
-      // Audit failure must never propagate to the caller.
+    // Best-effort: swallow audit errors for non-success events.
+    await auditService.log({
+      action,
+      entityType: 'ai-session',
+      organizationId: record.organizationId,
+      performedBy: record.userId,
+      requestId: record.requestId,
+      metadata: auditMeta,
+    }).catch((err) => {
       logger.error('AiTelemetry: audit persistence failed', {
         action,
         organizationId: record.organizationId,
         error: err instanceof Error ? err.message : String(err),
       });
+    });
+  }
+
+  /**
+   * Record a successful AI invocation.
+   *
+   * Unlike `record()`, the audit write is NOT swallowed — any persistence
+   * failure propagates to the caller so the controller can surface it rather
+   * than silently returning a response that was never durably recorded.
+   * The structured log and metrics writes remain synchronous and non-throwing.
+   */
+  async recordSuccess(record: AiInvocationRecord): Promise<void> {
+    // Structured log and metrics — always best-effort.
+    logger.info('ai_invocation', {
+      requestId: record.requestId,
+      organizationId: record.organizationId,
+      userId: record.userId,
+      timestamp: record.timestamp,
+      operation: record.operation,
+      provider: record.provider,
+      model: record.model,
+      outcome: record.outcome,
+      latencyMs: record.latencyMs,
+      promptLength: record.promptLength,
+      historyLength: record.historyLength,
+      answerLength: record.answerLength,
+      promptTokens: record.tokenUsage?.promptTokens,
+      completionTokens: record.tokenUsage?.completionTokens,
+      totalTokens: record.tokenUsage?.totalTokens,
+      cachedTokens: record.tokenUsage?.cachedTokens,
+      estimatedCostUsd: record.estimatedCostUsd,
+    });
+
+    metricsService.recordAiRequest(record.latencyMs, {
+      operation: record.operation,
+      provider: record.provider,
+      model: record.model,
+      outcome: record.outcome,
+    });
+
+    if (record.tokenUsage) {
+      metricsService.recordAiTokenUsage(record.tokenUsage.totalTokens, {
+        operation: record.operation,
+        provider: record.provider,
+        model: record.model,
+      });
     }
+
+    // Audit write — propagates on failure (caller must handle).
+    const action = record.operation === 'summary' ? 'ai-summary' : 'ai-query';
+    const auditMeta: Record<string, unknown> = {
+      operation: record.operation,
+      provider: record.provider,
+      model: record.model,
+      outcome: record.outcome,
+      latencyMs: record.latencyMs,
+      promptLength: record.promptLength,
+      historyLength: record.historyLength,
+      answerLength: record.answerLength,
+    };
+    if (record.tokenUsage) {
+      auditMeta.promptTokens = record.tokenUsage.promptTokens;
+      auditMeta.completionTokens = record.tokenUsage.completionTokens;
+      auditMeta.totalTokens = record.tokenUsage.totalTokens;
+      if (record.tokenUsage.cachedTokens !== undefined) {
+        auditMeta.cachedTokens = record.tokenUsage.cachedTokens;
+      }
+    }
+    if (record.estimatedCostUsd !== undefined) {
+      auditMeta.estimatedCostUsd = record.estimatedCostUsd;
+    }
+
+    await auditService.log({
+      action,
+      entityType: 'ai-session',
+      organizationId: record.organizationId,
+      performedBy: record.userId,
+      requestId: record.requestId,
+      metadata: auditMeta,
+    });
   }
 }
 
