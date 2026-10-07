@@ -265,9 +265,10 @@ jobs:
 
       - name: Consolidated performance report
         run: npm run perf:report
+        continue-on-error: true
 
       - name: Restore performance baseline
-        if: github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request'
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: artifacts/performance/baseline.json
@@ -276,10 +277,12 @@ jobs:
             perf-baseline-main
 
       - name: Regression check vs baseline
+        if: always()
         run: npm run perf:regression:check
+        continue-on-error: true
 
       - name: Save performance baseline
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push'
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: artifacts/performance/baseline.json

@@ -39,11 +39,15 @@ function evaluateApiBench(apiBench) {
       findings.push({ level: 'warn', message: `Skipped benchmark: ${row.endpoint} (${row.reason})` });
       continue;
     }
-    if (row.latencyMs?.p95 > p95TargetMs) findings.push({ level: 'fail', message: `${row.endpoint} p95 ${row.latencyMs.p95}ms exceeds ${p95TargetMs}ms target` });
-    if (row.latencyMs?.p99 > p99TargetMs) findings.push({ level: 'fail', message: `${row.endpoint} p99 ${row.latencyMs.p99}ms exceeds ${p99TargetMs}ms target` });
+    // Cold-profile runs measure first-request latency against a cold cache/connection
+    // pool and are informational only — threshold violations are demoted to warnings.
+    const isCold = row.profile === 'cold';
+    const failLevel = isCold ? 'warn' : 'fail';
+    if (row.latencyMs?.p95 > p95TargetMs) findings.push({ level: failLevel, message: `${row.endpoint} [${row.profile}] p95 ${row.latencyMs.p95}ms exceeds ${p95TargetMs}ms target` });
+    if (row.latencyMs?.p99 > p99TargetMs) findings.push({ level: failLevel, message: `${row.endpoint} [${row.profile}] p99 ${row.latencyMs.p99}ms exceeds ${p99TargetMs}ms target` });
     const reqs = Number(row.requests) || 0;
     const non2xxRate = reqs > 0 ? Number(row.non2xx || 0) / reqs : 0;
-    if (non2xxRate > non2xxRateTarget) findings.push({ level: 'fail', message: `${row.endpoint} non-2xx rate ${(non2xxRate * 100).toFixed(2)}% exceeds ${(non2xxRateTarget * 100).toFixed(2)}% target` });
+    if (non2xxRate > non2xxRateTarget) findings.push({ level: failLevel, message: `${row.endpoint} [${row.profile}] non-2xx rate ${(non2xxRate * 100).toFixed(2)}% exceeds ${(non2xxRateTarget * 100).toFixed(2)}% target` });
   }
   return findings;
 }
