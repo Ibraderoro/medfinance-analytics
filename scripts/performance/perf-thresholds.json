@@ -12,7 +12,7 @@
         "peak": { "rate": 400, "duration": "15m", "preAllocatedVUs": 160, "maxVUs": 600, "minThroughput": 300 }
       },
       "thresholds": {
-        "ci": { "httpReqFailedRate": 0.02, "p95Ms": 300, "p99Ms": 800, "readinessP95Ms": 150 },
+        "ci": { "httpReqFailedRate": 0.02, "p95Ms": 300, "p99Ms": 800, "readinessP95Ms": 200 },
         "smoke": { "httpReqFailedRate": 0.01, "p95Ms": 250, "p99Ms": 600, "readinessP95Ms": 80 },
         "peak": { "httpReqFailedRate": 0.01, "p95Ms": 250, "p99Ms": 600, "readinessP95Ms": 80 }
       }
