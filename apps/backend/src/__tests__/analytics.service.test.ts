@@ -97,9 +97,9 @@ describe('AnalyticsService.processOneBatch', () => {
     mockQuery.mockResolvedValue([]);
 
     const service = new AnalyticsService();
-    const didWork = await service.processOneBatch();
+    const result = await service.processOneBatch();
 
-    expect(didWork).toBe(true);
+    expect(result.processed).toBe(true);
     expect(mockQuery).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO api_request_metrics'), expect.any(Array));
     expect(mockCall).toHaveBeenCalledWith('XACK', 'api_telemetry_stream', 'analytics_workers', '1-0');
   });
@@ -112,9 +112,9 @@ describe('AnalyticsService.processOneBatch', () => {
     });
 
     const service = new AnalyticsService();
-    const didWork = await service.processOneBatch();
+    const result = await service.processOneBatch();
 
-    expect(didWork).toBe(false);
+    expect(result.processed).toBe(false);
     expect(mockQuery).not.toHaveBeenCalled();
   });
 });

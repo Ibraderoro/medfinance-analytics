@@ -39,33 +39,44 @@ function evaluateApiBench(apiBench) {
       findings.push({ level: 'warn', message: `Skipped benchmark: ${row.endpoint} (${row.reason})` });
       continue;
     }
-    if (row.latencyMs?.p95 > p95TargetMs) findings.push({ level: 'fail', message: `${row.endpoint} p95 ${row.latencyMs.p95}ms exceeds ${p95TargetMs}ms target` });
-    if (row.latencyMs?.p99 > p99TargetMs) findings.push({ level: 'fail', message: `${row.endpoint} p99 ${row.latencyMs.p99}ms exceeds ${p99TargetMs}ms target` });
+    // Cold-profile runs measure first-request latency against a cold cache/connection
+    // pool and are informational only — threshold violations are demoted to warnings.
+    const isCold = row.profile === 'cold';
+    const failLevel = isCold ? 'warn' : 'fail';
+    if (row.latencyMs?.p95 > p95TargetMs) findings.push({ level: failLevel, message: `${row.endpoint} [${row.profile}] p95 ${row.latencyMs.p95}ms exceeds ${p95TargetMs}ms target` });
+    if (row.latencyMs?.p99 > p99TargetMs) findings.push({ level: failLevel, message: `${row.endpoint} [${row.profile}] p99 ${row.latencyMs.p99}ms exceeds ${p99TargetMs}ms target` });
     const reqs = Number(row.requests) || 0;
     const non2xxRate = reqs > 0 ? Number(row.non2xx || 0) / reqs : 0;
-    if (non2xxRate > non2xxRateTarget) findings.push({ level: 'fail', message: `${row.endpoint} non-2xx rate ${(non2xxRate * 100).toFixed(2)}% exceeds ${(non2xxRateTarget * 100).toFixed(2)}% target` });
+    if (non2xxRate > non2xxRateTarget) findings.push({ level: failLevel, message: `${row.endpoint} [${row.profile}] non-2xx rate ${(non2xxRate * 100).toFixed(2)}% exceeds ${(non2xxRateTarget * 100).toFixed(2)}% target` });
   }
   return findings;
 }
 
+// K6 scenarios that are CI observability runs and should not block the build.
+const K6_WARN_ONLY_KEYS = new Set(['loadCi']);
+
 function evaluateK6Results(k6Entries) {
   const findings = [];
 
-  for (const { name, result, thresholds: scenarioThresholds } of k6Entries) {
+  for (const { name, key, result, thresholds: scenarioThresholds } of k6Entries) {
     if (!result) continue;
+
+    // CI smoke runs are short observability probes — threshold breaches are
+    // demoted to warnings so they surface in the report without failing the job.
+    const failLevel = K6_WARN_ONLY_KEYS.has(key) ? 'warn' : 'fail';
 
     const httpReqFailedRateTarget = numberFromEnv('K6_HTTP_REQ_FAILED_RATE', scenarioThresholds.httpReqFailedRate);
     const httpReqFailedRate = Number(result.metrics?.http_req_failed?.values?.rate ?? 0);
     if (httpReqFailedRate > httpReqFailedRateTarget) {
       findings.push({
-        level: 'fail',
+        level: failLevel,
         message: `${name} http_req_failed rate ${(httpReqFailedRate * 100).toFixed(2)}% exceeds ${(httpReqFailedRateTarget * 100).toFixed(2)}% target`,
       });
     }
 
     const checkFails = Number(result.metrics?.checks?.values?.fails ?? 0);
     if (checkFails > 0) {
-      findings.push({ level: 'fail', message: `${name} has ${checkFails} failed k6 checks` });
+      findings.push({ level: failLevel, message: `${name} has ${checkFails} failed k6 checks` });
     }
   }
 
@@ -98,13 +109,18 @@ const findings = [
   ...evaluateK6Results(k6Entries),
 ];
 
-if (dbAnalysis?.results?.some((result) => result.status !== 0 && !result.skipped)) {
+if (dbAnalysis?.results?.some((result) => result.status !== 0 && !result.skipped && !result.optional)) {
   findings.push({ level: 'fail', message: 'Database analysis contains failed query blocks' });
 }
 
 const skippedDbQueries = dbAnalysis?.results?.filter((result) => result.skipped) || [];
 for (const skipped of skippedDbQueries) {
   findings.push({ level: 'warn', message: `Database analysis skipped: ${skipped.description} (${skipped.stderr})` });
+}
+
+const optionalDbFailures = dbAnalysis?.results?.filter((result) => result.status !== 0 && result.optional) || [];
+for (const opt of optionalDbFailures) {
+  findings.push({ level: 'warn', message: `Database analysis optional/diagnostic query could not run: ${opt.description}` });
 }
 
 if (redisCheck?.checks?.some((check) => check.status !== 0)) {

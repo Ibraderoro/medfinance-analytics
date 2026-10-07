@@ -1,11 +1,10 @@
 import { Response, NextFunction } from 'express';
 import { body } from 'express-validator';
+import { env } from '../config/env';
 import { AiService } from '../services/ai.service';
-import { AuditService } from '../services/audit.service';
 import { AuthenticatedRequest, requireAuthenticatedUser } from '../middleware/auth';
 
 const aiService = new AiService();
-const auditService = new AuditService();
 
 export const askAiValidators = [
   body('question')
@@ -13,7 +12,7 @@ export const askAiValidators = [
     .trim()
     .notEmpty()
     .withMessage('question is required')
-    .isLength({ max: 1000 })
+    .isLength({ max: 1_000 })
     .withMessage('question must not exceed 1000 characters'),
   body('history')
     .optional()
@@ -28,7 +27,11 @@ export const askAiValidators = [
     .isString()
     .trim()
     .notEmpty()
-    .withMessage('history[].content must be a non-empty string'),
+    .withMessage('history[].content must be a non-empty string')
+    // Per-message length cap mirrors env.AI_MAX_HISTORY_MSG_CHARS (2000 default).
+    // Validated early at the HTTP layer before any service logic runs.
+    .isLength({ max: env.AI_MAX_HISTORY_MSG_CHARS })
+    .withMessage(`history[].content must not exceed ${env.AI_MAX_HISTORY_MSG_CHARS} characters`),
 ];
 
 export async function askAi(
@@ -38,18 +41,22 @@ export async function askAi(
 ): Promise<void> {
   try {
     const user = requireAuthenticatedUser(req);
-    const { question, history = [] } = req.body as { question: string; history?: { role: 'user' | 'assistant'; content: string }[] };
+    const { question, history = [] } = req.body as {
+      question: string;
+      history?: { role: 'user' | 'assistant'; content: string }[];
+    };
 
-    const result = await aiService.ask(user.organization_id, question, history);
-
-    await auditService.log({
-      action: 'ai-query',
-      entityType: 'ai-session',
-      organizationId: user.organization_id,
-      performedBy: user.id,
-      requestId: req.header('X-Request-Id'),
-      metadata: { contextUsed: result.contextUsed },
-    });
+    // Pass userId and requestId so the telemetry/audit trail is fully populated.
+    // The AiService now handles all audit logging internally with safe metadata
+    // (no raw prompt or response content). The audit log entry, Prometheus
+    // metrics, and structured log are all written by AiTelemetryService.
+    const result = await aiService.ask(
+      user.organization_id,
+      question,
+      history,
+      user.id,
+      { requestId: req.header('X-Request-Id') },
+    );
 
     res.json({ data: result });
   } catch (err) {
@@ -64,7 +71,12 @@ export async function getSummary(
 ): Promise<void> {
   try {
     const user = requireAuthenticatedUser(req);
-    const result = await aiService.getSummary(user.organization_id);
+    // getSummary is now audited through the centralized telemetry path with
+    // operation='summary', ensuring parity with the 'ask' operation audit trail.
+    const result = await aiService.getSummary(user.organization_id, {
+      requestId: req.header('X-Request-Id'),
+      userId: user.id,
+    });
     res.json({ data: result });
   } catch (err) {
     next(err);

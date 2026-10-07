@@ -50,7 +50,19 @@ const QUEUE_JOB_DURATION: HistogramDefinition = {
   buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60],
 };
 
-const HISTOGRAM_DEFINITIONS: HistogramDefinition[] = [HTTP_DURATION, DB_DURATION, REDIS_DURATION, QUEUE_JOB_DURATION];
+const AI_REQUEST_DURATION: HistogramDefinition = {
+  name: 'ai_provider_request_duration_seconds',
+  help: 'AI provider request latency in seconds by operation, provider, model, and outcome.',
+  buckets: [0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 30, 60],
+};
+
+const HISTOGRAM_DEFINITIONS: HistogramDefinition[] = [
+  HTTP_DURATION,
+  DB_DURATION,
+  REDIS_DURATION,
+  QUEUE_JOB_DURATION,
+  AI_REQUEST_DURATION,
+];
 
 type GaugeState = { name: string; help: string; labels: Record<string, string>; value: number };
 
@@ -170,6 +182,68 @@ class PrometheusMetricsService {
       labels: normalized,
       value,
     });
+  }
+
+  recordAiRequest(
+    durationMs: number,
+    labels: { operation: string; provider: string; model: string; outcome: string },
+  ): void {
+    const normalized = {
+      operation: sanitizeLabelValue(labels.operation),
+      provider: sanitizeLabelValue(labels.provider),
+      model: sanitizeLabelValue(labels.model),
+      outcome: sanitizeLabelValue(labels.outcome),
+    };
+    this.incrementCounter('ai_requests_total', 'Total AI provider requests by operation, provider, model, and outcome.', normalized);
+    this.observeHistogram(AI_REQUEST_DURATION, Math.max(durationMs, 0) / 1000, normalized);
+  }
+
+  recordAiTokenUsage(
+    totalTokens: number,
+    labels: { operation: string; provider: string; model: string },
+  ): void {
+    const normalized = {
+      operation: sanitizeLabelValue(labels.operation),
+      provider: sanitizeLabelValue(labels.provider),
+      model: sanitizeLabelValue(labels.model),
+    };
+    // Token usage recorded as a gauge-like counter for cumulative tracking.
+    const key = `ai_token_usage_total|${labelsKey(normalized)}`;
+    const existing = this.counters.get(key);
+    if (existing) {
+      existing.value += totalTokens;
+    } else {
+      this.counters.set(key, {
+        name: 'ai_token_usage_total',
+        help: 'Total AI provider tokens consumed by operation, provider, and model.',
+        labels: normalized,
+        value: totalTokens,
+      });
+    }
+  }
+
+  recordAiRateLimitRejection(labels: { scope: string; reason: string }): void {
+    const normalized = {
+      scope: sanitizeLabelValue(labels.scope),
+      reason: sanitizeLabelValue(labels.reason),
+    };
+    this.incrementCounter(
+      'ai_rate_limit_rejections_total',
+      'Total AI requests rejected by rate limiting by scope (user/tenant) and reason.',
+      normalized,
+    );
+  }
+
+  recordAiBudgetRejection(labels: { scope: string; reason: string }): void {
+    const normalized = {
+      scope: sanitizeLabelValue(labels.scope),
+      reason: sanitizeLabelValue(labels.reason),
+    };
+    this.incrementCounter(
+      'ai_budget_rejections_total',
+      'Total AI requests rejected by budget/token caps by scope and reason.',
+      normalized,
+    );
   }
 
   getSnapshot(): MetricsSnapshot {

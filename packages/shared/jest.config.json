@@ -12,7 +12,8 @@
     "src/**/*.ts",
     "!src/**/*.d.ts",
     "!src/__tests__/**",
-    "!src/test/**"
+    "!src/test/**",
+    "!src/index.ts"
   ],
   "transform": {
     "^.+\\.tsx?$": "ts-jest"

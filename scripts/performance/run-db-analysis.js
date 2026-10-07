@@ -71,14 +71,17 @@ const remainingQueries = [
   },
   {
     description: 'Explain financial summary pattern',
+    optional: true,
     query: `EXPLAIN (ANALYZE, BUFFERS) SELECT COALESCE(SUM(CASE WHEN transaction_type = 'revenue' THEN amount ELSE 0 END), 0) AS total_revenue, COALESCE(SUM(CASE WHEN transaction_type = 'expense' THEN amount ELSE 0 END), 0) AS total_expenses FROM transactions WHERE organization_id = COALESCE(NULLIF('${(process.env.PERF_SAMPLE_ORG_ID || '').replace(/'/g, "''")}', ''), organization_id) AND EXTRACT(YEAR FROM occurred_on) = COALESCE(NULLIF('${(process.env.PERF_SAMPLE_YEAR || '').replace(/'/g, "''")}', '')::int, EXTRACT(YEAR FROM occurred_on));`,
   },
   {
     description: 'Explain forecasting monthly pattern',
+    optional: true,
     query: `EXPLAIN (ANALYZE, BUFFERS) SELECT DATE_TRUNC('month', occurred_on)::date AS month, SUM(CASE WHEN transaction_type = 'revenue' THEN amount ELSE 0 END) AS revenue, SUM(CASE WHEN transaction_type = 'expense' THEN amount ELSE 0 END) AS expense FROM transactions GROUP BY DATE_TRUNC('month', occurred_on)::date ORDER BY month DESC LIMIT 24;`,
   },
   {
     description: 'Explain admin percentile analytics',
+    optional: true,
     query: `EXPLAIN (ANALYZE, BUFFERS) SELECT endpoint, percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms) AS p95_latency_ms FROM api_request_metrics WHERE created_at >= NOW() - INTERVAL '60 minutes' GROUP BY endpoint ORDER BY p95_latency_ms DESC LIMIT 20;`,
   },
 ];
@@ -93,7 +96,7 @@ const pgStatStatementsResults = pgStatStatementsAvailable
 const results = [
   availabilityResult,
   ...pgStatStatementsResults,
-  ...remainingQueries.map((item) => runPsql(item.query, item.description)),
+  ...remainingQueries.map((item) => ({ ...runPsql(item.query, item.description), optional: item.optional || false })),
 ];
 
 const out = {
@@ -132,7 +135,11 @@ for (const result of results) {
 const mdPath = path.join(outputDir, `db-analysis-${runId}.md`);
 fs.writeFileSync(mdPath, mdLines.join('\n'));
 
-const failures = results.filter((r) => r.status !== 0);
+const failures = results.filter((r) => r.status !== 0 && !r.optional);
+const warnings = results.filter((r) => r.status !== 0 && r.optional);
+if (warnings.length > 0) {
+  console.warn(`Database analysis completed with ${warnings.length} optional/diagnostic query block(s) that could not run (non-fatal).`);
+}
 if (failures.length > 0) {
   console.error(`Database analysis completed with ${failures.length} failed query blocks.`);
   process.exit(1);

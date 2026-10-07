@@ -2,6 +2,12 @@ import http from 'k6/http';
 import { check } from 'k6';
 import { BASE_URL, THRESHOLDS, getUsers, loginSession, weightedPick, authHeaders, readinessLatency, recordReadiness } from './common.js';
 
+// Count only 5xx responses as failures.  Auth endpoints (login, refresh, admin)
+// legitimately return 4xx when tokens are absent or credentials don't match the
+// seeded test user — those are expected responses for the load test, not service
+// errors.  Aligns with the per-route checks which already accept status < 500.
+http.setResponseCallback(http.expectedStatuses({ min: 200, max: 499 }));
+
 const profile = __ENV.PERF_PROFILE || 'smoke';
 
 const profileSettings = THRESHOLDS.k6.loadMixed.profiles;
