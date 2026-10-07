@@ -1,4 +1,4 @@
-import { act, render, renderHook, screen } from '@testing-library/react';
+import { act, render, renderHook } from '@testing-library/react';
 import { Skeleton } from '../components/common/Skeleton';
 import { useLastUpdated } from '../hooks/useLastUpdated';
 

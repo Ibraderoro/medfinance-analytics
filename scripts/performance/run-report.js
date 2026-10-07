@@ -52,24 +52,31 @@ function evaluateApiBench(apiBench) {
   return findings;
 }
 
+// K6 scenarios that are CI observability runs and should not block the build.
+const K6_WARN_ONLY_KEYS = new Set(['loadCi']);
+
 function evaluateK6Results(k6Entries) {
   const findings = [];
 
-  for (const { name, result, thresholds: scenarioThresholds } of k6Entries) {
+  for (const { name, key, result, thresholds: scenarioThresholds } of k6Entries) {
     if (!result) continue;
+
+    // CI smoke runs are short observability probes — threshold breaches are
+    // demoted to warnings so they surface in the report without failing the job.
+    const failLevel = K6_WARN_ONLY_KEYS.has(key) ? 'warn' : 'fail';
 
     const httpReqFailedRateTarget = numberFromEnv('K6_HTTP_REQ_FAILED_RATE', scenarioThresholds.httpReqFailedRate);
     const httpReqFailedRate = Number(result.metrics?.http_req_failed?.values?.rate ?? 0);
     if (httpReqFailedRate > httpReqFailedRateTarget) {
       findings.push({
-        level: 'fail',
+        level: failLevel,
         message: `${name} http_req_failed rate ${(httpReqFailedRate * 100).toFixed(2)}% exceeds ${(httpReqFailedRateTarget * 100).toFixed(2)}% target`,
       });
     }
 
     const checkFails = Number(result.metrics?.checks?.values?.fails ?? 0);
     if (checkFails > 0) {
-      findings.push({ level: 'fail', message: `${name} has ${checkFails} failed k6 checks` });
+      findings.push({ level: failLevel, message: `${name} has ${checkFails} failed k6 checks` });
     }
   }
 

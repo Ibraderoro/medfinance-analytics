@@ -2,7 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { renderHook, act } from '@testing-library/react';
 import { FinancialsPage } from '../pages/Financials';
 import { ForecastingPage } from '../pages/Forecasting';
-import { useLiveFinancials, LiveEventPayload } from '../hooks/useLiveFinancials';
+import { LiveEventPayload } from '../hooks/useLiveFinancials';
 import type { useFinancials as useFinancialsHook } from '../hooks/useFinancials';
 import type { useForecasting as useForecastingHook } from '../hooks/useForecasting';
 
