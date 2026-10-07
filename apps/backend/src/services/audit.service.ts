@@ -57,6 +57,7 @@ export class AuditService {
     invite_accept_failed: 'READ',
     invite_revoked: 'UPDATE',
     'ai-query': 'READ',
+    'ai-summary': 'READ',
   };
 
   private normalizeAuditAction(action: string): 'CREATE' | 'READ' | 'UPDATE' | 'DELETE' {

@@ -6,6 +6,8 @@ import { FinancialsService } from './financials.service';
 import { InsightsService } from './insights.service';
 import { ComplianceService } from './compliance.service';
 import { ForecastingService } from './forecasting.service';
+import { aiTelemetryService, estimateCost, type AiOperation, type AiTokenUsage } from './ai.telemetry';
+import { checkUsageLimits, recordUsageAndCheck } from './ai.usageControl';
 import { logger } from '../utils/logger';
 
 // ---------------------------------------------------------------------------
@@ -65,7 +67,7 @@ interface RawModelOutput {
  * Throws an AppError (statusCode 502) on any violation so the controller can
  * surface a safe error without exposing model internals.
  */
-function validateModelOutput(raw: unknown): { answer: string; recommendations: string[] } {
+export function validateModelOutput(raw: unknown): { answer: string; recommendations: string[] } {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     throw makeAiError('Model returned an unexpected response structure', 'AI_INVALID_OUTPUT');
   }
@@ -138,7 +140,7 @@ function validateModelOutput(raw: unknown): { answer: string; recommendations: s
  * is that the string cannot exceed the configured length limit, so an
  * adversarially long payload cannot bloat the context window.
  */
-function sanitiseUserText(text: string, maxChars: number, label: string): string {
+export function sanitiseUserText(text: string, maxChars: number, label: string): string {
   if (typeof text !== 'string') {
     throw makeAiError(`${label} must be a string`, 'AI_INPUT_INVALID');
   }
@@ -164,7 +166,7 @@ function sanitiseUserText(text: string, maxChars: number, label: string): string
 // ---------------------------------------------------------------------------
 
 /** In-memory fallback used only when Redis is unavailable. */
-const inFlightByUser = new Map<string, number>();
+export const inFlightByUser = new Map<string, number>();
 
 const AI_SLOT_KEY_PREFIX = 'ai:inflight:';
 
@@ -173,7 +175,7 @@ const AI_SLOT_KEY_PREFIX = 'ai:inflight:';
  * Returns true if the slot was granted, false if the limit is already reached.
  * Falls back to the in-memory Map on any Redis error.
  */
-async function acquireSlot(userId: string): Promise<boolean> {
+export async function acquireSlot(userId: string): Promise<boolean> {
   const limit = env.AI_MAX_CONCURRENT_PER_USER;
   const ttlMs = env.AI_TIMEOUT_MS * 2; // slot auto-expires if the process dies
 
@@ -209,7 +211,7 @@ async function acquireSlot(userId: string): Promise<boolean> {
  * Release a previously acquired in-flight slot.
  * Decrements the Redis counter; falls back to in-memory on error.
  */
-async function releaseSlot(userId: string): Promise<void> {
+export async function releaseSlot(userId: string): Promise<void> {
   try {
     const redis = getRedis();
     const key = `${AI_SLOT_KEY_PREFIX}${userId}`;
@@ -318,6 +320,18 @@ const FALLBACK_INPUT_ERROR: AiResponse = {
   contextUsed: false,
 };
 
+const FALLBACK_RATE_LIMITED: AiResponse = {
+  answer: 'AI request limit reached. Please wait before sending another request.',
+  recommendations: [],
+  contextUsed: false,
+};
+
+const FALLBACK_BUDGET_EXCEEDED: AiResponse = {
+  answer: 'AI usage budget has been reached for this period. Please contact your administrator.',
+  recommendations: [],
+  contextUsed: false,
+};
+
 // ---------------------------------------------------------------------------
 // Service-level singletons
 // ---------------------------------------------------------------------------
@@ -420,27 +434,126 @@ export class AiService {
    *     explicit schema before returning to the caller.
    *  7. Concurrency guard — per-user in-flight slot tracking.
    *  8. Tenant isolation — orgId sourced from JWT, never from request body.
+   *  9. Usage controls — Redis-backed per-user/per-tenant rate limits and
+   *     daily token budgets enforced BEFORE the provider call.
+   * 10. Telemetry — every invocation is audited with safe metadata (no
+   *     prompt or response content).
    */
   async ask(
     orgId: string,
     question: string,
     history: ConversationMessage[] = [],
     userId?: string,
+    options?: {
+      operation?: AiOperation;
+      requestId?: string;
+    },
   ): Promise<AiResponse> {
+    const operation: AiOperation = options?.operation ?? 'ask';
+    const requestId = options?.requestId;
+    const startMs = Date.now();
+
     if (!this.openai) {
+      void aiTelemetryService.record({
+        requestId,
+        organizationId: orgId,
+        userId,
+        timestamp: new Date().toISOString(),
+        operation,
+        provider: 'openai',
+        model: env.OPENAI_MODEL,
+        outcome: 'not_configured',
+        latencyMs: 0,
+      });
       return FALLBACK_NOT_CONFIGURED;
     }
 
+    // --- 9. Usage controls (pre-call) -------------------------------------
+    // Only enforce per-user/per-tenant controls when a userId is supplied.
+    // The summary operation uses the org ID as a pseudo-user for rate limiting.
+    const rateUserId = userId ?? `__system__${orgId}`;
+    const usageResult = await checkUsageLimits(rateUserId, orgId);
+    if (usageResult.outcome === 'user_rate_limited') {
+      logger.warn('AiService: user rate limit reached', { userId, orgId });
+      void aiTelemetryService.record({
+        requestId,
+        organizationId: orgId,
+        userId,
+        timestamp: new Date().toISOString(),
+        operation,
+        provider: 'openai',
+        model: env.OPENAI_MODEL,
+        outcome: 'rate_limited',
+        latencyMs: Date.now() - startMs,
+        errorCategory: 'user_rate_limited',
+      });
+      return FALLBACK_RATE_LIMITED;
+    }
+    if (usageResult.outcome === 'tenant_rate_limited') {
+      logger.warn('AiService: tenant rate limit reached', { orgId });
+      void aiTelemetryService.record({
+        requestId,
+        organizationId: orgId,
+        userId,
+        timestamp: new Date().toISOString(),
+        operation,
+        provider: 'openai',
+        model: env.OPENAI_MODEL,
+        outcome: 'rate_limited',
+        latencyMs: Date.now() - startMs,
+        errorCategory: 'tenant_rate_limited',
+      });
+      return FALLBACK_RATE_LIMITED;
+    }
+    if (
+      usageResult.outcome === 'tenant_token_budget_exceeded' ||
+      usageResult.outcome === 'tenant_monthly_token_budget_exceeded' ||
+      usageResult.outcome === 'tenant_monthly_cost_budget_exceeded'
+    ) {
+      logger.warn('AiService: tenant budget exceeded', { orgId, outcome: usageResult.outcome });
+      void aiTelemetryService.record({
+        requestId,
+        organizationId: orgId,
+        userId,
+        timestamp: new Date().toISOString(),
+        operation,
+        provider: 'openai',
+        model: env.OPENAI_MODEL,
+        outcome: 'budget_rejected',
+        latencyMs: Date.now() - startMs,
+        errorCategory: usageResult.outcome,
+      });
+      return FALLBACK_BUDGET_EXCEEDED;
+    }
+    // redis_unavailable → fail-open, proceed.
+
     // --- 7. Concurrency guard --------------------------------------------------
-    // acquireSlot/releaseSlot are now async (Redis-backed with in-memory fallback).
+    // acquireSlot/releaseSlot are async (Redis-backed with in-memory fallback).
     const slotKey = userId ?? orgId;
     if (!(await acquireSlot(slotKey))) {
       logger.warn('AiService: concurrency limit reached', { slotKey });
+      void aiTelemetryService.record({
+        requestId,
+        organizationId: orgId,
+        userId,
+        timestamp: new Date().toISOString(),
+        operation,
+        provider: 'openai',
+        model: env.OPENAI_MODEL,
+        outcome: 'concurrency_limited',
+        latencyMs: Date.now() - startMs,
+        errorCategory: 'concurrency_limit',
+      });
       return FALLBACK_CONCURRENCY;
     }
 
     try {
-      return await this._ask(orgId, question, history);
+      return await this._ask(orgId, question, history, {
+        operation,
+        requestId,
+        userId,
+        startMs,
+      });
     } finally {
       await releaseSlot(slotKey);
     }
@@ -450,7 +563,17 @@ export class AiService {
     orgId: string,
     question: string,
     history: ConversationMessage[],
+    meta: {
+      operation: AiOperation;
+      requestId?: string;
+      userId?: string;
+      startMs: number;
+    },
   ): Promise<AiResponse> {
+    const { operation, requestId, userId, startMs } = meta;
+    const model = env.OPENAI_MODEL;
+    const provider = 'openai';
+
     // --- 3. Input length limits ------------------------------------------------
     // question max is also enforced by express-validator; this is a defence-in-
     // depth double-check at the service layer.
@@ -459,6 +582,20 @@ export class AiService {
     try {
       sanitiseUserText(question, 1_000, 'question');
     } catch {
+      void aiTelemetryService.record({
+        requestId,
+        organizationId: orgId,
+        userId,
+        timestamp: new Date().toISOString(),
+        operation,
+        provider,
+        model,
+        outcome: 'failure',
+        latencyMs: Date.now() - startMs,
+        promptLength: question.length,
+        historyLength: history.length,
+        errorCategory: 'input_too_large',
+      });
       return FALLBACK_INPUT_ERROR;
     }
 
@@ -467,6 +604,20 @@ export class AiService {
       try {
         sanitiseUserText(msg.content, env.AI_MAX_HISTORY_MSG_CHARS, 'history message content');
       } catch {
+        void aiTelemetryService.record({
+          requestId,
+          organizationId: orgId,
+          userId,
+          timestamp: new Date().toISOString(),
+          operation,
+          provider,
+          model,
+          outcome: 'failure',
+          latencyMs: Date.now() - startMs,
+          promptLength: question.length,
+          historyLength: history.length,
+          errorCategory: 'history_msg_too_large',
+        });
         return FALLBACK_INPUT_ERROR;
       }
     }
@@ -480,6 +631,20 @@ export class AiService {
         orgId,
         error: err instanceof Error ? err.message : String(err),
       });
+      void aiTelemetryService.record({
+        requestId,
+        organizationId: orgId,
+        userId,
+        timestamp: new Date().toISOString(),
+        operation,
+        provider,
+        model,
+        outcome: 'failure',
+        latencyMs: Date.now() - startMs,
+        promptLength: question.length,
+        historyLength: cappedHistory.length,
+        errorCategory: 'context_build_failed',
+      });
       return FALLBACK_CONTEXT_ERROR;
     }
 
@@ -492,6 +657,20 @@ export class AiService {
         orgId,
         bytes: Buffer.byteLength(contextJson, 'utf8'),
         limit: env.AI_MAX_CONTEXT_BYTES,
+      });
+      void aiTelemetryService.record({
+        requestId,
+        organizationId: orgId,
+        userId,
+        timestamp: new Date().toISOString(),
+        operation,
+        provider,
+        model,
+        outcome: 'failure',
+        latencyMs: Date.now() - startMs,
+        promptLength: question.length,
+        historyLength: cappedHistory.length,
+        errorCategory: 'context_too_large',
       });
       return FALLBACK_CONTEXT_ERROR;
     }
@@ -535,6 +714,20 @@ export class AiService {
         outputReserved: OUTPUT_RESERVED_TOKENS,
         limit: MODEL_CONTEXT_TOKENS,
       });
+      void aiTelemetryService.record({
+        requestId,
+        organizationId: orgId,
+        userId,
+        timestamp: new Date().toISOString(),
+        operation,
+        provider,
+        model,
+        outcome: 'failure',
+        latencyMs: Date.now() - startMs,
+        promptLength: question.length,
+        historyLength: cappedHistory.length,
+        errorCategory: 'token_budget_exceeded',
+      });
       return FALLBACK_CONTEXT_ERROR;
     }
 
@@ -547,7 +740,7 @@ export class AiService {
     try {
       const completion = await this.openai!.chat.completions.create(
         {
-          model: env.OPENAI_MODEL,
+          model,
           messages,
           temperature: 0.3,
           max_tokens: 600,
@@ -558,16 +751,89 @@ export class AiService {
 
       const raw = completion.choices[0]?.message?.content ?? '{}';
 
+      // Extract token usage from the completion if the provider returned it.
+      const usage = completion.usage;
+      let tokenUsage: AiTokenUsage | undefined;
+      let estimatedCostUsd: number | undefined;
+      if (usage) {
+        tokenUsage = {
+          promptTokens: usage.prompt_tokens,
+          completionTokens: usage.completion_tokens,
+          totalTokens: usage.total_tokens,
+        };
+        estimatedCostUsd = estimateCost(model, tokenUsage);
+      }
+
       // --- 5. Output schema validation -----------------------------------------
       let parsed: unknown;
       try {
         parsed = JSON.parse(raw);
       } catch {
         logger.warn('AiService: failed to parse OpenAI JSON response', { orgId });
+        void aiTelemetryService.record({
+          requestId,
+          organizationId: orgId,
+          userId,
+          timestamp: new Date().toISOString(),
+          operation,
+          provider,
+          model,
+          outcome: 'failure',
+          latencyMs: Date.now() - startMs,
+          promptLength: question.length,
+          historyLength: cappedHistory.length,
+          tokenUsage,
+          estimatedCostUsd,
+          errorCategory: 'invalid_json_response',
+        });
         return FALLBACK_PROVIDER_ERROR;
       }
 
-      const validated = validateModelOutput(parsed);
+      let validated: { answer: string; recommendations: string[] };
+      try {
+        validated = validateModelOutput(parsed);
+      } catch {
+        void aiTelemetryService.record({
+          requestId,
+          organizationId: orgId,
+          userId,
+          timestamp: new Date().toISOString(),
+          operation,
+          provider,
+          model,
+          outcome: 'failure',
+          latencyMs: Date.now() - startMs,
+          promptLength: question.length,
+          historyLength: cappedHistory.length,
+          tokenUsage,
+          estimatedCostUsd,
+          errorCategory: 'invalid_output_schema',
+        });
+        return FALLBACK_PROVIDER_ERROR;
+      }
+
+      // Post-call: record token usage in quota and check per-request caps.
+      if (tokenUsage) {
+        void recordUsageAndCheck(orgId, tokenUsage.totalTokens, estimatedCostUsd);
+      }
+
+      // Telemetry: success path.
+      void aiTelemetryService.record({
+        requestId,
+        organizationId: orgId,
+        userId,
+        timestamp: new Date().toISOString(),
+        operation,
+        provider,
+        model,
+        outcome: 'success',
+        latencyMs: Date.now() - startMs,
+        promptLength: question.length,
+        historyLength: cappedHistory.length,
+        answerLength: validated.answer.length,
+        tokenUsage,
+        estimatedCostUsd,
+      });
 
       return {
         answer: validated.answer,
@@ -580,11 +846,39 @@ export class AiService {
           orgId,
           timeoutMs: env.AI_TIMEOUT_MS,
         });
+        void aiTelemetryService.record({
+          requestId,
+          organizationId: orgId,
+          userId,
+          timestamp: new Date().toISOString(),
+          operation,
+          provider,
+          model,
+          outcome: 'failure',
+          latencyMs: Date.now() - startMs,
+          promptLength: question.length,
+          historyLength: cappedHistory.length,
+          errorCategory: 'provider_timeout',
+        });
       } else {
         // Never log the API key or full response body.
         logger.error('AiService: OpenAI request failed', {
           orgId,
           error: err instanceof Error ? err.message : 'unknown error',
+        });
+        void aiTelemetryService.record({
+          requestId,
+          organizationId: orgId,
+          userId,
+          timestamp: new Date().toISOString(),
+          operation,
+          provider,
+          model,
+          outcome: 'failure',
+          latencyMs: Date.now() - startMs,
+          promptLength: question.length,
+          historyLength: cappedHistory.length,
+          errorCategory: 'provider_error',
         });
       }
       return FALLBACK_PROVIDER_ERROR;
@@ -593,9 +887,15 @@ export class AiService {
     }
   }
 
-  async getSummary(orgId: string): Promise<AiResponse> {
+  async getSummary(
+    orgId: string,
+    options?: { requestId?: string; userId?: string },
+  ): Promise<AiResponse> {
     // getSummary uses a trusted internal question — no user content involved.
-    return this.ask(orgId, EXECUTIVE_SUMMARY_QUESTION, []);
+    return this.ask(orgId, EXECUTIVE_SUMMARY_QUESTION, [], options?.userId, {
+      operation: 'summary',
+      requestId: options?.requestId,
+    });
   }
 }
 
@@ -612,8 +912,3 @@ export class AiService {
 export function hashQuestionForAudit(question: string): string {
   return crypto.createHash('sha256').update(question, 'utf8').digest('hex');
 }
-
-// ---------------------------------------------------------------------------
-// Exported for testing only
-// ---------------------------------------------------------------------------
-export { validateModelOutput, sanitiseUserText, acquireSlot, releaseSlot, inFlightByUser };

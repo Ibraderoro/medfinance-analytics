@@ -618,13 +618,19 @@ describe('AiService.ask — security controls', () => {
   // -------------------------------------------------------------------------
 
   it('returns concurrency fallback when the Redis slot limit is reached', async () => {
-    // Redis INCR returns count > limit → slot denied, DECR called to undo.
-    // PTTL returns a positive value (already has expiry) so PEXPIRE is skipped.
+    // After usage-control integration, the call order is:
+    //   1. EVAL for user rate-limit → 1 (ok)
+    //   2. EVAL for tenant rate-limit → 1 (ok)
+    //   (no daily-quota EVAL: AI_TENANT_DAILY_TOKEN_BUDGET defaults to 0 in tests)
+    //   3. concurrency INCR → 4 (over limit of 3), PTTL → 5000 (has expiry), DECR → 3 (undo)
     mockRedisCall.mockReset();
-    mockRedisCall
-      .mockResolvedValueOnce(4)    // INCR → 4 (over limit of 3)
-      .mockResolvedValueOnce(5000) // PTTL — has expiry
-      .mockResolvedValueOnce(3);   // DECR undo
+    mockRedisCall.mockImplementation(async (cmd: string) => {
+      if (cmd === 'EVAL') return 1;    // all usage control Lua scripts → allowed
+      if (cmd === 'INCR') return 4;    // concurrency INCR → 4 (over limit of 3)
+      if (cmd === 'PTTL') return 5000; // concurrency PTTL — has expiry
+      if (cmd === 'DECR') return 3;    // concurrency DECR undo
+      return 1;
+    });
 
     const result = await service.ask('org-1', 'Revenue?', [], 'user-busy');
 

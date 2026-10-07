@@ -272,6 +272,34 @@ export const env = {
   // Default matches gpt-4o-mini (128 k). Override for other models.
   AI_MODEL_CONTEXT_TOKENS: parseIntEnv('AI_MODEL_CONTEXT_TOKENS', 128_000),
 
+  // ── AI Usage Controls (distributed, Redis-backed) ──────────────────────
+  // Short-term rate limits — requests per window.
+  // Window defaults to 60 s for both user and tenant.
+  AI_USER_RPM_MAX: parseIntEnv('AI_USER_RPM_MAX', 20),
+  AI_USER_RPM_WINDOW_MS: parseIntEnv('AI_USER_RPM_WINDOW_MS', 60_000),
+  AI_TENANT_RPM_MAX: parseIntEnv('AI_TENANT_RPM_MAX', 100),
+  AI_TENANT_RPM_WINDOW_MS: parseIntEnv('AI_TENANT_RPM_WINDOW_MS', 60_000),
+  // Daily token budget per tenant (0 = no limit).
+  AI_TENANT_DAILY_TOKEN_BUDGET: parseIntEnv('AI_TENANT_DAILY_TOKEN_BUDGET', 0),
+  // Per-request caps (0 = no limit).
+  // AI_MAX_TOKENS_PER_REQUEST: reject if provider reports more tokens than this.
+  AI_MAX_TOKENS_PER_REQUEST: parseIntEnv('AI_MAX_TOKENS_PER_REQUEST', 0),
+  // AI_MAX_COST_PER_REQUEST_USD: reject if estimated cost (post-call) exceeds this.
+  AI_MAX_COST_PER_REQUEST_USD: parseFloatEnv('AI_MAX_COST_PER_REQUEST_USD', 0),
+  // Monthly budgets per tenant (0 = no limit).
+  // Token budget tracked in Redis under ai:quota:tokens:monthly:<tenantId>:<YYYY-MM>
+  AI_TENANT_MONTHLY_TOKEN_BUDGET: parseIntEnv('AI_TENANT_MONTHLY_TOKEN_BUDGET', 0),
+  // USD budget tracked as micro-dollars (integer) in Redis.
+  // Set to 0 to disable. Example: 10.00 → set to 10.00 (stored as integer cents * 100).
+  AI_TENANT_MONTHLY_BUDGET_USD: parseFloatEnv('AI_TENANT_MONTHLY_BUDGET_USD', 0),
+  // When true (default), Redis unavailability allows AI requests through (fail-open).
+  // Set to false to fail-closed: Redis down → AI requests rejected.
+  AI_USAGE_REDIS_FAIL_OPEN: optionalBooleanEnv('AI_USAGE_REDIS_FAIL_OPEN', true),
+  // JSON string overriding AI model pricing (input/output $ per 1M tokens).
+  // Format: '{"gpt-4o":{"input":5.0,"output":15.0}}'
+  // Useful for custom deployments or pricing changes without code deployment.
+  AI_PRICING_OVERRIDES: optionalEnv('AI_PRICING_OVERRIDES', ''),
+
   // Real-Time Dashboard
   LIVE_POLL_INTERVAL_MS: parseIntEnv('LIVE_POLL_INTERVAL_MS', 30_000),
 

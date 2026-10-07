@@ -1,12 +1,10 @@
 import { Response, NextFunction } from 'express';
 import { body } from 'express-validator';
 import { env } from '../config/env';
-import { AiService, hashQuestionForAudit } from '../services/ai.service';
-import { AuditService } from '../services/audit.service';
+import { AiService } from '../services/ai.service';
 import { AuthenticatedRequest, requireAuthenticatedUser } from '../middleware/auth';
 
 const aiService = new AiService();
-const auditService = new AuditService();
 
 export const askAiValidators = [
   body('question')
@@ -48,24 +46,17 @@ export async function askAi(
       history?: { role: 'user' | 'assistant'; content: string }[];
     };
 
-    // Pass userId so the concurrency guard is scoped per-user, not per-tenant.
-    const result = await aiService.ask(user.organization_id, question, history, user.id);
-
-    // Hash the question before logging — plaintext user content must not be
-    // stored in the audit trail. The SHA-256 hex digest preserves forensic
-    // traceability (repeated identical queries produce the same hash) without
-    // recording what the user actually typed.
-    await auditService.log({
-      action: 'ai-query',
-      entityType: 'ai-session',
-      organizationId: user.organization_id,
-      performedBy: user.id,
-      requestId: req.header('X-Request-Id'),
-      metadata: {
-        contextUsed: result.contextUsed,
-        questionHash: hashQuestionForAudit(question),
-      },
-    });
+    // Pass userId and requestId so the telemetry/audit trail is fully populated.
+    // The AiService now handles all audit logging internally with safe metadata
+    // (no raw prompt or response content). The audit log entry, Prometheus
+    // metrics, and structured log are all written by AiTelemetryService.
+    const result = await aiService.ask(
+      user.organization_id,
+      question,
+      history,
+      user.id,
+      { requestId: req.header('X-Request-Id') },
+    );
 
     res.json({ data: result });
   } catch (err) {
@@ -80,7 +71,12 @@ export async function getSummary(
 ): Promise<void> {
   try {
     const user = requireAuthenticatedUser(req);
-    const result = await aiService.getSummary(user.organization_id);
+    // getSummary is now audited through the centralized telemetry path with
+    // operation='summary', ensuring parity with the 'ask' operation audit trail.
+    const result = await aiService.getSummary(user.organization_id, {
+      requestId: req.header('X-Request-Id'),
+      userId: user.id,
+    });
     res.json({ data: result });
   } catch (err) {
     next(err);
