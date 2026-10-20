@@ -150,14 +150,16 @@ function makeOpenAiResponse(content: string, usage?: { prompt_tokens: number; co
 
 /**
  * Configure Redis mock to allow all pre-call controls.
- * Handles EVAL (Lua scripts), INCR, PTTL, PEXPIRE, DECR, DEL, GET, INCRBY, DECRBY.
+ *
+ * EVAL call order for a successful ask() with AI_TENANT_DAILY_TOKEN_BUDGET=1000:
+ *   1st EVAL: user rate-limit (INCR_WITH_TTL_SCRIPT) → 1
+ *   2nd EVAL: tenant rate-limit (INCR_WITH_TTL_SCRIPT) → 1
+ *   3rd EVAL: daily token budget reservation (RESERVE_BUDGET_SCRIPT) → 1
+ *   4th EVAL: acquireSlot (SLOT_INCR_WITH_TTL_SCRIPT) → 1  ← within limit of 3
  */
 function allowAllRedis(): void {
   mockRedisCall.mockImplementation(async (cmd: string) => {
-    if (cmd === 'EVAL') return 1;       // Lua script: INCR_WITH_TTL → 1, RESERVE_BUDGET → 1
-    if (cmd === 'INCR') return 1;       // concurrency guard
-    if (cmd === 'PTTL') return -1;
-    if (cmd === 'PEXPIRE') return 1;
+    if (cmd === 'EVAL') return 1;       // all Lua scripts → allowed / within-limit
     if (cmd === 'DECR') return 0;
     if (cmd === 'DECRBY') return 0;
     if (cmd === 'DEL') return 1;
@@ -169,21 +171,23 @@ function allowAllRedis(): void {
 
 /**
  * Build a Redis mock that handles EVAL as follows:
- *   - First 2 EVAL calls (user/tenant rate limit scripts) → return 1 (allowed)
- *   - 3rd EVAL call (daily budget reservation script) → return reservationResult
- *   - Subsequent calls → return 1
+ *   - 1st EVAL (user rate) → 1 (allowed)
+ *   - 2nd EVAL (tenant rate) → 1 (allowed)
+ *   - 3rd EVAL (daily budget reservation) → reservationResult
+ *   - 4th+ EVAL (acquireSlot + any further) → 1 (within concurrency limit)
+ *
+ * This reflects the call order with AI_TENANT_DAILY_TOKEN_BUDGET>0 and
+ * acquireSlot now using the atomic Lua SLOT_INCR_WITH_TTL_SCRIPT.
  */
 function evalWithDailyBudget(reservationResult: number): void {
   let evalIdx = 0;
   mockRedisCall.mockImplementation(async (cmd: string) => {
     if (cmd === 'EVAL') {
       evalIdx++;
-      if (evalIdx <= 2) return 1;      // user + tenant rate limit → allowed
-      return reservationResult;         // daily budget check
+      if (evalIdx <= 2) return 1;       // user + tenant rate limit → allowed
+      if (evalIdx === 3) return reservationResult; // daily budget check
+      return 1;                         // acquireSlot (4th EVAL) → within limit
     }
-    if (cmd === 'INCR') return 1;      // concurrency
-    if (cmd === 'PTTL') return -1;
-    if (cmd === 'PEXPIRE') return 1;
     if (cmd === 'DECR') return 0;
     if (cmd === 'DECRBY') return 0;
     if (cmd === 'DEL') return 1;
@@ -714,6 +718,7 @@ describe('AI telemetry: token usage and cost estimation', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockCreate.mockReset(); // clear any queued mockResolvedValueOnce from prior tests
     allowAllRedis();
     inFlightByUser.clear();
     service = new AiService();
@@ -799,6 +804,7 @@ describe('AI metrics: request counters', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockCreate.mockReset(); // clear any queued mockResolvedValueOnce from prior tests
     allowAllRedis();
     inFlightByUser.clear();
     service = new AiService();
@@ -1015,13 +1021,22 @@ describe('Concurrency guard integration', () => {
   });
 
   it('returns concurrency fallback when concurrency slot is denied', async () => {
-    // Usage controls: all EVAL → 1 (allowed)
-    // Concurrency INCR → 4 (over limit of 3), PTTL → 5000, DECR → 3
+    // acquireSlot now uses EVAL (atomic Lua) just like usage controls.
+    // Sequence of EVAL calls for a single ask():
+    //   1st EVAL: user rate limit check → 1 (allowed)
+    //   2nd EVAL: tenant rate limit check → 1 (allowed)
+    //   3rd EVAL: daily token budget reservation → 1 (allowed)
+    //   4th EVAL: acquireSlot → 4 (over limit of 3)
+    // After deny: DECR (slot undo) and DECR×2 (rate rollback) → 3
+    let evalIdx = 0;
     mockRedisCall.mockImplementation(async (cmd: string) => {
-      if (cmd === 'EVAL') { return 1; } // all usage checks pass
-      if (cmd === 'INCR') return 4;   // concurrency over limit
-      if (cmd === 'PTTL') return 5000;
+      if (cmd === 'EVAL') {
+        evalIdx++;
+        if (evalIdx <= 3) return 1; // usage controls pass
+        return 4;                   // slot over limit
+      }
       if (cmd === 'DECR') return 3;
+      if (cmd === 'DECRBY') return 0;
       return 1;
     });
 
@@ -1030,5 +1045,182 @@ describe('Concurrency guard integration', () => {
     expect(result.contextUsed).toBe(false);
     expect(result.answer).toContain('Too many simultaneous');
     expect(mockCreate).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 16. Pricing cache TTL — changes to AI_PRICING_OVERRIDES take effect without
+//     resetPricingCache() once the TTL expires.
+// ---------------------------------------------------------------------------
+
+describe('Pricing cache TTL', () => {
+  beforeEach(() => {
+    resetPricingCache();
+  });
+
+  afterEach(() => {
+    resetPricingCache();
+  });
+
+  it('returns cached pricing before TTL expires', async () => {
+    const { env: envObj } = await import('../config/env');
+    const savedOverrides = (envObj as unknown as Record<string, unknown>).AI_PRICING_OVERRIDES;
+    const savedTtl = (envObj as unknown as Record<string, unknown>).AI_PRICING_CACHE_TTL_MS;
+    try {
+      (envObj as unknown as Record<string, unknown>).AI_PRICING_OVERRIDES = JSON.stringify({
+        'gpt-4o-mini': { input: 55.0, output: 110.0 },
+      });
+      (envObj as unknown as Record<string, unknown>).AI_PRICING_CACHE_TTL_MS = 60_000; // 60 s
+
+      // First call builds the cache.
+      const first = estimateCost('gpt-4o-mini', { promptTokens: 1_000_000, completionTokens: 0, totalTokens: 1_000_000 });
+
+      // Change the override without resetting the cache.
+      (envObj as unknown as Record<string, unknown>).AI_PRICING_OVERRIDES = JSON.stringify({
+        'gpt-4o-mini': { input: 999.0, output: 999.0 },
+      });
+
+      // Second call within TTL window — should still return the cached value.
+      const second = estimateCost('gpt-4o-mini', { promptTokens: 1_000_000, completionTokens: 0, totalTokens: 1_000_000 });
+
+      // Restore before assertions so env is clean even if assertions throw.
+      (envObj as unknown as Record<string, unknown>).AI_PRICING_OVERRIDES = savedOverrides;
+      (envObj as unknown as Record<string, unknown>).AI_PRICING_CACHE_TTL_MS = savedTtl;
+
+      expect(first).toBeCloseTo(55.0, 3);
+      expect(second).toBeCloseTo(55.0, 3);
+    } finally {
+      (envObj as unknown as Record<string, unknown>).AI_PRICING_OVERRIDES = savedOverrides;
+      (envObj as unknown as Record<string, unknown>).AI_PRICING_CACHE_TTL_MS = savedTtl;
+    }
+  });
+
+  it('rebuilds pricing after TTL expires (TTL=0 forces rebuild on every call)', async () => {
+    const { env: envObj } = await import('../config/env');
+    const savedOverrides = (envObj as unknown as Record<string, unknown>).AI_PRICING_OVERRIDES;
+    const savedTtl = (envObj as unknown as Record<string, unknown>).AI_PRICING_CACHE_TTL_MS;
+    try {
+      // TTL=0 means rebuild every call.
+      (envObj as unknown as Record<string, unknown>).AI_PRICING_CACHE_TTL_MS = 0;
+
+      (envObj as unknown as Record<string, unknown>).AI_PRICING_OVERRIDES = JSON.stringify({
+        'gpt-4o-mini': { input: 10.0, output: 20.0 },
+      });
+      const first = estimateCost('gpt-4o-mini', { promptTokens: 1_000_000, completionTokens: 0, totalTokens: 1_000_000 });
+
+      // Update overrides — with TTL=0 the next call should pick up the change immediately.
+      (envObj as unknown as Record<string, unknown>).AI_PRICING_OVERRIDES = JSON.stringify({
+        'gpt-4o-mini': { input: 77.0, output: 88.0 },
+      });
+      const second = estimateCost('gpt-4o-mini', { promptTokens: 1_000_000, completionTokens: 0, totalTokens: 1_000_000 });
+
+      (envObj as unknown as Record<string, unknown>).AI_PRICING_OVERRIDES = savedOverrides;
+      (envObj as unknown as Record<string, unknown>).AI_PRICING_CACHE_TTL_MS = savedTtl;
+
+      expect(first).toBeCloseTo(10.0, 3);
+      expect(second).toBeCloseTo(77.0, 3);
+    } finally {
+      (envObj as unknown as Record<string, unknown>).AI_PRICING_OVERRIDES = savedOverrides;
+      (envObj as unknown as Record<string, unknown>).AI_PRICING_CACHE_TTL_MS = savedTtl;
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 17. Per-request cap structured warnings (Fix 1)
+// ---------------------------------------------------------------------------
+
+describe('Per-request cap structured warnings', () => {
+  let service: AiService;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    allowAllRedis();
+    inFlightByUser.clear();
+    service = new AiService();
+  });
+
+  it('logs a warn when actual tokens exceed AI_MAX_TOKENS_PER_REQUEST', async () => {
+    const { env: envObj } = await import('../config/env');
+    const savedCap = envObj.AI_MAX_TOKENS_PER_REQUEST;
+    try {
+      envObj.AI_MAX_TOKENS_PER_REQUEST = 100; // cap at 100 tokens
+
+      mockCreate.mockResolvedValueOnce(
+        makeOpenAiResponse(makeValidResponse(), {
+          prompt_tokens: 80,
+          completion_tokens: 60,
+          total_tokens: 140, // exceeds cap of 100
+        }),
+      );
+
+      await service.ask('org-cap', 'Revenue?', [], 'user-cap');
+
+      const warnCalls: [string, Record<string, unknown>][] = mockLogWarn.mock.calls;
+      const capWarn = warnCalls.find(([msg]) =>
+        typeof msg === 'string' && msg.includes('per-request token cap exceeded'),
+      );
+      expect(capWarn).toBeDefined();
+      const meta = capWarn![1];
+      expect(meta.totalTokens).toBe(140);
+      expect(meta.capTokens).toBe(100);
+      expect(meta.orgId).toBe('org-cap');
+    } finally {
+      envObj.AI_MAX_TOKENS_PER_REQUEST = savedCap;
+    }
+  });
+
+  it('logs a warn when estimated cost exceeds AI_MAX_COST_PER_REQUEST_USD', async () => {
+    const { env: envObj } = await import('../config/env');
+    const savedCap = envObj.AI_MAX_COST_PER_REQUEST_USD;
+    try {
+      // gpt-4o-mini: input $0.15/1M, output $0.60/1M
+      // 1M prompt + 1M completion = $0.75 → set cap at $0.10 so it triggers
+      envObj.AI_MAX_COST_PER_REQUEST_USD = 0.10;
+
+      mockCreate.mockResolvedValueOnce(
+        makeOpenAiResponse(makeValidResponse(), {
+          prompt_tokens: 1_000_000,
+          completion_tokens: 1_000_000,
+          total_tokens: 2_000_000,
+        }),
+      );
+
+      await service.ask('org-cost-cap', 'Revenue?', [], 'user-cost-cap');
+
+      const warnCalls: [string, Record<string, unknown>][] = mockLogWarn.mock.calls;
+      const capWarn = warnCalls.find(([msg]) =>
+        typeof msg === 'string' && msg.includes('per-request cost cap exceeded'),
+      );
+      expect(capWarn).toBeDefined();
+      const meta = capWarn![1];
+      expect((meta.estimatedCostUsd as number)).toBeGreaterThan(0.10);
+      expect(meta.capUsd).toBe(0.10);
+      expect(meta.orgId).toBe('org-cost-cap');
+    } finally {
+      envObj.AI_MAX_COST_PER_REQUEST_USD = savedCap;
+    }
+  });
+
+  it('does not log cap warnings when caps are not set (AI_MAX_TOKENS_PER_REQUEST=0)', async () => {
+    // Default env has both caps at 0 (disabled) — no warnings expected.
+    mockCreate.mockResolvedValueOnce(
+      makeOpenAiResponse(makeValidResponse(), {
+        prompt_tokens: 500,
+        completion_tokens: 100,
+        total_tokens: 600,
+      }),
+    );
+
+    await service.ask('org-nocap', 'Revenue?', [], 'user-nocap');
+
+    const warnCalls: [string, Record<string, unknown>][] = mockLogWarn.mock.calls;
+    const capWarn = warnCalls.find(([msg]) =>
+      typeof msg === 'string' && (
+        msg.includes('per-request token cap') ||
+        msg.includes('per-request cost cap')
+      ),
+    );
+    expect(capWarn).toBeUndefined();
   });
 });

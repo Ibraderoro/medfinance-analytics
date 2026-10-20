@@ -171,9 +171,31 @@ export const inFlightByUser = new Map<string, number>();
 const AI_SLOT_KEY_PREFIX = 'ai:inflight:';
 
 /**
- * Attempt to acquire an in-flight slot for userId via Redis INCR.
+ * Lua script: atomically increment a counter and set its TTL if the key is new.
+ * Identical pattern to INCR_WITH_TTL_SCRIPT in ai.usageControl.ts.
+ *
+ *   KEYS[1] = counter key
+ *   ARGV[1] = TTL in milliseconds
+ *   Returns new counter value.
+ *
+ * Using a single Lua script eliminates the TOCTOU race between INCR and PEXPIRE:
+ * without atomicity a key can exist without an expiry if the process dies between
+ * the two commands, permanently consuming a concurrency slot.
+ */
+const SLOT_INCR_WITH_TTL_SCRIPT = `
+local count = redis.call('INCR', KEYS[1])
+if redis.call('PTTL', KEYS[1]) < 0 then
+  redis.call('PEXPIRE', KEYS[1], ARGV[1])
+end
+return count
+`;
+
+/**
+ * Attempt to acquire an in-flight slot for userId via a Lua-atomic INCR+TTL.
  * Returns true if the slot was granted, false if the limit is already reached.
- * Falls back to the in-memory Map on any Redis error.
+ * Falls back to the in-memory Map on any Redis error so a cache outage never
+ * blocks the AI feature entirely (process-local enforcement is acceptable under
+ * Redis outage — the rate-limit controls in checkUsageLimits honour fail-open).
  */
 export async function acquireSlot(userId: string): Promise<boolean> {
   const limit = env.AI_MAX_CONCURRENT_PER_USER;
@@ -182,13 +204,10 @@ export async function acquireSlot(userId: string): Promise<boolean> {
   try {
     const redis = getRedis();
     const key = `${AI_SLOT_KEY_PREFIX}${userId}`;
-    // Atomically increment and read the new count.
-    const count = Number(await redis.call('INCR', key));
-    // Set TTL only on the first increment (when PTTL returns -1 = no expiry).
-    const pttl = Number(await redis.call('PTTL', key));
-    if (pttl < 0) {
-      await redis.call('PEXPIRE', key, String(ttlMs));
-    }
+    // One Lua round-trip: atomically increment and conditionally set TTL.
+    const count = Number(
+      await redis.call('EVAL', SLOT_INCR_WITH_TTL_SCRIPT, '1', key, String(ttlMs)),
+    );
     if (count > limit) {
       // Already over limit — undo the increment and deny.
       await redis.call('DECR', key);
@@ -199,7 +218,7 @@ export async function acquireSlot(userId: string): Promise<boolean> {
     logger.warn('AiService: Redis concurrency check failed, using in-memory fallback', {
       error: redisErr instanceof Error ? redisErr.message : String(redisErr),
     });
-    // In-memory fallback
+    // In-memory fallback — enforces limit within this process instance only.
     const current = inFlightByUser.get(userId) ?? 0;
     if (current >= limit) return false;
     inFlightByUser.set(userId, current + 1);
@@ -706,14 +725,16 @@ export class AiService {
 
     // --- 2b. Token-budget estimate -------------------------------------------
     // Exact token counts require a tokenizer library not in this project's
-    // dependencies. A conservative chars/4 approximation (GPT tokeniser
-    // averages ~4 chars/token for English) is used to check that the assembled
-    // prompt fits within the model's context window with room for the response.
+    // dependencies.  A chars/token approximation is used to check that the
+    // assembled prompt fits within the model's context window with room for the
+    // response.  The ratio is configurable via AI_CHARS_PER_TOKEN (default 4,
+    // matching the GPT tokeniser average for English prose).  Set it lower
+    // (e.g. 3) for code-heavy or non-Latin workloads to be more conservative.
     // max_tokens (600) is reserved for the output; MODEL_CONTEXT_TOKENS is the
     // model's total context limit.
     const MODEL_CONTEXT_TOKENS = env.AI_MODEL_CONTEXT_TOKENS;
     const OUTPUT_RESERVED_TOKENS = 600; // matches max_tokens below
-    const CHARS_PER_TOKEN = 4;
+    const CHARS_PER_TOKEN = Math.max(1, env.AI_CHARS_PER_TOKEN);
     const totalChars = messages.reduce(
       (sum, m) => sum + (typeof m.content === 'string' ? m.content.length : 0),
       0,
@@ -787,6 +808,7 @@ export class AiService {
           await reconcileBudget(orgId, tokenUsage?.totalTokens ?? 0, estimatedCostUsd).catch(
             (e) => logger.warn('AiUsageControl: reconcile failed (invalid_json)', { error: e instanceof Error ? e.message : String(e) }),
           );
+          // Per-request cap warnings are best-effort on the failure path.
         }
         void aiTelemetryService.record({
           requestId,
@@ -816,6 +838,7 @@ export class AiService {
           await reconcileBudget(orgId, tokenUsage?.totalTokens ?? 0, estimatedCostUsd).catch(
             (e) => logger.warn('AiUsageControl: reconcile failed (invalid_schema)', { error: e instanceof Error ? e.message : String(e) }),
           );
+          // Per-request cap warnings are best-effort on the failure path.
         }
         void aiTelemetryService.record({
           requestId,
@@ -837,10 +860,39 @@ export class AiService {
       }
 
       // Post-call: reconcile token/cost reservations unconditionally.
+      // On the success path we inspect the result to log structured warnings
+      // when per-request caps are exceeded (post-call observation only —
+      // the response has already been formed at this point).
       if (reservationsActive) {
-        await reconcileBudget(orgId, tokenUsage?.totalTokens ?? 0, estimatedCostUsd).catch(
-          (e) => logger.warn('AiUsageControl: reconcile failed (success)', { error: e instanceof Error ? e.message : String(e) }),
-        );
+        const reconcileResult = await reconcileBudget(
+          orgId,
+          tokenUsage?.totalTokens ?? 0,
+          estimatedCostUsd,
+        ).catch((e) => {
+          logger.warn('AiUsageControl: reconcile failed (success)', {
+            error: e instanceof Error ? e.message : String(e),
+          });
+          return null;
+        });
+
+        if (reconcileResult?.tokenCapExceeded) {
+          logger.warn('AiService: per-request token cap exceeded (post-call)', {
+            orgId,
+            userId,
+            requestId,
+            totalTokens: tokenUsage?.totalTokens,
+            capTokens: env.AI_MAX_TOKENS_PER_REQUEST,
+          });
+        }
+        if (reconcileResult?.costCapExceeded) {
+          logger.warn('AiService: per-request cost cap exceeded (post-call)', {
+            orgId,
+            userId,
+            requestId,
+            estimatedCostUsd,
+            capUsd: env.AI_MAX_COST_PER_REQUEST_USD,
+          });
+        }
       }
 
       // Telemetry: success path — propagates audit failure to caller.

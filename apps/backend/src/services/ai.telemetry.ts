@@ -105,17 +105,31 @@ function buildPricingTable(): {
   return { input, output };
 }
 
-// Pricing table is built once at module load and cached.
-// If the process is long-lived and pricing changes, a restart picks up the new value.
-let _pricingTable: ReturnType<typeof buildPricingTable> | null = null;
+// Pricing table is cached with a TTL so changes to AI_PRICING_OVERRIDES take
+// effect within AI_PRICING_CACHE_TTL_MS (default 5 min) without a process restart.
+// If TTL is 0 the table is rebuilt on every call (useful for tests / debug).
+interface PricingCache {
+  table: ReturnType<typeof buildPricingTable>;
+  builtAt: number; // Date.now() ms
+}
+let _pricingCache: PricingCache | null = null;
+
 function getPricingTable(): ReturnType<typeof buildPricingTable> {
-  if (!_pricingTable) _pricingTable = buildPricingTable();
-  return _pricingTable;
+  const now = Date.now();
+  const ttl = env.AI_PRICING_CACHE_TTL_MS;
+  // ttl <= 0 means "always rebuild" (test/debug mode).
+  // ttl > 0 means "use cache if younger than ttl".
+  if (ttl > 0 && _pricingCache && now - _pricingCache.builtAt < ttl) {
+    return _pricingCache.table;
+  }
+  const table = buildPricingTable();
+  _pricingCache = { table, builtAt: now };
+  return table;
 }
 
-/** Reset the pricing cache — used in tests to pick up env changes. */
+/** Reset the pricing cache — forces an immediate rebuild on next call. */
 export function resetPricingCache(): void {
-  _pricingTable = null;
+  _pricingCache = null;
 }
 
 /**

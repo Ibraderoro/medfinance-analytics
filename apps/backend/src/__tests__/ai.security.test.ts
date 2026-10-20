@@ -293,20 +293,19 @@ describe('concurrency guard (acquireSlot / releaseSlot) — Redis path', () => {
     inFlightByUser.delete(USER);
   });
 
-  it('grants a slot when the Redis count is within the limit', async () => {
-    // INCR → 1, PTTL → -1 (no expiry yet), PEXPIRE → OK
+  it('grants a slot when the Lua EVAL count is within the limit', async () => {
+    // EVAL (SLOT_INCR_WITH_TTL_SCRIPT) → 1 (within limit of 3)
     mockRedisCall
-      .mockResolvedValueOnce(1)    // INCR
-      .mockResolvedValueOnce(-1)   // PTTL
-      .mockResolvedValueOnce(1);   // PEXPIRE
+      .mockResolvedValueOnce(1);   // EVAL
     expect(await acquireSlot(USER)).toBe(true);
+    const calls = mockRedisCall.mock.calls.map((c: string[]) => c[0]);
+    expect(calls[0]).toBe('EVAL');
   });
 
-  it('denies a slot and decrements when the Redis count exceeds the limit', async () => {
-    // INCR returns 4 (over the limit of 3); PTTL has expiry; DECR called
+  it('denies a slot and decrements when the Lua EVAL count exceeds the limit', async () => {
+    // EVAL returns 4 (over the limit of 3); DECR called to undo
     mockRedisCall
-      .mockResolvedValueOnce(4)   // INCR
-      .mockResolvedValueOnce(5000) // PTTL — already has expiry
+      .mockResolvedValueOnce(4)   // EVAL
       .mockResolvedValueOnce(3);  // DECR
     expect(await acquireSlot(USER)).toBe(false);
     // Verify DECR was called to undo the increment
@@ -355,11 +354,12 @@ describe('AiService.ask — security controls', () => {
   beforeEach(() => {
     mockCreate.mockReset();
     mockRedisCall.mockReset();
-    // Default: Redis INCR returns 1 (within limit), PTTL returns -1, PEXPIRE OK,
-    // and DECR/DEL succeed for release. This lets tests that don't care about
-    // concurrency pass through without extra setup.
+    // Default: all Redis calls return 1.
+    // Covers EVAL (Lua scripts for usage controls + atomic slot acquire),
+    // DECR/DEL for slot release.  Tests that care about specific outcomes
+    // override this via mockResolvedValueOnce.
     mockRedisCall
-      .mockResolvedValue(1); // covers INCR, PTTL (re-used), PEXPIRE, DECR, DEL
+      .mockResolvedValue(1); // covers EVAL, DECR, DEL
     // Clear in-flight fallback map between tests
     inFlightByUser.clear();
     service = new AiService();
@@ -648,17 +648,21 @@ describe('AiService.ask — security controls', () => {
   // -------------------------------------------------------------------------
 
   it('returns concurrency fallback when the Redis slot limit is reached', async () => {
-    // After usage-control integration, the call order is:
-    //   1. EVAL for user rate-limit → 1 (ok)
-    //   2. EVAL for tenant rate-limit → 1 (ok)
-    //   (no daily-quota EVAL: AI_TENANT_DAILY_TOKEN_BUDGET defaults to 0 in tests)
-    //   3. concurrency INCR → 4 (over limit of 3), PTTL → 5000 (has expiry), DECR → 3 (undo)
+    // Call order with atomic Lua acquireSlot:
+    //   1st EVAL: user rate-limit → 1 (ok)
+    //   2nd EVAL: tenant rate-limit → 1 (ok)
+    //   (AI_TENANT_DAILY_TOKEN_BUDGET defaults to 0 — no 3rd EVAL for daily budget)
+    //   3rd EVAL: acquireSlot (SLOT_INCR_WITH_TTL_SCRIPT) → 4 (over limit of 3)
+    //   DECR: undo the slot increment
+    let evalIdx = 0;
     mockRedisCall.mockReset();
     mockRedisCall.mockImplementation(async (cmd: string) => {
-      if (cmd === 'EVAL') return 1;    // all usage control Lua scripts → allowed
-      if (cmd === 'INCR') return 4;    // concurrency INCR → 4 (over limit of 3)
-      if (cmd === 'PTTL') return 5000; // concurrency PTTL — has expiry
-      if (cmd === 'DECR') return 3;    // concurrency DECR undo
+      if (cmd === 'EVAL') {
+        evalIdx++;
+        if (evalIdx <= 2) return 1; // user + tenant rate limits → allowed
+        return 4;                   // slot acquire → over limit of 3
+      }
+      if (cmd === 'DECR') return 3;
       return 1;
     });
 
