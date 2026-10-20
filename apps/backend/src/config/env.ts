@@ -268,9 +268,15 @@ export const env = {
   // Per-message content limit inside conversation history.
   AI_MAX_HISTORY_MSG_CHARS: parseIntEnv('AI_MAX_HISTORY_MSG_CHARS', 2_000),
   // Total context-window token capacity of the configured model.
-  // Used for the conservative chars/4 token-budget pre-check.
-  // Default matches gpt-4o-mini (128 k). Override for other models.
+  // Used for the token-budget pre-check. Default matches gpt-4o-mini (128 k).
+  // Override for other models.
   AI_MODEL_CONTEXT_TOKENS: parseIntEnv('AI_MODEL_CONTEXT_TOKENS', 128_000),
+  // Characters per token used in the pre-call token budget estimate.
+  // The GPT tokeniser averages ~4 chars/token for English prose.  For workloads
+  // that include source code, non-Latin scripts, or short identifiers the actual
+  // ratio can drop to ~2–3.  Set lower (e.g. 3) to be more conservative and
+  // avoid accidental context overflow.  Minimum 1, no upper bound enforced.
+  AI_CHARS_PER_TOKEN: parseIntEnv('AI_CHARS_PER_TOKEN', 4),
 
   // ── AI Usage Controls (distributed, Redis-backed) ──────────────────────
   // Short-term rate limits — requests per window.
@@ -298,7 +304,11 @@ export const env = {
   // JSON string overriding AI model pricing (input/output $ per 1M tokens).
   // Format: '{"gpt-4o":{"input":5.0,"output":15.0}}'
   // Useful for custom deployments or pricing changes without code deployment.
+  // Changes take effect within AI_PRICING_CACHE_TTL_MS without a restart.
   AI_PRICING_OVERRIDES: optionalEnv('AI_PRICING_OVERRIDES', ''),
+  // How long the pricing table is cached before being re-read from env (ms).
+  // Default: 5 minutes.  Set to 0 to rebuild on every invocation (test/debug only).
+  AI_PRICING_CACHE_TTL_MS: parseIntEnv('AI_PRICING_CACHE_TTL_MS', 5 * 60 * 1_000),
 
   // Real-Time Dashboard
   LIVE_POLL_INTERVAL_MS: parseIntEnv('LIVE_POLL_INTERVAL_MS', 30_000),
